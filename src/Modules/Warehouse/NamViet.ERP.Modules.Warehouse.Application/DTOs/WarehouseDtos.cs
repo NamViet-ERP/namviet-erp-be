@@ -1,0 +1,95 @@
+using NamViet.ERP.Modules.Warehouse.Domain.Enums;
+
+namespace NamViet.ERP.Modules.Warehouse.Application.DTOs;
+
+// ── Materials ─────────────────────────────────────────────────────────────
+public record MaterialDto(
+    string MaterialCode, string MaterialName, string? MaterialCategory,
+    string Unit, string? TechnicalSpec, string? QualityStandard);
+
+public record UpsertMaterialRequest(
+    string MaterialCode, string MaterialName, string? MaterialCategory,
+    string Unit, string? TechnicalSpec, string? QualityStandard);
+
+// ── Suppliers ─────────────────────────────────────────────────────────────
+public record SupplierDto(
+    int Id, string SupplierCode, string SupplierName,
+    string? ContactPhone, int MaxDebtDays, string Rating);
+
+public record UpsertSupplierRequest(
+    string SupplierCode, string SupplierName,
+    string? ContactPhone, int MaxDebtDays = 30, string Rating = "A");
+
+// ── Price Book ─────────────────────────────────────────────────────────────
+public record PriceBookDto(
+    int Id, string MaterialCode, string MaterialName,
+    int SupplierId, string SupplierName,
+    decimal UnitPrice, string? PurchaseUrl, string? CatalogUrl, DateTime PriceDate);
+
+public record CreatePriceBookRequest(
+    string MaterialCode, int SupplierId,
+    decimal UnitPrice, string? PurchaseUrl, string? CatalogUrl);
+
+// ── Projects ──────────────────────────────────────────────────────────────
+public record ProjectDto(
+    string ProjectCode, string ProjectName, string ProjectType,
+    Guid PmId, string PmName, DateOnly StartDate, DateOnly? EndDate,
+    decimal MaterialBudget, string Status);
+
+public record CreateProjectRequest(
+    string ProjectCode, string ProjectName, ProjectType ProjectType,
+    Guid PmId, string PmName, DateOnly StartDate, DateOnly? EndDate,
+    decimal MaterialBudget = 0m);
+
+public record UpdateProjectRequest(
+    string ProjectName, Guid PmId, string PmName,
+    DateOnly? EndDate, decimal MaterialBudget, ProjectStatus Status);
+
+// ── Project Inventory ─────────────────────────────────────────────────────
+public record ProjectInventoryDto(
+    string ProjectCode, string MaterialCode, string MaterialName, string Unit,
+    decimal PlannedImportQty, decimal PlannedExportQty,
+    decimal ActualImportQty, decimal ActualExportQty,
+    decimal ActualInventoryQty, decimal PlannedInventoryQty);
+
+// ── Transactions ──────────────────────────────────────────────────────────
+public record TransactionItemRequest(
+    string MaterialCode, decimal Quantity, decimal UnitPrice,
+    string? ConstructionPhase, string? Notes);
+
+public record CreateTransactionRequest(
+    TransactionType TransactionType,
+    string? ProjectCode,
+    int? SupplierId,
+    string? InvoiceNumber,
+    string? DnttNumber,
+    string? Notes,
+    List<TransactionItemRequest> Items);
+
+public record TransactionDto(
+    string TicketCode, string TransactionType, string? ProjectCode,
+    int? SupplierId, string? SupplierName,
+    string? InvoiceNumber, string? DnttNumber,
+    string CreatedByName, string ApprovalStatus,
+    string? ApprovedByName, DateTime? ApprovedAt,
+    string? Notes, DateTime CreatedAt,
+    List<TransactionItemDto> Items);
+
+public record TransactionItemDto(
+    int Id, string MaterialCode, string MaterialName,
+    decimal Quantity, string Unit, decimal UnitPrice, decimal TotalAmount,
+    string? ConstructionPhase, string? Notes);
+
+public record ApproveTransactionRequest(bool Approve, string? Reason = null);
+
+// ── Loans ─────────────────────────────────────────────────────────────────
+public record LoanDto(
+    string LoanCode, string BorrowingProjectCode, string LendingProjectCode,
+    string MaterialCode, string MaterialName, decimal LoanQty,
+    DateTime LoanDate, DateOnly? DueDate, string Status,
+    string? LoanReason, string? ReturnTicketLink);
+
+public record CreateLoanRequest(
+    string BorrowingProjectCode, string LendingProjectCode,
+    string MaterialCode, decimal LoanQty,
+    DateOnly? DueDate, string? LoanReason);

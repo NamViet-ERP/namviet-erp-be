@@ -1,0 +1,75 @@
+using MediatR;
+using Microsoft.EntityFrameworkCore;
+using NamViet.ERP.Modules.Warehouse.Application.DTOs;
+using NamViet.ERP.Modules.Warehouse.Application.Transactions;
+using NamViet.ERP.Modules.Warehouse.Domain.Entities;
+using NamViet.ERP.Modules.Warehouse.Domain.Enums;
+using NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence;
+using NamViet.ERP.SharedKernel.Interfaces;
+
+namespace NamViet.ERP.Modules.Warehouse.Infrastructure.Handlers;
+
+public class CreateTransactionHandler(
+    WarehouseDbContext db,
+    ICurrentUser currentUser)
+    : IRequestHandler<CreateTransactionCommand, TransactionDto>
+{
+    public async Task<TransactionDto> Handle(CreateTransactionCommand command, CancellationToken ct)
+    {
+        var req = command.Request;
+
+        var count = await db.WarehouseTransactions
+            .CountAsync(t => t.TransactionType == req.TransactionType, ct);
+        var ticketCode = WarehouseTransaction.GenerateTicketCode(req.TransactionType, count + 1);
+
+        var materialCodes = req.Items.Select(i => i.MaterialCode).Distinct().ToList();
+        var materials = await db.Materials
+            .Where(m => materialCodes.Contains(m.MaterialCode))
+            .ToDictionaryAsync(m => m.MaterialCode, ct);
+
+        foreach (var code in materialCodes)
+            if (!materials.ContainsKey(code))
+                throw new InvalidOperationException($"Vật tư '{code}' không tồn tại.");
+
+        var transaction = new WarehouseTransaction
+        {
+            TicketCode = ticketCode,
+            TransactionType = req.TransactionType,
+            ProjectCode = req.ProjectCode,
+            SupplierId = req.SupplierId,
+            InvoiceNumber = req.InvoiceNumber,
+            DnttNumber = req.DnttNumber,
+            Notes = req.Notes,
+            CreatedById = currentUser.Id,
+            CreatedByName = currentUser.Name,
+            ApprovalStatus = ApprovalStatus.Pending,
+            Items = req.Items.Select(i => new WarehouseTransactionItem
+            {
+                MaterialCode = i.MaterialCode,
+                Quantity = i.Quantity,
+                UnitPrice = i.UnitPrice,
+                ConstructionPhase = i.ConstructionPhase,
+                Notes = i.Notes
+            }).ToList()
+        };
+
+        db.WarehouseTransactions.Add(transaction);
+        await db.SaveChangesAsync(ct);
+
+        return MapToDto(transaction, materials);
+    }
+
+    private static TransactionDto MapToDto(WarehouseTransaction t, Dictionary<string, Material> materials)
+        => new(
+            t.TicketCode, t.TransactionType.ToString(), t.ProjectCode,
+            t.SupplierId, null,
+            t.InvoiceNumber, t.DnttNumber,
+            t.CreatedByName, t.ApprovalStatus.ToString(),
+            t.ApprovedByName, t.ApprovedAt, t.Notes, t.CreatedAt,
+            t.Items.Select(i => new TransactionItemDto(
+                i.Id, i.MaterialCode,
+                materials.TryGetValue(i.MaterialCode, out var m) ? m.MaterialName : i.MaterialCode,
+                i.Quantity,
+                materials.TryGetValue(i.MaterialCode, out var m2) ? m2.Unit : string.Empty,
+                i.UnitPrice, i.TotalAmount, i.ConstructionPhase, i.Notes)).ToList());
+}

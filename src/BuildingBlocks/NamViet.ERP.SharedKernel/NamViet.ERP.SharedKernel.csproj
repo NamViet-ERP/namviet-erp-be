@@ -1,0 +1,5 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>NamViet.ERP.SharedKernel</RootNamespace>
+  </PropertyGroup>
+</Project>

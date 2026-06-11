@@ -1,0 +1,43 @@
+# .NET
+bin/
+obj/
+out/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+[Bb]in/
+[Oo]bj/
+artifacts/
+
+# Rider / VS
+.idea/
+.vs/
+*.swp
+
+# Env & secrets
+.env
+.env.*
+!.env.example
+appsettings.*.local.json
+secrets.json
+
+# Logs
+logs/
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# EF / SQLite local
+*.db
+*.db-shm
+*.db-wal
+
+# Uploads (local dev)
+src/ApiHost/NamViet.ERP.Api/wwwroot/uploads/
