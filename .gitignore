@@ -46,3 +46,4 @@ src/ApiHost/NamViet.ERP.Api/wwwroot/uploads/
 .cursor/
 .claude/
 .sixth/
+.vscode/
