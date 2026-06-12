@@ -111,6 +111,9 @@ public class RecruitmentController(HrDbContext db) : ControllerBase
     [Authorize(Roles = "Admin,HR")]
     public async Task<IActionResult> CreatePlan([FromBody] CreateRecruitmentPlanRequest request, CancellationToken ct)
     {
+        if (!await db.RecruitmentPositions.AnyAsync(p => p.Id == request.PositionId, ct))
+            return BadRequest($"Vị trí tuyển dụng ID={request.PositionId} không tồn tại.");
+
         var plan = new RecruitmentPlan
         {
             PositionId = request.PositionId,
@@ -164,6 +167,8 @@ public class RecruitmentController(HrDbContext db) : ControllerBase
     public async Task<IActionResult> CreateReward(
         [FromBody] CreateRewardRequest request, CancellationToken ct)
     {
+        if (!await db.Employees.AnyAsync(e => e.Id == request.EmployeeId, ct))
+            return BadRequest($"Nhân viên ID={request.EmployeeId} không tồn tại.");
         if (!DateOnly.TryParse(request.Date, out var d))
             return BadRequest("Ngày không hợp lệ.");
         var reward = new Reward

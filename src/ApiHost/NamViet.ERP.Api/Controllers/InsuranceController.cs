@@ -123,6 +123,9 @@ public class InsuranceController(HrDbContext db) : ControllerBase
     [HttpPost("tasks")]
     public async Task<IActionResult> CreateTask([FromBody] CreateInsuranceTaskRequest request, CancellationToken ct)
     {
+        if (!await db.Employees.AnyAsync(e => e.Id == request.EmployeeId, ct))
+            return BadRequest($"Nhân viên ID={request.EmployeeId} không tồn tại.");
+
         var task = new SocialInsuranceTask
         {
             Type = request.Type,

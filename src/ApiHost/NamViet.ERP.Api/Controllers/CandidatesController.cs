@@ -7,6 +7,8 @@ using NamViet.ERP.SharedKernel.Common;
 
 namespace NamViet.ERP.Api.Controllers;
 
+public record UpdateCandidateStatusRequest(string Status);
+
 public record CreateCandidateRequest(
     string FullName, string Phone, string Email,
     string Gender, string BirthDate, string? Address,
@@ -69,12 +71,12 @@ public class CandidatesController(HrDbContext db) : ControllerBase
 
     [HttpPatch("{id:int}/status")]
     [Authorize(Roles = "Admin,HR")]
-    public async Task<IActionResult> UpdateStatus(int id, [FromBody] string newStatus, CancellationToken ct)
+    public async Task<IActionResult> UpdateStatus(int id, [FromBody] UpdateCandidateStatusRequest request, CancellationToken ct)
     {
         var candidate = await db.Candidates.FindAsync([id], ct);
         if (candidate is null) return NotFound();
-        if (!Enum.TryParse<CandidateStatus>(newStatus, true, out var status))
-            return BadRequest("Trạng thái không hợp lệ.");
+        if (!Enum.TryParse<CandidateStatus>(request.Status, true, out var status))
+            return BadRequest($"Trạng thái '{request.Status}' không hợp lệ. Các giá trị hợp lệ: {string.Join(", ", Enum.GetNames<CandidateStatus>())}");
         candidate.Status = status;
         candidate.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);

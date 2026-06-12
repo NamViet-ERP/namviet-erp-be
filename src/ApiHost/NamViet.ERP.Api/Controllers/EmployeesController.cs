@@ -231,6 +231,8 @@ public class EmployeesController(HrDbContext db) : ControllerBase
             return NotFound();
         if (!DateOnly.TryParse(req.EffectiveDate, out var eff))
             return BadRequest("Ngày hiệu lực không hợp lệ.");
+        if (!await db.Positions.AnyAsync(p => p.Id == req.NewPositionId && p.DeletedAt == null, ct))
+            return BadRequest($"Chức vụ ID={req.NewPositionId} không tồn tại.");
 
         var appt = new Appointment
         {

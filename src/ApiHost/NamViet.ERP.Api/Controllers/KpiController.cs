@@ -99,6 +99,9 @@ public class KpiController(HrDbContext db) : ControllerBase
     [Authorize(Roles = "Admin,HR")]
     public async Task<IActionResult> UpsertRecord([FromBody] UpsertKpiRecordRequest request, CancellationToken ct)
     {
+        if (!await db.KpiDefinitions.AnyAsync(k => k.Id == request.KpiId && k.DeletedAt == null, ct))
+            return BadRequest($"KPI ID={request.KpiId} không tồn tại hoặc đã bị xoá.");
+
         var existing = await db.KpiRecords
             .FirstOrDefaultAsync(r =>
                 r.KpiId == request.KpiId &&
