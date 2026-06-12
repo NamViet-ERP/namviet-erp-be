@@ -41,3 +41,8 @@ Thumbs.db
 
 # Uploads (local dev)
 src/ApiHost/NamViet.ERP.Api/wwwroot/uploads/
+
+# Local AI / editor tooling (do not push)
+.cursor/
+.claude/
+.sixth/
