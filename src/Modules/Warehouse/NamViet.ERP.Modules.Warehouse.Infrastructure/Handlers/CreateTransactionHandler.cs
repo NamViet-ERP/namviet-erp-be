@@ -33,6 +33,7 @@ public class CreateTransactionHandler(
 
         var transaction = new WarehouseTransaction
         {
+            Id = Guid.NewGuid(),
             TicketCode = ticketCode,
             TransactionType = req.TransactionType,
             ProjectCode = req.ProjectCode,

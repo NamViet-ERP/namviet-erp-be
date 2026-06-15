@@ -21,7 +21,7 @@ public static class IdentityModule
         services.AddDbContext<IdentityDbContext>(opt =>
             opt.UseNpgsql(connectionString, b => b.MigrationsHistoryTable("__ef_migrations_identity", "identity")));
 
-        services.AddIdentity<ApplicationUser, IdentityRole<Guid>>(opt =>
+        services.AddIdentity<ApplicationUser, ApplicationRole>(opt =>
         {
             opt.Password.RequireDigit = true;
             opt.Password.RequiredLength = 8;

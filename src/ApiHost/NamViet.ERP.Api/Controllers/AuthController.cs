@@ -1,20 +1,53 @@
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using NamViet.ERP.Api.Application.Dtos.Wms;
+using NamViet.ERP.Api.Application.Mappers.Hr;
+using NamViet.ERP.Api.Application.Mappers.Wms;
+using NamViet.ERP.Modules.Hr.Infrastructure.Persistence;
 using NamViet.ERP.Modules.Identity.Application.Commands;
 using NamViet.ERP.Modules.Identity.Application.DTOs;
+using NamViet.ERP.Modules.Identity.Domain.Entities;
 
 namespace NamViet.ERP.Api.Controllers;
 
 [ApiController]
 [Route("api/auth")]
-public class AuthController(IMediator mediator) : ControllerBase
+public class AuthController(IMediator mediator, UserManager<ApplicationUser> userManager, HrDbContext hrDb) : ControllerBase
 {
     [HttpPost("login")]
-    public async Task<IActionResult> Login([FromBody] LoginRequest request, CancellationToken ct)
+    [AllowAnonymous]
+    public Task<IActionResult> Login([FromBody] FeLoginRequest request, CancellationToken ct) =>
+        LoginWithUsernameAsync(request, ct);
+
+    [HttpPost("login-fe")]
+    [AllowAnonymous]
+    [Obsolete("Use POST /api/auth/login instead.")]
+    public Task<IActionResult> LoginFe([FromBody] FeLoginRequest request, CancellationToken ct) =>
+        LoginWithUsernameAsync(request, ct);
+
+    private async Task<IActionResult> LoginWithUsernameAsync(FeLoginRequest request, CancellationToken ct)
     {
-        var result = await mediator.Send(new LoginCommand(request.Email, request.Password), ct);
-        return Ok(result);
+        var user = await userManager.Users
+            .FirstOrDefaultAsync(u =>
+                (u.UserName == request.Username || u.Email == request.Username) && u.DeletedAt == null, ct);
+        if (user is null) return Unauthorized("Tài khoản không tồn tại.");
+
+        var auth = await mediator.Send(new LoginCommand(user.Email!, request.Password), ct);
+        var roles = await userManager.GetRolesAsync(user);
+        var feRole = WmsMapper.ToClientRole(roles.FirstOrDefault() ?? "Employee");
+        var emp = await hrDb.Employees.FirstOrDefaultAsync(
+            e => e.UserId == user.Id || e.Code == user.EmployeeCode, ct);
+        var initials = string.Concat(user.Name.Split(' ', StringSplitOptions.RemoveEmptyEntries)
+            .Take(2).Select(w => w[0])).ToUpper();
+        var empStatus = emp is null ? null : HrEmployeeMapper.ToClientStatus(emp.Status);
+
+        return Ok(new FeAuthResponse(auth.AccessToken, auth.RefreshToken,
+            new FeAuthUserDto(user.Id.ToString(), user.UserName ?? user.Email ?? "",
+                feRole, user.Name, initials, WmsMapper.ToClientRoleLabel(roles.FirstOrDefault() ?? "Employee"),
+                user.Email ?? "", emp?.Id.ToString(), empStatus)));
     }
 
     [HttpPost("register")]
@@ -29,9 +62,24 @@ public class AuthController(IMediator mediator) : ControllerBase
 
     [HttpGet("me")]
     [Authorize]
-    public IActionResult Me()
+    public async Task<IActionResult> Me(CancellationToken ct)
     {
         var user = HttpContext.User;
+        var userId = user.FindFirst("sub")?.Value ?? user.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        if (Guid.TryParse(userId, out var guid))
+        {
+            var appUser = await userManager.Users.FirstOrDefaultAsync(u => u.Id == guid, ct);
+            if (appUser is not null)
+            {
+                var roles = await userManager.GetRolesAsync(appUser);
+                var feRole = WmsMapper.ToClientRole(roles.FirstOrDefault() ?? "Employee");
+                var initials = string.Concat(appUser.Name.Split(' ', StringSplitOptions.RemoveEmptyEntries)
+                    .Take(2).Select(w => w[0])).ToUpper();
+                return Ok(new FeAuthUserDto(appUser.Id.ToString(), appUser.UserName ?? "",
+                    feRole, appUser.Name, initials, WmsMapper.ToClientRoleLabel(roles.FirstOrDefault() ?? "Employee"),
+                    appUser.Email ?? "", null, null));
+            }
+        }
         return Ok(new
         {
             Id = user.FindFirst("sub")?.Value,

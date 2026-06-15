@@ -8,6 +8,7 @@ using NamViet.ERP.Modules.Identity.Domain.Entities;
 using NamViet.ERP.Modules.Identity.Infrastructure;
 using NamViet.ERP.Modules.Identity.Infrastructure.Services;
 using NamViet.ERP.Modules.Warehouse.Infrastructure;
+using NamViet.ERP.Modules.Warehouse.Infrastructure.Services;
 using NamViet.ERP.Modules.Hr.Infrastructure;
 using NamViet.ERP.SharedKernel.Interfaces;
 using Serilog;
@@ -44,6 +45,7 @@ builder.Services.AddMediatR(cfg =>
 // ── Current user ───────────────────────────────────────────────────────────
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ICurrentUser, CurrentUserService>();
+builder.Services.AddSingleton<NamViet.ERP.Api.Services.Storage.IFileStorage, NamViet.ERP.Api.Services.Storage.LocalFileStorage>();
 
 // ── CORS ───────────────────────────────────────────────────────────────────
 var allowedOrigins = (builder.Configuration["Cors:AllowedOrigins"] ?? "http://localhost:5173")
@@ -105,9 +107,12 @@ using (var scope = app.Services.CreateScope())
         await services.GetRequiredService<AppWarehouseDbContext>().Database.MigrateAsync();
         await services.GetRequiredService<AppHrDbContext>().Database.MigrateAsync();
 
-        var roleManager = services.GetRequiredService<RoleManager<IdentityRole<Guid>>>();
+        var roleManager = services.GetRequiredService<RoleManager<ApplicationRole>>();
         var userManager = services.GetRequiredService<UserManager<ApplicationUser>>();
+        var hrDb = services.GetRequiredService<AppHrDbContext>();
         await IdentitySeeder.SeedAsync(roleManager, userManager, app.Configuration, logger);
+        await IdentitySeeder.SeedDemoMembersAsync(userManager, hrDb, logger);
+        await WmsSeeder.SeedAsync(services.GetRequiredService<AppWarehouseDbContext>(), logger);
     }
     catch (Exception ex)
     {
@@ -131,6 +136,12 @@ if (app.Environment.IsDevelopment())
 
 app.UseSerilogRequestLogging();
 app.UseCors();
+
+var webRoot = app.Environment.WebRootPath
+    ?? Path.Combine(app.Environment.ContentRootPath, "wwwroot");
+Directory.CreateDirectory(Path.Combine(webRoot, "uploads", "hr"));
+app.UseStaticFiles();
+
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();

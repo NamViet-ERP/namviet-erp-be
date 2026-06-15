@@ -32,6 +32,22 @@ public class Employee : BaseEntity
     public string? SiNumber { get; set; }                       // Số BHXH
     public string? PhotoUrl { get; set; }
     public Education Education { get; set; }
+    public string? Segment { get; set; }
+    public string? Branch { get; set; }
+    public DateOnly? OfficialDate { get; set; }
+    public DateOnly? ResignDate { get; set; }
+    public string? MaritalStatus { get; set; }
+    public string? CmndNumber { get; set; }
+    public string? CmndIssueDate { get; set; }
+    public string? CmndIssuePlace { get; set; }
+    public string? CccdBackUrl { get; set; }
+    public string? CccdFrontUrl { get; set; }
+    public string? School { get; set; }
+    public string? Major { get; set; }
+    public string? DegreePhotoUrl { get; set; }
+    public string? BankAccountName { get; set; }
+    public string? BankBranch { get; set; }
+    public string? HadSocialInsurance { get; set; }
 
     public Department Department { get; set; } = null!;
     public Position? Position { get; set; }

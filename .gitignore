@@ -13,6 +13,8 @@ x86/
 [Bb]in/
 [Oo]bj/
 artifacts/
+_build_out/
+_build_verify/
 
 # Rider / VS
 .idea/

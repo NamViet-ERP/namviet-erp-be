@@ -65,6 +65,7 @@ public class Candidate : BaseEntity
     public CandidateStatus Status { get; set; } = CandidateStatus.New;
     public DateTime AppliedAt { get; set; } = DateTime.UtcNow;
     public string? Note { get; set; }
+    public string? WorkflowData { get; set; }
 
     public RecruitmentPosition? Position { get; set; }
     public ICollection<CandidateStage> Stages { get; set; } = [];

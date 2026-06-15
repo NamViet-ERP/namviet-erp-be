@@ -12,7 +12,7 @@ public record CreateInsuranceRecordRequest(
     decimal SalaryBase, decimal EmployeeAmount, decimal CompanyAmount);
 
 public record CreateInsuranceTaskRequest(
-    string Type, int EmployeeId, string? DueDate, string? Assignee, string? Note);
+    string Type, int EmployeeId, string? DueDate, int? AssigneeId, string? Note);
 
 [ApiController]
 [Route("api/hr/insurance")]
@@ -101,6 +101,7 @@ public class InsuranceController(HrDbContext db) : ControllerBase
     {
         var query = db.SocialInsuranceTasks
             .Include(t => t.Employee)
+            .Include(t => t.Assignee)
             .AsQueryable();
 
         if (!string.IsNullOrWhiteSpace(status)) query = query.Where(t => t.Status == status);
@@ -113,7 +114,10 @@ public class InsuranceController(HrDbContext db) : ControllerBase
             .Select(t => new
             {
                 t.Id, t.Type, t.EmployeeId, EmployeeName = t.Employee.FullName,
-                t.Status, t.DueDate, t.Assignee, t.Note
+                t.Status, t.DueDate,
+                AssigneeId = t.AssigneeId,
+                Assignee = t.Assignee != null ? t.Assignee.FullName : null,
+                t.Note
             })
             .ToListAsync(ct);
 
@@ -131,7 +135,7 @@ public class InsuranceController(HrDbContext db) : ControllerBase
             Type = request.Type,
             EmployeeId = request.EmployeeId,
             DueDate = DateOnly.TryParse(request.DueDate, out var d) ? d : null,
-            Assignee = request.Assignee,
+            AssigneeId = request.AssigneeId,
             Note = request.Note
         };
         db.SocialInsuranceTasks.Add(task);

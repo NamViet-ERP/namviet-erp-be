@@ -1,4 +1,5 @@
 using NamViet.ERP.SharedKernel.Entities;
+using NamViet.ERP.Modules.Hr.Domain.Enums;
 
 namespace NamViet.ERP.Modules.Hr.Domain.Entities;
 
@@ -25,10 +26,12 @@ public class SocialInsuranceTask : BaseEntity
     public int EmployeeId { get; set; }
     public string Status { get; set; } = "Pending";
     public DateOnly? DueDate { get; set; }
-    public string? Assignee { get; set; }
+    /// <summary>NV HR phụ trách xử lý (FK → hr.employees), không phải tài khoản login.</summary>
+    public int? AssigneeId { get; set; }
     public string? Note { get; set; }
 
     public Employee Employee { get; set; } = null!;
+    public Employee? Assignee { get; set; }
 }
 
 /// <summary>Khen thưởng nhân viên</summary>
@@ -36,7 +39,7 @@ public class Reward : BaseEntity
 {
     public int Id { get; set; }
     public int EmployeeId { get; set; }
-    public string Type { get; set; } = string.Empty;       // Khen thưởng/Kỷ luật
+    public RewardType Type { get; set; }
     public decimal Amount { get; set; }
     public string? Reason { get; set; }
     public DateOnly Date { get; set; }
@@ -74,8 +77,7 @@ public class KpiRecord : BaseEntity
 public class AdminRequest : BaseEntity
 {
     public int Id { get; set; }
-    // Type: Asset/Stationery/Uniform/Handbook/Flight/MealCount/Brand/Announcement/Other
-    public string Type { get; set; } = string.Empty;
+    public AdminRequestType Type { get; set; }
     public int EmployeeId { get; set; }
     public string Title { get; set; } = string.Empty;
     public string? Content { get; set; }

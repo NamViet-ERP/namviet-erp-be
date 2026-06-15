@@ -9,7 +9,7 @@ namespace NamViet.ERP.Modules.Identity.Infrastructure.Handlers;
 
 public class RegisterHandler(
     UserManager<ApplicationUser> userManager,
-    RoleManager<IdentityRole<Guid>> _roleManager)
+    RoleManager<ApplicationRole> roleManager)
     : IRequestHandler<RegisterCommand, UserDto>
 {
     public async Task<UserDto> Handle(RegisterCommand request, CancellationToken ct)
@@ -17,7 +17,7 @@ public class RegisterHandler(
         if (await userManager.FindByEmailAsync(request.Email) is not null)
             throw new InvalidOperationException($"Email '{request.Email}' đã được sử dụng.");
 
-        var roleExists = await _roleManager.RoleExistsAsync(request.Role);
+        var roleExists = await roleManager.RoleExistsAsync(request.Role);
         var role = roleExists ? request.Role : "Employee";
 
         var user = new ApplicationUser
@@ -26,7 +26,6 @@ public class RegisterHandler(
             Name = request.Name,
             Email = request.Email,
             UserName = request.Email,
-            Department = request.Department,
             EmailConfirmed = true
         };
 
@@ -40,6 +39,6 @@ public class RegisterHandler(
         await userManager.AddToRoleAsync(user, role);
         var roles = await userManager.GetRolesAsync(user);
 
-        return new UserDto(user.Id, user.EmployeeCode, user.Name, user.Email!, user.Department, user.AvatarUrl, [.. roles]);
+        return new UserDto(user.Id, user.EmployeeCode, user.Name, user.Email!, request.Department, user.AvatarUrl, [.. roles]);
     }
 }

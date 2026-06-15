@@ -16,6 +16,9 @@ public class ProjectMaterialLoan : BaseEntity
     public LoanStatus Status { get; set; } = LoanStatus.Borrowing;
     public string? ReturnTicketLink { get; set; }   // Liên kết phiếu trả để đối chiếu
     public string? LoanReason { get; set; }         // Lý do mượn
+    public bool BorrowPmSigned { get; set; }
+    public bool LendPmSigned { get; set; }
+    public string? CreatedByName { get; set; }
 
     public Project BorrowingProject { get; set; } = null!;
     public Project LendingProject { get; set; } = null!;

@@ -62,6 +62,15 @@ public class HrDbContext(DbContextOptions<HrDbContext> options) : DbContext(opti
             e.Property(em => em.Gender).HasConversion<string>().HasMaxLength(10);
             e.Property(em => em.Status).HasConversion<string>().HasMaxLength(20);
             e.Property(em => em.Education).HasConversion<string>().HasMaxLength(20);
+            e.Property(em => em.Segment).HasMaxLength(100);
+            e.Property(em => em.Branch).HasMaxLength(100);
+            e.Property(em => em.MaritalStatus).HasMaxLength(50);
+            e.Property(em => em.CmndNumber).HasMaxLength(50);
+            e.Property(em => em.School).HasMaxLength(255);
+            e.Property(em => em.Major).HasMaxLength(255);
+            e.Property(em => em.BankAccountName).HasMaxLength(255);
+            e.Property(em => em.BankBranch).HasMaxLength(255);
+            e.Property(em => em.HadSocialInsurance).HasMaxLength(50);
             e.HasOne(em => em.Department).WithMany(d => d.Employees).HasForeignKey(em => em.DepartmentId);
             e.HasOne(em => em.Position).WithMany(p => p.Employees).HasForeignKey(em => em.PositionId).IsRequired(false);
             e.HasOne(em => em.Manager).WithMany().HasForeignKey(em => em.ManagerId).IsRequired(false);
@@ -96,6 +105,7 @@ public class HrDbContext(DbContextOptions<HrDbContext> options) : DbContext(opti
             e.Property(c => c.Education).HasConversion<string>().HasMaxLength(20);
             e.Property(c => c.Source).HasConversion<string>().HasMaxLength(30);
             e.Property(c => c.Status).HasConversion<string>().HasMaxLength(20);
+            e.Property(c => c.WorkflowData).HasColumnType("jsonb");
             e.HasQueryFilter(c => c.DeletedAt == null);
         });
 
@@ -150,10 +160,12 @@ public class HrDbContext(DbContextOptions<HrDbContext> options) : DbContext(opti
         {
             e.ToTable("social_insurance_tasks");
             e.HasOne(t => t.Employee).WithMany().HasForeignKey(t => t.EmployeeId);
+            e.HasOne(t => t.Assignee).WithMany().HasForeignKey(t => t.AssigneeId).IsRequired(false);
         });
         model.Entity<Reward>(e =>
         {
             e.ToTable("rewards");
+            e.Property(r => r.Type).HasConversion<string>().HasMaxLength(30);
             e.Property(r => r.Amount).HasColumnType("numeric(18,2)");
             e.HasOne(r => r.Employee).WithMany().HasForeignKey(r => r.EmployeeId);
         });
@@ -168,6 +180,7 @@ public class HrDbContext(DbContextOptions<HrDbContext> options) : DbContext(opti
         model.Entity<AdminRequest>(e =>
         {
             e.ToTable("admin_requests");
+            e.Property(a => a.Type).HasConversion<string>().HasMaxLength(30);
             e.Property(a => a.Quantity).HasColumnType("numeric(10,2)");
             e.HasOne(a => a.Employee).WithMany().HasForeignKey(a => a.EmployeeId);
         });

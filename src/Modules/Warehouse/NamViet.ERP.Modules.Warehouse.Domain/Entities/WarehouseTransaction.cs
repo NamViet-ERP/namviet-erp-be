@@ -9,6 +9,7 @@ namespace NamViet.ERP.Modules.Warehouse.Domain.Entities;
 /// </summary>
 public class WarehouseTransaction : BaseEntity
 {
+    public Guid Id { get; set; } = Guid.NewGuid();
     public string TicketCode { get; set; } = string.Empty;             // PK
     public TransactionType TransactionType { get; set; }
     public string? ProjectCode { get; set; }
@@ -22,6 +23,19 @@ public class WarehouseTransaction : BaseEntity
     public string? ApprovedByName { get; set; }
     public DateTime? ApprovedAt { get; set; }
     public string? Notes { get; set; }
+
+    // FE WMS facade fields
+    public string? WarehouseId { get; set; }
+    public string? FromWarehouseId { get; set; }
+    public string? ToWarehouseId { get; set; }
+    public string? ReferenceCode { get; set; }
+    public string? SoCode { get; set; }
+    public string? Customer { get; set; }
+    public string? WarehouseKeeper { get; set; }
+    public WarehouseKeeperApprovalStatus WarehouseApprovalStatus { get; set; } = WarehouseKeeperApprovalStatus.Pending;
+    public bool IsDirectProcurement { get; set; }
+    public string? BeneficiaryProjectCode { get; set; }
+    public string? SupplierName { get; set; }
 
     public Project? Project { get; set; }
     public Supplier? Supplier { get; set; }

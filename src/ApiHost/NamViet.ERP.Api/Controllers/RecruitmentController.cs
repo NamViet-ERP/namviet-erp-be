@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using NamViet.ERP.Modules.Hr.Domain.Entities;
+using NamViet.ERP.Modules.Hr.Domain.Enums;
 using NamViet.ERP.Modules.Hr.Infrastructure.Persistence;
 using NamViet.ERP.SharedKernel.Common;
 
@@ -155,8 +156,8 @@ public class RecruitmentController(HrDbContext db) : ControllerBase
             .Skip((page - 1) * pageSize).Take(pageSize)
             .Select(r => new
             {
-                r.Id, r.EmployeeId, EmployeeName = r.Employee.FullName,
-                r.Type, r.Amount, r.Reason, r.Date, r.DecisionNo
+                r.Id, Type = HrEnumMapper.ToDisplayString(r.Type), r.EmployeeId, EmployeeName = r.Employee.FullName,
+                r.Amount, r.Reason, r.Date, r.DecisionNo
             })
             .ToListAsync(ct);
         return Ok(PagedResult<object>.Create(items, total, page, pageSize));
@@ -174,7 +175,7 @@ public class RecruitmentController(HrDbContext db) : ControllerBase
         var reward = new Reward
         {
             EmployeeId = request.EmployeeId,
-            Type = request.Type,
+            Type = HrEnumMapper.ParseRewardType(request.Type),
             Amount = request.Amount,
             Reason = request.Reason,
             Date = d,

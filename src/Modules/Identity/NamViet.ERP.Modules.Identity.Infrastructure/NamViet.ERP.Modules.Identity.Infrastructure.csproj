@@ -4,6 +4,7 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\NamViet.ERP.Modules.Identity.Application\NamViet.ERP.Modules.Identity.Application.csproj" />
+    <ProjectReference Include="..\..\Hr\NamViet.ERP.Modules.Hr.Infrastructure\NamViet.ERP.Modules.Hr.Infrastructure.csproj" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="8.*" />

@@ -23,6 +23,335 @@ namespace NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("NamViet.ERP.Modules.Warehouse.Domain.Entities.Adjustment", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<string>("Condition")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("CreatedById")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("CreatedByName")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("IsNew")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Note")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("StocktakeCode")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("VoucherCode")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<DateOnly>("VoucherDate")
+                        .HasColumnType("date");
+
+                    b.Property<string>("WarehouseId")
+                        .IsRequired()
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<string>("WarehouseName")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("VoucherCode")
+                        .IsUnique();
+
+                    b.HasIndex("WarehouseId");
+
+                    b.ToTable("adjustments", "warehouse");
+                });
+
+            modelBuilder.Entity("NamViet.ERP.Modules.Warehouse.Domain.Entities.AdjustmentItem", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<decimal>("AdjustQty")
+                        .HasColumnType("numeric");
+
+                    b.Property<string>("AdjustmentId")
+                        .IsRequired()
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<string>("MaterialCode")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Sku")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AdjustmentId");
+
+                    b.HasIndex("MaterialCode");
+
+                    b.ToTable("adjustment_items", "warehouse");
+                });
+
+            modelBuilder.Entity("NamViet.ERP.Modules.Warehouse.Domain.Entities.ConsumableQuota", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<decimal>("IssuedQty")
+                        .HasColumnType("numeric(18,4)");
+
+                    b.Property<string>("MaterialCode")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("MaterialCode1")
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("ProjectCode")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("ProjectCode1")
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<decimal>("QuotaQty")
+                        .HasColumnType("numeric(18,4)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("MaterialCode1");
+
+                    b.HasIndex("ProjectCode1");
+
+                    b.HasIndex("ProjectCode", "MaterialCode")
+                        .IsUnique();
+
+                    b.ToTable("consumable_quotas", "warehouse");
+                });
+
+            modelBuilder.Entity("NamViet.ERP.Modules.Warehouse.Domain.Entities.Conversion", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<Guid?>("ApprovedById")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ApprovedByName")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("CreatedById")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("CreatedByName")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("FromType")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("FromWarehouseId")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("FromWarehouseName")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Note")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("ToType")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("ToWarehouseId")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("ToWarehouseName")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("VoucherCode")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<DateOnly>("VoucherDate")
+                        .HasColumnType("date");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("conversions", "warehouse");
+                });
+
+            modelBuilder.Entity("NamViet.ERP.Modules.Warehouse.Domain.Entities.ConversionItem", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("ConversionId")
+                        .IsRequired()
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<string>("MaterialCode")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<decimal>("Qty")
+                        .HasColumnType("numeric");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Sku")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Unit")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ConversionId");
+
+                    b.HasIndex("MaterialCode");
+
+                    b.ToTable("conversion_items", "warehouse");
+                });
+
+            modelBuilder.Entity("NamViet.ERP.Modules.Warehouse.Domain.Entities.ExpectedImport", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateOnly>("ExpectedDate")
+                        .HasColumnType("date");
+
+                    b.Property<string>("MaterialCode")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("ProjectCode")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<decimal>("Qty")
+                        .HasColumnType("numeric");
+
+                    b.Property<decimal>("Surplus")
+                        .HasColumnType("numeric");
+
+                    b.Property<string>("Unit")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("MaterialCode");
+
+                    b.HasIndex("ProjectCode");
+
+                    b.ToTable("expected_imports", "warehouse");
+                });
+
             modelBuilder.Entity("NamViet.ERP.Modules.Warehouse.Domain.Entities.Material", b =>
                 {
                     b.Property<string>("MaterialCode")
@@ -108,6 +437,32 @@ namespace NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence.Migrations
                     b.ToTable("price_book", "warehouse");
                 });
 
+            modelBuilder.Entity("NamViet.ERP.Modules.Warehouse.Domain.Entities.ProductBarcode", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("MaterialCode")
+                        .IsRequired()
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("NumericSku")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("MaterialCode");
+
+                    b.HasIndex("NumericSku")
+                        .IsUnique();
+
+                    b.ToTable("product_barcodes", "warehouse");
+                });
+
             modelBuilder.Entity("NamViet.ERP.Modules.Warehouse.Domain.Entities.Project", b =>
                 {
                     b.Property<string>("ProjectCode")
@@ -122,6 +477,10 @@ namespace NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence.Migrations
 
                     b.Property<DateOnly?>("EndDate")
                         .HasColumnType("date");
+
+                    b.Property<string>("FeId")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
 
                     b.Property<decimal>("MaterialBudget")
                         .ValueGeneratedOnAdd()
@@ -146,6 +505,10 @@ namespace NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence.Migrations
                         .HasMaxLength(30)
                         .HasColumnType("character varying(30)");
 
+                    b.Property<string>("Stage")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
                     b.Property<DateOnly>("StartDate")
                         .HasColumnType("date");
 
@@ -160,6 +523,52 @@ namespace NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence.Migrations
                     b.HasKey("ProjectCode");
 
                     b.ToTable("projects", "warehouse");
+                });
+
+            modelBuilder.Entity("NamViet.ERP.Modules.Warehouse.Domain.Entities.ProjectBom", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("MaterialCode")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("MaterialCode1")
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("ProjectCode")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("ProjectCode1")
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<decimal>("Qty")
+                        .HasColumnType("numeric(18,4)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("MaterialCode1");
+
+                    b.HasIndex("ProjectCode1");
+
+                    b.HasIndex("ProjectCode", "MaterialCode")
+                        .IsUnique();
+
+                    b.ToTable("project_boms", "warehouse");
                 });
 
             modelBuilder.Entity("NamViet.ERP.Modules.Warehouse.Domain.Entities.ProjectInventory", b =>
@@ -223,6 +632,9 @@ namespace NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence.Migrations
                         .HasMaxLength(50)
                         .HasColumnType("character varying(50)");
 
+                    b.Property<bool>("BorrowPmSigned")
+                        .HasColumnType("boolean");
+
                     b.Property<string>("BorrowingProjectCode")
                         .IsRequired()
                         .HasColumnType("character varying(50)");
@@ -230,11 +642,17 @@ namespace NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("CreatedByName")
+                        .HasColumnType("text");
+
                     b.Property<DateTime?>("DeletedAt")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<DateOnly?>("DueDate")
                         .HasColumnType("date");
+
+                    b.Property<bool>("LendPmSigned")
+                        .HasColumnType("boolean");
 
                     b.Property<string>("LendingProjectCode")
                         .IsRequired()
@@ -274,6 +692,197 @@ namespace NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence.Migrations
                     b.HasIndex("MaterialCode");
 
                     b.ToTable("project_material_loans", "warehouse");
+                });
+
+            modelBuilder.Entity("NamViet.ERP.Modules.Warehouse.Domain.Entities.PurchaseOrder", b =>
+                {
+                    b.Property<string>("Code")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateOnly>("OrderDate")
+                        .HasColumnType("date");
+
+                    b.Property<string>("ProjectCode")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<int?>("SupplierId")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Code");
+
+                    b.HasIndex("ProjectCode");
+
+                    b.HasIndex("SupplierId");
+
+                    b.ToTable("purchase_orders", "warehouse");
+                });
+
+            modelBuilder.Entity("NamViet.ERP.Modules.Warehouse.Domain.Entities.PurchaseOrderItem", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<decimal>("EstPrice")
+                        .HasColumnType("numeric");
+
+                    b.Property<string>("MaterialCode")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<decimal>("Ordered")
+                        .HasColumnType("numeric");
+
+                    b.Property<string>("PoCode")
+                        .IsRequired()
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<decimal>("PoPrice")
+                        .HasColumnType("numeric");
+
+                    b.Property<decimal>("Received")
+                        .HasColumnType("numeric");
+
+                    b.Property<string>("Sku")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Unit")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("MaterialCode");
+
+                    b.HasIndex("PoCode");
+
+                    b.ToTable("purchase_order_items", "warehouse");
+                });
+
+            modelBuilder.Entity("NamViet.ERP.Modules.Warehouse.Domain.Entities.Stocktake", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<string>("Condition")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("CreatedById")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("CreatedByName")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("IsFrozen")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Note")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("VoucherCode")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<DateOnly>("VoucherDate")
+                        .HasColumnType("date");
+
+                    b.Property<string>("WarehouseId")
+                        .IsRequired()
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<string>("WarehouseName")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("VoucherCode")
+                        .IsUnique();
+
+                    b.HasIndex("WarehouseId");
+
+                    b.ToTable("stocktakes", "warehouse");
+                });
+
+            modelBuilder.Entity("NamViet.ERP.Modules.Warehouse.Domain.Entities.StocktakeItem", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<decimal>("ActualQty")
+                        .HasColumnType("numeric");
+
+                    b.Property<decimal>("Diff")
+                        .HasColumnType("numeric");
+
+                    b.Property<string>("MaterialCode")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Sku")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("StocktakeId")
+                        .IsRequired()
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<decimal>("SystemQty")
+                        .HasColumnType("numeric");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("MaterialCode");
+
+                    b.HasIndex("StocktakeId");
+
+                    b.ToTable("stocktake_items", "warehouse");
                 });
 
             modelBuilder.Entity("NamViet.ERP.Modules.Warehouse.Domain.Entities.Supplier", b =>
@@ -325,6 +934,46 @@ namespace NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence.Migrations
                     b.ToTable("suppliers", "warehouse");
                 });
 
+            modelBuilder.Entity("NamViet.ERP.Modules.Warehouse.Domain.Entities.WarehouseInventory", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("MaterialCode")
+                        .IsRequired()
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<decimal>("Qty")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("numeric(18,4)")
+                        .HasDefaultValue(0m);
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("WarehouseId")
+                        .IsRequired()
+                        .HasColumnType("character varying(50)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("MaterialCode");
+
+                    b.HasIndex("WarehouseId", "MaterialCode")
+                        .IsUnique();
+
+                    b.ToTable("warehouse_inventory", "warehouse");
+                });
+
             modelBuilder.Entity("NamViet.ERP.Modules.Warehouse.Domain.Entities.WarehouseTransaction", b =>
                 {
                     b.Property<string>("TicketCode")
@@ -346,6 +995,10 @@ namespace NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence.Migrations
                         .HasMaxLength(255)
                         .HasColumnType("character varying(255)");
 
+                    b.Property<string>("BeneficiaryProjectCode")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -357,6 +1010,10 @@ namespace NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence.Migrations
                         .HasMaxLength(255)
                         .HasColumnType("character varying(255)");
 
+                    b.Property<string>("Customer")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
                     b.Property<DateTime?>("DeletedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -364,9 +1021,19 @@ namespace NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)");
 
+                    b.Property<string>("FromWarehouseId")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
                     b.Property<string>("InvoiceNumber")
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)");
+
+                    b.Property<bool>("IsDirectProcurement")
+                        .HasColumnType("boolean");
 
                     b.Property<string>("Notes")
                         .HasColumnType("text");
@@ -374,8 +1041,24 @@ namespace NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence.Migrations
                     b.Property<string>("ProjectCode")
                         .HasColumnType("character varying(50)");
 
+                    b.Property<string>("ReferenceCode")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("SoCode")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
                     b.Property<int?>("SupplierId")
                         .HasColumnType("integer");
+
+                    b.Property<string>("SupplierName")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<string>("ToWarehouseId")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
 
                     b.Property<string>("TransactionType")
                         .IsRequired()
@@ -385,7 +1068,25 @@ namespace NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence.Migrations
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("WarehouseApprovalStatus")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasDefaultValue("Pending");
+
+                    b.Property<string>("WarehouseId")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<string>("WarehouseKeeper")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
                     b.HasKey("TicketCode");
+
+                    b.HasIndex("Id")
+                        .IsUnique();
 
                     b.HasIndex("ProjectCode");
 
@@ -432,6 +1133,183 @@ namespace NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence.Migrations
                     b.ToTable("warehouse_transaction_items", "warehouse");
                 });
 
+            modelBuilder.Entity("NamViet.ERP.Modules.Warehouse.Domain.Entities.WmsSetting", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Key")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Value")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Key")
+                        .IsUnique();
+
+                    b.ToTable("wms_settings", "warehouse");
+                });
+
+            modelBuilder.Entity("NamViet.ERP.Modules.Warehouse.Domain.Entities.WmsWarehouse", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<string>("Address")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<string>("Branch")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Group")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("Manager")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasDefaultValue("active");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Code")
+                        .IsUnique();
+
+                    b.ToTable("warehouses", "warehouse");
+                });
+
+            modelBuilder.Entity("NamViet.ERP.Modules.Warehouse.Domain.Entities.Adjustment", b =>
+                {
+                    b.HasOne("NamViet.ERP.Modules.Warehouse.Domain.Entities.WmsWarehouse", "Warehouse")
+                        .WithMany()
+                        .HasForeignKey("WarehouseId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Warehouse");
+                });
+
+            modelBuilder.Entity("NamViet.ERP.Modules.Warehouse.Domain.Entities.AdjustmentItem", b =>
+                {
+                    b.HasOne("NamViet.ERP.Modules.Warehouse.Domain.Entities.Adjustment", "Adjustment")
+                        .WithMany("Items")
+                        .HasForeignKey("AdjustmentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("NamViet.ERP.Modules.Warehouse.Domain.Entities.Material", "Material")
+                        .WithMany()
+                        .HasForeignKey("MaterialCode")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Adjustment");
+
+                    b.Navigation("Material");
+                });
+
+            modelBuilder.Entity("NamViet.ERP.Modules.Warehouse.Domain.Entities.ConsumableQuota", b =>
+                {
+                    b.HasOne("NamViet.ERP.Modules.Warehouse.Domain.Entities.Material", "Material")
+                        .WithMany()
+                        .HasForeignKey("MaterialCode1");
+
+                    b.HasOne("NamViet.ERP.Modules.Warehouse.Domain.Entities.Project", "Project")
+                        .WithMany()
+                        .HasForeignKey("ProjectCode1");
+
+                    b.Navigation("Material");
+
+                    b.Navigation("Project");
+                });
+
+            modelBuilder.Entity("NamViet.ERP.Modules.Warehouse.Domain.Entities.ConversionItem", b =>
+                {
+                    b.HasOne("NamViet.ERP.Modules.Warehouse.Domain.Entities.Conversion", "Conversion")
+                        .WithMany("Items")
+                        .HasForeignKey("ConversionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("NamViet.ERP.Modules.Warehouse.Domain.Entities.Material", "Material")
+                        .WithMany()
+                        .HasForeignKey("MaterialCode")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Conversion");
+
+                    b.Navigation("Material");
+                });
+
+            modelBuilder.Entity("NamViet.ERP.Modules.Warehouse.Domain.Entities.ExpectedImport", b =>
+                {
+                    b.HasOne("NamViet.ERP.Modules.Warehouse.Domain.Entities.Material", "Material")
+                        .WithMany()
+                        .HasForeignKey("MaterialCode")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("NamViet.ERP.Modules.Warehouse.Domain.Entities.Project", "Project")
+                        .WithMany()
+                        .HasForeignKey("ProjectCode")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Material");
+
+                    b.Navigation("Project");
+                });
+
             modelBuilder.Entity("NamViet.ERP.Modules.Warehouse.Domain.Entities.PriceBook", b =>
                 {
                     b.HasOne("NamViet.ERP.Modules.Warehouse.Domain.Entities.Material", "Material")
@@ -449,6 +1327,32 @@ namespace NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence.Migrations
                     b.Navigation("Material");
 
                     b.Navigation("Supplier");
+                });
+
+            modelBuilder.Entity("NamViet.ERP.Modules.Warehouse.Domain.Entities.ProductBarcode", b =>
+                {
+                    b.HasOne("NamViet.ERP.Modules.Warehouse.Domain.Entities.Material", "Material")
+                        .WithMany()
+                        .HasForeignKey("MaterialCode")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Material");
+                });
+
+            modelBuilder.Entity("NamViet.ERP.Modules.Warehouse.Domain.Entities.ProjectBom", b =>
+                {
+                    b.HasOne("NamViet.ERP.Modules.Warehouse.Domain.Entities.Material", "Material")
+                        .WithMany()
+                        .HasForeignKey("MaterialCode1");
+
+                    b.HasOne("NamViet.ERP.Modules.Warehouse.Domain.Entities.Project", "Project")
+                        .WithMany()
+                        .HasForeignKey("ProjectCode1");
+
+                    b.Navigation("Material");
+
+                    b.Navigation("Project");
                 });
 
             modelBuilder.Entity("NamViet.ERP.Modules.Warehouse.Domain.Entities.ProjectInventory", b =>
@@ -497,6 +1401,91 @@ namespace NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence.Migrations
                     b.Navigation("Material");
                 });
 
+            modelBuilder.Entity("NamViet.ERP.Modules.Warehouse.Domain.Entities.PurchaseOrder", b =>
+                {
+                    b.HasOne("NamViet.ERP.Modules.Warehouse.Domain.Entities.Project", "Project")
+                        .WithMany()
+                        .HasForeignKey("ProjectCode")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("NamViet.ERP.Modules.Warehouse.Domain.Entities.Supplier", "Supplier")
+                        .WithMany()
+                        .HasForeignKey("SupplierId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("Project");
+
+                    b.Navigation("Supplier");
+                });
+
+            modelBuilder.Entity("NamViet.ERP.Modules.Warehouse.Domain.Entities.PurchaseOrderItem", b =>
+                {
+                    b.HasOne("NamViet.ERP.Modules.Warehouse.Domain.Entities.Material", "Material")
+                        .WithMany()
+                        .HasForeignKey("MaterialCode")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("NamViet.ERP.Modules.Warehouse.Domain.Entities.PurchaseOrder", "PurchaseOrder")
+                        .WithMany("Items")
+                        .HasForeignKey("PoCode")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Material");
+
+                    b.Navigation("PurchaseOrder");
+                });
+
+            modelBuilder.Entity("NamViet.ERP.Modules.Warehouse.Domain.Entities.Stocktake", b =>
+                {
+                    b.HasOne("NamViet.ERP.Modules.Warehouse.Domain.Entities.WmsWarehouse", "Warehouse")
+                        .WithMany()
+                        .HasForeignKey("WarehouseId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Warehouse");
+                });
+
+            modelBuilder.Entity("NamViet.ERP.Modules.Warehouse.Domain.Entities.StocktakeItem", b =>
+                {
+                    b.HasOne("NamViet.ERP.Modules.Warehouse.Domain.Entities.Material", "Material")
+                        .WithMany()
+                        .HasForeignKey("MaterialCode")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("NamViet.ERP.Modules.Warehouse.Domain.Entities.Stocktake", "Stocktake")
+                        .WithMany("Items")
+                        .HasForeignKey("StocktakeId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Material");
+
+                    b.Navigation("Stocktake");
+                });
+
+            modelBuilder.Entity("NamViet.ERP.Modules.Warehouse.Domain.Entities.WarehouseInventory", b =>
+                {
+                    b.HasOne("NamViet.ERP.Modules.Warehouse.Domain.Entities.Material", "Material")
+                        .WithMany()
+                        .HasForeignKey("MaterialCode")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("NamViet.ERP.Modules.Warehouse.Domain.Entities.WmsWarehouse", "Warehouse")
+                        .WithMany("Inventories")
+                        .HasForeignKey("WarehouseId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Material");
+
+                    b.Navigation("Warehouse");
+                });
+
             modelBuilder.Entity("NamViet.ERP.Modules.Warehouse.Domain.Entities.WarehouseTransaction", b =>
                 {
                     b.HasOne("NamViet.ERP.Modules.Warehouse.Domain.Entities.Project", "Project")
@@ -533,6 +1522,16 @@ namespace NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence.Migrations
                     b.Navigation("Transaction");
                 });
 
+            modelBuilder.Entity("NamViet.ERP.Modules.Warehouse.Domain.Entities.Adjustment", b =>
+                {
+                    b.Navigation("Items");
+                });
+
+            modelBuilder.Entity("NamViet.ERP.Modules.Warehouse.Domain.Entities.Conversion", b =>
+                {
+                    b.Navigation("Items");
+                });
+
             modelBuilder.Entity("NamViet.ERP.Modules.Warehouse.Domain.Entities.Material", b =>
                 {
                     b.Navigation("PriceBooks");
@@ -549,6 +1548,16 @@ namespace NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence.Migrations
                     b.Navigation("Transactions");
                 });
 
+            modelBuilder.Entity("NamViet.ERP.Modules.Warehouse.Domain.Entities.PurchaseOrder", b =>
+                {
+                    b.Navigation("Items");
+                });
+
+            modelBuilder.Entity("NamViet.ERP.Modules.Warehouse.Domain.Entities.Stocktake", b =>
+                {
+                    b.Navigation("Items");
+                });
+
             modelBuilder.Entity("NamViet.ERP.Modules.Warehouse.Domain.Entities.Supplier", b =>
                 {
                     b.Navigation("PriceBooks");
@@ -559,6 +1568,11 @@ namespace NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("NamViet.ERP.Modules.Warehouse.Domain.Entities.WarehouseTransaction", b =>
                 {
                     b.Navigation("Items");
+                });
+
+            modelBuilder.Entity("NamViet.ERP.Modules.Warehouse.Domain.Entities.WmsWarehouse", b =>
+                {
+                    b.Navigation("Inventories");
                 });
 #pragma warning restore 612, 618
         }

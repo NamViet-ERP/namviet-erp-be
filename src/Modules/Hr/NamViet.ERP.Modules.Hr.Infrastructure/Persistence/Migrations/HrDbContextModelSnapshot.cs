@@ -59,7 +59,8 @@ namespace NamViet.ERP.Modules.Hr.Infrastructure.Persistence.Migrations
 
                     b.Property<string>("Type")
                         .IsRequired()
-                        .HasColumnType("text");
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)");
 
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
@@ -276,6 +277,9 @@ namespace NamViet.ERP.Modules.Hr.Infrastructure.Persistence.Migrations
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("WorkflowData")
+                        .HasColumnType("jsonb");
+
                     b.HasKey("Id");
 
                     b.HasIndex("PositionId");
@@ -386,20 +390,48 @@ namespace NamViet.ERP.Modules.Hr.Infrastructure.Persistence.Migrations
                     b.Property<string>("BankAccount")
                         .HasColumnType("text");
 
+                    b.Property<string>("BankAccountName")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<string>("BankBranch")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
                     b.Property<string>("BankName")
                         .HasColumnType("text");
 
                     b.Property<DateOnly>("BirthDate")
                         .HasColumnType("date");
 
+                    b.Property<string>("Branch")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
                     b.Property<string>("Cccd")
+                        .HasColumnType("text");
+
+                    b.Property<string>("CccdBackUrl")
                         .HasColumnType("text");
 
                     b.Property<DateOnly?>("CccdDate")
                         .HasColumnType("date");
 
+                    b.Property<string>("CccdFrontUrl")
+                        .HasColumnType("text");
+
                     b.Property<string>("CccdPlace")
                         .HasColumnType("text");
+
+                    b.Property<string>("CmndIssueDate")
+                        .HasColumnType("text");
+
+                    b.Property<string>("CmndIssuePlace")
+                        .HasColumnType("text");
+
+                    b.Property<string>("CmndNumber")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
 
                     b.Property<string>("Code")
                         .IsRequired()
@@ -408,6 +440,9 @@ namespace NamViet.ERP.Modules.Hr.Infrastructure.Persistence.Migrations
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("DegreePhotoUrl")
+                        .HasColumnType("text");
 
                     b.Property<DateTime?>("DeletedAt")
                         .HasColumnType("timestamp with time zone");
@@ -433,11 +468,26 @@ namespace NamViet.ERP.Modules.Hr.Infrastructure.Persistence.Migrations
                         .HasMaxLength(10)
                         .HasColumnType("character varying(10)");
 
+                    b.Property<string>("HadSocialInsurance")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
                     b.Property<DateOnly>("JoinDate")
                         .HasColumnType("date");
 
+                    b.Property<string>("Major")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
                     b.Property<int?>("ManagerId")
                         .HasColumnType("integer");
+
+                    b.Property<string>("MaritalStatus")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<DateOnly?>("OfficialDate")
+                        .HasColumnType("date");
 
                     b.Property<string>("Phone")
                         .HasColumnType("text");
@@ -447,6 +497,17 @@ namespace NamViet.ERP.Modules.Hr.Infrastructure.Persistence.Migrations
 
                     b.Property<int?>("PositionId")
                         .HasColumnType("integer");
+
+                    b.Property<DateOnly?>("ResignDate")
+                        .HasColumnType("date");
+
+                    b.Property<string>("School")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<string>("Segment")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
 
                     b.Property<string>("SiNumber")
                         .HasColumnType("text");
@@ -1004,7 +1065,8 @@ namespace NamViet.ERP.Modules.Hr.Infrastructure.Persistence.Migrations
 
                     b.Property<string>("Type")
                         .IsRequired()
-                        .HasColumnType("text");
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)");
 
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
@@ -1070,8 +1132,8 @@ namespace NamViet.ERP.Modules.Hr.Infrastructure.Persistence.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
-                    b.Property<string>("Assignee")
-                        .HasColumnType("text");
+                    b.Property<int?>("AssigneeId")
+                        .HasColumnType("integer");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
@@ -1100,6 +1162,8 @@ namespace NamViet.ERP.Modules.Hr.Infrastructure.Persistence.Migrations
                         .HasColumnType("timestamp with time zone");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("AssigneeId");
 
                     b.HasIndex("EmployeeId");
 
@@ -1331,11 +1395,17 @@ namespace NamViet.ERP.Modules.Hr.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("NamViet.ERP.Modules.Hr.Domain.Entities.SocialInsuranceTask", b =>
                 {
+                    b.HasOne("NamViet.ERP.Modules.Hr.Domain.Entities.Employee", "Assignee")
+                        .WithMany()
+                        .HasForeignKey("AssigneeId");
+
                     b.HasOne("NamViet.ERP.Modules.Hr.Domain.Entities.Employee", "Employee")
                         .WithMany()
                         .HasForeignKey("EmployeeId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+
+                    b.Navigation("Assignee");
 
                     b.Navigation("Employee");
                 });

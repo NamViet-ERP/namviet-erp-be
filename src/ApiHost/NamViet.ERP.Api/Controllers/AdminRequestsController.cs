@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using NamViet.ERP.Modules.Hr.Domain.Entities;
+using NamViet.ERP.Modules.Hr.Domain.Enums;
 using NamViet.ERP.Modules.Hr.Infrastructure.Persistence;
 using NamViet.ERP.SharedKernel.Common;
 
@@ -29,7 +30,11 @@ public class AdminRequestsController(HrDbContext db) : ControllerBase
             .Include(r => r.Employee)
             .AsQueryable();
 
-        if (!string.IsNullOrWhiteSpace(type)) query = query.Where(r => r.Type == type);
+        if (!string.IsNullOrWhiteSpace(type))
+        {
+            var parsedType = HrEnumMapper.ParseAdminRequestType(type);
+            query = query.Where(r => r.Type == parsedType);
+        }
         if (!string.IsNullOrWhiteSpace(status)) query = query.Where(r => r.Status == status);
         if (employeeId.HasValue) query = query.Where(r => r.EmployeeId == employeeId.Value);
 
@@ -39,7 +44,7 @@ public class AdminRequestsController(HrDbContext db) : ControllerBase
             .Skip((page - 1) * pageSize).Take(pageSize)
             .Select(r => new
             {
-                r.Id, r.Type, r.EmployeeId, EmployeeName = r.Employee.FullName,
+                r.Id, Type = HrEnumMapper.ToDisplayString(r.Type), r.EmployeeId, EmployeeName = r.Employee.FullName,
                 r.Title, r.Content, r.Quantity, r.Status, r.ApproverId, r.CreatedAt
             })
             .ToListAsync(ct);
@@ -56,7 +61,7 @@ public class AdminRequestsController(HrDbContext db) : ControllerBase
         if (r is null) return NotFound();
         return Ok(new
         {
-            r.Id, r.Type, r.EmployeeId, EmployeeName = r.Employee.FullName,
+            r.Id, Type = HrEnumMapper.ToDisplayString(r.Type), r.EmployeeId, EmployeeName = r.Employee.FullName,
             r.Title, r.Content, r.Quantity, r.Status, r.ApproverId, r.CreatedAt
         });
     }
@@ -66,7 +71,7 @@ public class AdminRequestsController(HrDbContext db) : ControllerBase
     {
         var req = new AdminRequest
         {
-            Type = request.Type,
+            Type = HrEnumMapper.ParseAdminRequestType(request.Type),
             EmployeeId = request.EmployeeId,
             Title = request.Title,
             Content = request.Content,

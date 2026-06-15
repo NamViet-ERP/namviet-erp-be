@@ -36,3 +36,10 @@ public enum ApprovalStatus
     Approved,   // Đã duyệt
     Rejected    // Từ chối
 }
+
+public enum WarehouseKeeperApprovalStatus
+{
+    Pending,
+    Approved,
+    Rejected
+}

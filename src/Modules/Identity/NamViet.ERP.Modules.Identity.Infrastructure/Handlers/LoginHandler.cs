@@ -1,6 +1,7 @@
 using MediatR;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using NamViet.ERP.Modules.Hr.Infrastructure.Persistence;
 using NamViet.ERP.Modules.Identity.Application.Commands;
 using NamViet.ERP.Modules.Identity.Application.DTOs;
 using NamViet.ERP.Modules.Identity.Domain.Entities;
@@ -12,12 +13,14 @@ namespace NamViet.ERP.Modules.Identity.Infrastructure.Handlers;
 public class LoginHandler(
     UserManager<ApplicationUser> userManager,
     ITokenService tokenService,
-    IdentityDbContext db)
+    IdentityDbContext db,
+    HrDbContext hrDb)
     : IRequestHandler<LoginCommand, AuthResponse>
 {
     public async Task<AuthResponse> Handle(LoginCommand request, CancellationToken ct)
     {
         var user = await userManager.FindByEmailAsync(request.Email)
+            ?? await userManager.Users.FirstOrDefaultAsync(u => u.UserName == request.Email, ct)
             ?? throw new UnauthorizedAccessException("Email hoặc mật khẩu không đúng.");
 
         if (user.DeletedAt.HasValue)
@@ -31,7 +34,6 @@ public class LoginHandler(
         var accessToken = tokenService.GenerateAccessToken(user, roles);
         var refreshTokenValue = tokenService.GenerateRefreshToken();
 
-        // Revoke old tokens
         var oldTokens = await db.RefreshTokens
             .Where(t => t.UserId == user.Id && t.RevokedAt == null && t.ExpiresAt > DateTime.UtcNow)
             .ToListAsync(ct);
@@ -48,10 +50,15 @@ public class LoginHandler(
         user.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
 
+        var employee = await hrDb.Employees
+            .Include(e => e.Department)
+            .FirstOrDefaultAsync(e => e.UserId == user.Id || e.Code == user.EmployeeCode, ct);
+
         return new AuthResponse(
             accessToken,
             refreshTokenValue,
             DateTime.UtcNow.AddMinutes(60),
-            new UserDto(user.Id, user.EmployeeCode, user.Name, user.Email!, user.Department, user.AvatarUrl, [.. roles]));
+            new UserDto(user.Id, user.EmployeeCode, user.Name, user.Email!,
+                employee?.Department?.Name, user.AvatarUrl, [.. roles]));
     }
 }

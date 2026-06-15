@@ -32,7 +32,7 @@ public record CreateAppointmentRequest(
 [ApiController]
 [Route("api/hr/employees")]
 [Authorize]
-public class EmployeesController(HrDbContext db) : ControllerBase
+public class HrAdminEmployeesController(HrDbContext db) : ControllerBase
 {
     [HttpGet]
     public async Task<IActionResult> GetAll(
