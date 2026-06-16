@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi.Models;
+using NamViet.ERP.Api.Application.Services.Hr;
 using NamViet.ERP.Api.Middleware;
 using NamViet.ERP.Api.Services;
 using NamViet.ERP.Application.Abstractions.Behaviors;
@@ -10,6 +11,7 @@ using NamViet.ERP.Modules.Identity.Infrastructure.Services;
 using NamViet.ERP.Modules.Warehouse.Infrastructure;
 using NamViet.ERP.Modules.Warehouse.Infrastructure.Services;
 using NamViet.ERP.Modules.Hr.Infrastructure;
+using NamViet.ERP.Modules.Hr.Infrastructure.Services;
 using NamViet.ERP.SharedKernel.Interfaces;
 using Serilog;
 
@@ -112,7 +114,12 @@ using (var scope = app.Services.CreateScope())
         var hrDb = services.GetRequiredService<AppHrDbContext>();
         await IdentitySeeder.SeedAsync(roleManager, userManager, app.Configuration, logger);
         await IdentitySeeder.SeedDemoMembersAsync(userManager, hrDb, logger);
+        await IdentitySeeder.SeedHrStaffAsync(userManager, hrDb, logger);
+        await HrSeeder.SeedAsync(hrDb, logger);
         await WmsSeeder.SeedAsync(services.GetRequiredService<AppWarehouseDbContext>(), logger);
+
+        if (app.Environment.IsDevelopment())
+            await CandidateWorkflowRepair.RepairAllAsync(hrDb, logger);
     }
     catch (Exception ex)
     {

@@ -9,18 +9,21 @@ namespace NamViet.ERP.Api.Controllers.Hr;
 
 [ApiController]
 [Route("api/recruitment/positions")]
+[Authorize(Roles = "Admin,HR")]
 public class RecruitmentPositionsController(HrDbContext db) : ControllerBase
 {
     [HttpGet]
     [AllowAnonymous]
     public async Task<ActionResult<List<RecruitmentPositionFeDto>>> List(CancellationToken ct)
     {
-        var items = await db.RecruitmentPositions.Where(p => p.DeletedAt == null).ToListAsync(ct);
+        var items = await db.RecruitmentPositions
+            .Where(p => p.DeletedAt == null)
+            .OrderBy(p => p.Name)
+            .ToListAsync(ct);
         return Ok(items.Select(p => new RecruitmentPositionFeDto(p.Name, p.IsActive)).ToList());
     }
 
     [HttpPost]
-    [Authorize(Roles = "Admin,HR")]
     public async Task<ActionResult<RecruitmentPositionFeDto>> Create([FromBody] RecruitmentPositionFeDto dto, CancellationToken ct)
     {
         db.RecruitmentPositions.Add(new RecruitmentPosition { Name = dto.Name, IsActive = dto.IsActive });
@@ -29,7 +32,6 @@ public class RecruitmentPositionsController(HrDbContext db) : ControllerBase
     }
 
     [HttpPatch("{name}/toggle")]
-    [Authorize(Roles = "Admin,HR")]
     public async Task<IActionResult> Toggle(string name, CancellationToken ct)
     {
         var p = await db.RecruitmentPositions.FirstOrDefaultAsync(x => x.Name == name, ct);
@@ -40,7 +42,6 @@ public class RecruitmentPositionsController(HrDbContext db) : ControllerBase
     }
 
     [HttpDelete("{name}")]
-    [Authorize(Roles = "Admin,HR")]
     public async Task<IActionResult> Delete(string name, CancellationToken ct)
     {
         var p = await db.RecruitmentPositions.FirstOrDefaultAsync(x => x.Name == name, ct);

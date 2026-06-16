@@ -15,6 +15,7 @@ x86/
 artifacts/
 _build_out/
 _build_verify/
+.build-check/
 
 # Rider / VS
 .idea/

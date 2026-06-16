@@ -119,6 +119,20 @@ public record FeCandidateDto(
     string? PreScreenResult, string? ContactResult, string? InterviewDate,
     string? InterviewAttended, string? Evaluator, string? EvaluationResult,
     string? OfferStatus, string? OfferRejectReason, string? StartDate,
-    string? OnboardingAttended, string? OnboardingRejectReason);
+    string? OnboardingAttended, string? OnboardingRejectReason,
+    string? CvFileUrl = null);
+
+public record FeCandidatePagedResult(
+    IReadOnlyList<FeCandidateDto> Items,
+    int TotalCount,
+    int Page,
+    int PageSize,
+    int TotalUnfiltered,
+    int UniquePositionCount)
+{
+    public int TotalPages => PageSize > 0 ? (int)Math.Ceiling((double)TotalCount / PageSize) : 0;
+}
 
 public record RecruitmentPositionFeDto(string Name, bool IsActive);
+
+public record FeHrStaffPublicDto(string Id, string Name);

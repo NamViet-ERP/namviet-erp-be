@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
 using NamViet.ERP.Api.Application.Dtos.Wms;
 using NamViet.ERP.Modules.Hr.Domain.Entities;
@@ -8,8 +9,47 @@ namespace NamViet.ERP.Api.Application.Mappers.Hr;
 public static class HrEmployeeMapper
 {
     public const string PendingCodePrefix = "__PENDING__";
+    public const string EmployeeCodePrefix = "NV-";
+    public const int EmployeeCodeDigits = 4;
 
     public static string NewPendingCode() => $"{PendingCodePrefix}{Guid.NewGuid():N}";
+
+    public static string FormatEmployeeCodeNumber(int num) =>
+        num.ToString().PadLeft(EmployeeCodeDigits, '0');
+
+    public static string FormatEmployeeCode(int num) =>
+        $"{EmployeeCodePrefix}{FormatEmployeeCodeNumber(num)}";
+
+    public static int? ParseEmployeeCodeNumber(string? code)
+    {
+        if (string.IsNullOrWhiteSpace(code) || IsPendingCode(code)) return null;
+        var match = Regex.Match(code.Trim(), @"(\d+)$");
+        if (!match.Success || !int.TryParse(match.Groups[1].Value, out var n)) return null;
+        return n;
+    }
+
+    public static string SuggestNextEmployeeCode(IEnumerable<string?> codes)
+    {
+        var max = 0;
+        foreach (var code in codes)
+        {
+            var n = ParseEmployeeCodeNumber(code);
+            if (n.HasValue && n.Value > max) max = n.Value;
+        }
+        return FormatEmployeeCode(max + 1);
+    }
+
+    public static async Task<string> GetSuggestedCodeAsync(
+        HrDbContext db, int? excludeId, CancellationToken ct)
+    {
+        var codes = await db.Employees
+            .Where(e => e.DeletedAt == null
+                && e.Status == EmployeeStatus.Active
+                && (excludeId == null || e.Id != excludeId))
+            .Select(e => e.Code)
+            .ToListAsync(ct);
+        return SuggestNextEmployeeCode(codes);
+    }
 
     public static bool IsPendingCode(string? code) =>
         !string.IsNullOrEmpty(code) &&
@@ -32,7 +72,7 @@ public static class HrEmployeeMapper
 
     public static string FormatFeDate(DateOnly d) => d.ToString("dd/MM/yyyy");
 
-    public static string FormatFeDate(DateOnly? d) => d?.ToString("dd/MM/yyyy");
+    public static string? FormatFeDate(DateOnly? d) => d?.ToString("dd/MM/yyyy");
 
     public static string ToFeGender(Gender g) => g == Gender.Female ? "Nữ" : "Nam";
 

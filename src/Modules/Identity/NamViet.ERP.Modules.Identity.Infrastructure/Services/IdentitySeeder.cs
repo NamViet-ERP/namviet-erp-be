@@ -122,6 +122,92 @@ public static class IdentitySeeder
         }
     }
 
+    private static readonly (string Code, string Name, string Email, string Phone, string JoinedDate)[] HrStaffMembers =
+    [
+        ("NV-0101", "Thùy Dương", "thuy.duong@namviet.vn", "0901000001", "01/01/2024"),
+        ("NV-0102", "Phương Thảo", "phuong.thao@namviet.vn", "0901000002", "01/02/2024"),
+        ("NV-0103", "Vinh Việt", "vinh.viet@namviet.vn", "0901000003", "01/03/2024"),
+        ("NV-0104", "Thủy Tiên", "thuy.tien@namviet.vn", "0901000004", "01/04/2024"),
+        ("NV-0105", "Kim Ngân", "kim.ngan@namviet.vn", "0901000005", "01/05/2024"),
+        ("NV-0106", "Kim Huệ", "kim.hue@namviet.vn", "0901000006", "01/06/2024"),
+        ("NV-0107", "Son Ny", "son.ny@namviet.vn", "0901000007", "01/07/2024"),
+        ("NV-0108", "Thảo Phát", "thao.phat@namviet.vn", "0901000008", "01/08/2024"),
+    ];
+
+    public static async Task SeedHrStaffAsync(
+        UserManager<ApplicationUser> userManager,
+        HrDbContext hrDb,
+        ILogger logger)
+    {
+        const string password = "Demo@12345";
+        var hrDept = await EnsureHrDepartmentAsync(hrDb);
+        var canonicalEmails = HrStaffMembers
+            .Select(m => m.Email)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var user in await userManager.GetUsersInRoleAsync("HR"))
+        {
+            if (string.IsNullOrWhiteSpace(user.Email)) continue;
+            if (canonicalEmails.Contains(user.Email)) continue;
+            user.IsActive = false;
+            await userManager.UpdateAsync(user);
+            logger.LogInformation("Deactivated legacy HR user: {Email}", user.Email);
+        }
+
+        foreach (var m in HrStaffMembers)
+        {
+            var existing = await userManager.FindByEmailAsync(m.Email);
+            if (existing is not null)
+            {
+                if (!existing.IsActive)
+                {
+                    existing.IsActive = true;
+                    await userManager.UpdateAsync(existing);
+                }
+
+                if (!await userManager.IsInRoleAsync(existing, "HR"))
+                    await userManager.AddToRoleAsync(existing, "HR");
+
+                await UpsertEmployeeAsync(hrDb, existing, m.Phone, m.JoinedDate, hrDept.Id);
+                continue;
+            }
+
+            var user = new ApplicationUser
+            {
+                EmployeeCode = m.Code,
+                Name = m.Name,
+                Email = m.Email,
+                UserName = m.Email,
+                PhoneNumber = m.Phone,
+                EmailConfirmed = true,
+                IsActive = true,
+            };
+            var result = await userManager.CreateAsync(user, password);
+            if (result.Succeeded)
+            {
+                await userManager.AddToRoleAsync(user, "HR");
+                await UpsertEmployeeAsync(hrDb, user, m.Phone, m.JoinedDate, hrDept.Id);
+                logger.LogInformation("Created HR staff: {Name} ({Email})", m.Name, m.Email);
+            }
+            else
+            {
+                logger.LogError("Failed to create HR staff {Email}: {Errors}",
+                    m.Email, string.Join(", ", result.Errors.Select(e => e.Description)));
+            }
+        }
+    }
+
+    public static async Task<Department> EnsureHrDepartmentAsync(HrDbContext hrDb)
+    {
+        var dept = await hrDb.Departments.FirstOrDefaultAsync(d => d.Code == "HR");
+        if (dept is not null) return dept;
+
+        dept = new Department { Code = "HR", Name = "Nhân sự" };
+        hrDb.Departments.Add(dept);
+        await hrDb.SaveChangesAsync();
+        return dept;
+    }
+
     public static async Task<Department> EnsureDefaultDepartmentAsync(HrDbContext hrDb)
     {
         var dept = await hrDb.Departments.FirstOrDefaultAsync(d => d.Code == "DEFAULT");

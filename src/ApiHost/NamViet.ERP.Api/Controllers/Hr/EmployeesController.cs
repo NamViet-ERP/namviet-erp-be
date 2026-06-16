@@ -45,18 +45,25 @@ public class EmployeesController(HrDbContext db) : ControllerBase
         return Ok(new { available = !taken });
     }
 
+    [HttpGet("suggested-code")]
+    public async Task<ActionResult<object>> SuggestedCode(
+        [FromQuery] string? excludeId, CancellationToken ct)
+    {
+        int? exclude = int.TryParse(excludeId, out var eid) ? eid : null;
+        var suggested = await HrEmployeeMapper.GetSuggestedCodeAsync(db, exclude, ct);
+        return Ok(new { suggestedCode = suggested });
+    }
+
     [HttpPost]
     public async Task<ActionResult<FeEmployeeDto>> Create([FromBody] FeEmployeeDto dto, CancellationToken ct)
     {
+        if (string.IsNullOrWhiteSpace(dto.Code))
+            return BadRequest("Vui lòng nhập mã nhân viên.");
+
         if (await HrEmployeeMapper.IsCodeTakenAsync(db, dto.Code, null, ct))
             return BadRequest("Mã nhân viên đã tồn tại.");
 
-        var e = new Employee
-        {
-            Code = string.IsNullOrWhiteSpace(dto.Code)
-                ? $"NV-{DateTime.UtcNow.Ticks % 10000:D4}"
-                : dto.Code.Trim()
-        };
+        var e = new Employee { Code = dto.Code.Trim() };
         await HrEmployeeMapper.ApplyFromDtoAsync(e, dto, db, ct);
         await HrEmployeeMapper.EnsureDefaultDepartmentAsync(e, db, ct);
         db.Employees.Add(e);
