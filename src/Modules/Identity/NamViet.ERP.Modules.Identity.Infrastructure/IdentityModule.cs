@@ -33,6 +33,7 @@ public static class IdentityModule
         .AddDefaultTokenProviders();
 
         services.AddScoped<ITokenService, TokenService>();
+        services.AddScoped<NamViet.ERP.SharedKernel.Interfaces.IAccountStatusProvider, AccountStatusProvider>();
 
         // MediatR assembly được đăng ký tập trung ở Program.cs
         // services.AddMediatR(...) không gọi ở đây

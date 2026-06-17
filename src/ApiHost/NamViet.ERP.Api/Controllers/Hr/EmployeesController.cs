@@ -5,13 +5,14 @@ using NamViet.ERP.Api.Application.Dtos.Hr;
 using NamViet.ERP.Api.Application.Mappers.Hr;
 using NamViet.ERP.Modules.Hr.Domain.Entities;
 using NamViet.ERP.Modules.Hr.Infrastructure.Persistence;
+using NamViet.ERP.SharedKernel.Interfaces;
 
 namespace NamViet.ERP.Api.Controllers.Hr;
 
 [ApiController]
 [Route("api/employees")]
 [Authorize]
-public class EmployeesController(HrDbContext db) : ControllerBase
+public class EmployeesController(HrDbContext db, IAccountStatusProvider accountStatus) : ControllerBase
 {
     [HttpGet]
     public async Task<ActionResult<List<EmployeeDto>>> List(
@@ -25,7 +26,25 @@ public class EmployeesController(HrDbContext db) : ControllerBase
             query = query.Where(e => e.Status == EmployeeStatus.Active || e.Status == EmployeeStatus.OnLeave);
 
         var items = await query.OrderByDescending(e => e.CreatedAt).ToListAsync(ct);
-        return Ok(items.Select(HrEmployeeMapper.ToDto).ToList());
+
+        // Batch-enrich linked account status for employees with UserId
+        var withUserId = items.Where(e => e.UserId.HasValue).ToList();
+        Dictionary<Guid, NamViet.ERP.SharedKernel.Interfaces.AccountLinkStatus> statuses = [];
+        if (withUserId.Count > 0)
+        {
+            statuses = await accountStatus.GetStatusByUserIdsAsync(
+                withUserId.Select(e => e.UserId!.Value), ct);
+        }
+
+        var dtos = items.Select(e =>
+        {
+            var dto = HrEmployeeMapper.ToDto(e);
+            if (e.UserId.HasValue && statuses.TryGetValue(e.UserId.Value, out var s))
+                dto = dto with { LinkedAccountStatus = s.ToString().ToLowerInvariant() };
+            return dto;
+        }).ToList();
+
+        return Ok(dtos);
     }
 
     [HttpGet("{id}")]
@@ -33,7 +52,16 @@ public class EmployeesController(HrDbContext db) : ControllerBase
     {
         var e = await FindAsync(id, ct);
         if (e is null) return NotFound();
-        return Ok(HrEmployeeMapper.ToDto(e));
+        var dto = HrEmployeeMapper.ToDto(e);
+
+        // Enrich with linked account status from Identity module
+        if (e.UserId.HasValue)
+        {
+            var status = await accountStatus.GetStatusByUserIdAsync(e.UserId.Value, ct);
+            dto = dto with { LinkedAccountStatus = status.ToString().ToLowerInvariant() };
+        }
+
+        return Ok(dto);
     }
 
     [HttpGet("check-code")]

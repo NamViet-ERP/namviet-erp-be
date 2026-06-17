@@ -38,7 +38,8 @@ public record EmployeeDto(
     string? PhotoUrl,
     string? CccdFrontUrl,
     string? CccdBackUrl,
-    string? DegreePhotoUrl);
+    string? DegreePhotoUrl,
+    string? LinkedAccountStatus = null);
 
 public record FileUploadResponse(string Url, string FileName, long FileSize);
 
