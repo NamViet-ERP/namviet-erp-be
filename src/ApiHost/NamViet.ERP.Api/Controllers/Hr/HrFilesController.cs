@@ -1,6 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using NamViet.ERP.Api.Application.Dtos.Wms;
+using NamViet.ERP.Api.Application.Dtos.Hr;
 using NamViet.ERP.Api.Services.Storage;
 
 namespace NamViet.ERP.Api.Controllers.Hr;
@@ -25,7 +25,7 @@ public class HrFilesController(IFileStorage storage) : ControllerBase
     [HttpPost("upload")]
     [AllowAnonymous]
     [RequestSizeLimit(MaxBytes + 1024)]
-    public async Task<ActionResult<FeFileUploadResponse>> Upload(
+    public async Task<ActionResult<FileUploadResponse>> Upload(
         IFormFile file,
         [FromForm] string category,
         [FromForm] string? sessionId,
@@ -74,7 +74,7 @@ public class HrFilesController(IFileStorage storage) : ControllerBase
 
         await using var stream = file.OpenReadStream();
         var stored = await storage.SaveAsync(stream, relativePath, contentType, ct);
-        return Ok(new FeFileUploadResponse(stored.Url, stored.FileName, stored.Size));
+        return Ok(new FileUploadResponse(stored.Url, stored.FileName, stored.Size));
     }
 
     private static bool HasCvExtension(string fileName)

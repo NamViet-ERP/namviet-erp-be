@@ -1,6 +1,6 @@
 using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
-using NamViet.ERP.Api.Application.Dtos.Wms;
+using NamViet.ERP.Api.Application.Dtos.Hr;
 using NamViet.ERP.Modules.Hr.Domain.Entities;
 using NamViet.ERP.Modules.Hr.Infrastructure.Persistence;
 
@@ -55,9 +55,9 @@ public static class HrEmployeeMapper
         !string.IsNullOrEmpty(code) &&
         code.StartsWith(PendingCodePrefix, StringComparison.Ordinal);
 
-    public static string? ToFeCode(string? code) => IsPendingCode(code) ? null : code;
+    public static string? FormatEmployeeCode(string? code) => IsPendingCode(code) ? null : code;
 
-    public static DateOnly ParseFeDate(string? value)
+    public static DateOnly ParseDisplayDate(string? value)
     {
         if (string.IsNullOrWhiteSpace(value))
             return DateOnly.FromDateTime(DateTime.UtcNow);
@@ -70,13 +70,13 @@ public static class HrEmployeeMapper
         return DateOnly.FromDateTime(DateTime.UtcNow);
     }
 
-    public static string FormatFeDate(DateOnly d) => d.ToString("dd/MM/yyyy");
+    public static string FormatDisplayDate(DateOnly d) => d.ToString("dd/MM/yyyy");
 
-    public static string? FormatFeDate(DateOnly? d) => d?.ToString("dd/MM/yyyy");
+    public static string? FormatDisplayDate(DateOnly? d) => d?.ToString("dd/MM/yyyy");
 
-    public static string ToFeGender(Gender g) => g == Gender.Female ? "Nữ" : "Nam";
+    public static string ToDisplayGender(Gender g) => g == Gender.Female ? "Nữ" : "Nam";
 
-    public static Gender FromFeGender(string? value) =>
+    public static Gender FromDisplayGender(string? value) =>
         value?.Trim() == "Nữ" ? Gender.Female : Gender.Male;
 
     public static string ToClientStatus(EmployeeStatus s) => s switch
@@ -86,14 +86,14 @@ public static class HrEmployeeMapper
         _ => "Đang làm"
     };
 
-    public static EmployeeStatus FromFeStatus(string? value) => value?.Trim() switch
+    public static EmployeeStatus FromClientStatus(string? value) => value?.Trim() switch
     {
         "Nghỉ việc" => EmployeeStatus.Resigned,
         "Thai sản" => EmployeeStatus.OnLeave,
         _ => EmployeeStatus.Active
     };
 
-    public static string ToFeEducation(Education e) => e switch
+    public static string ToDisplayEducation(Education e) => e switch
     {
         Education.College => "Cao đẳng",
         Education.HighSchool => "THPT",
@@ -101,7 +101,7 @@ public static class HrEmployeeMapper
         _ => "Đại học"
     };
 
-    public static Education FromFeEducation(string? value) => value?.Trim() switch
+    public static Education FromDisplayEducation(string? value) => value?.Trim() switch
     {
         "Cao đẳng" => Education.College,
         "THPT" => Education.HighSchool,
@@ -109,40 +109,40 @@ public static class HrEmployeeMapper
         _ => Education.University
     };
 
-    public static FeEmployeeDto ToDto(Employee e) => new(
-        e.Id.ToString(), ToFeCode(e.Code), e.FullName,
-        ToFeGender(e.Gender),
-        FormatFeDate(e.BirthDate),
-        FormatFeDate(e.JoinDate),
-        FormatFeDate(e.OfficialDate),
+    public static EmployeeDto ToDto(Employee e) => new(
+        e.Id.ToString(), FormatEmployeeCode(e.Code), e.FullName,
+        ToDisplayGender(e.Gender),
+        FormatDisplayDate(e.BirthDate),
+        FormatDisplayDate(e.JoinDate),
+        FormatDisplayDate(e.OfficialDate),
         ToClientStatus(e.Status),
-        FormatFeDate(e.ResignDate),
+        FormatDisplayDate(e.ResignDate),
         e.Segment, e.Branch, e.Department?.Name, e.Position?.Name,
         e.Email, e.Phone, e.AddressPermanent, e.AddressCurrent,
-        ToFeEducation(e.Education), e.School, e.Major,
+        ToDisplayEducation(e.Education), e.School, e.Major,
         e.BankAccountName, e.BankAccount, e.BankName, e.BankBranch,
         e.HadSocialInsurance, e.SiNumber,
-        e.Cccd, FormatFeDate(e.CccdDate), e.CccdPlace,
+        e.Cccd, FormatDisplayDate(e.CccdDate), e.CccdPlace,
         e.CmndNumber, e.CmndIssueDate, e.CmndIssuePlace,
         e.MaritalStatus, e.TaxCode,
         e.PhotoUrl, e.CccdFrontUrl, e.CccdBackUrl, e.DegreePhotoUrl);
 
     public static async Task ApplyFromDtoAsync(
-        Employee e, FeEmployeeDto dto, HrDbContext db, CancellationToken ct = default)
+        Employee e, EmployeeDto dto, HrDbContext db, CancellationToken ct = default)
     {
         if (!string.IsNullOrWhiteSpace(dto.FullName))
             e.FullName = dto.FullName;
-        e.Gender = FromFeGender(dto.Gender);
-        e.BirthDate = ParseFeDate(dto.BirthDate);
-        e.JoinDate = ParseFeDate(dto.JoinDate);
+        e.Gender = FromDisplayGender(dto.Gender);
+        e.BirthDate = ParseDisplayDate(dto.BirthDate);
+        e.JoinDate = ParseDisplayDate(dto.JoinDate);
         if (!string.IsNullOrWhiteSpace(dto.OfficialDate))
-            e.OfficialDate = ParseFeDate(dto.OfficialDate);
-        e.Status = FromFeStatus(dto.Status);
+            e.OfficialDate = ParseDisplayDate(dto.OfficialDate);
+        e.Status = FromClientStatus(dto.Status);
         if (e.Status == EmployeeStatus.Resigned)
         {
             e.ResignDate = string.IsNullOrWhiteSpace(dto.ResignDate)
                 ? DateOnly.FromDateTime(DateTime.UtcNow)
-                : ParseFeDate(dto.ResignDate);
+                : ParseDisplayDate(dto.ResignDate);
         }
         else if (e.Status == EmployeeStatus.Active)
             e.ResignDate = null;
@@ -153,7 +153,7 @@ public static class HrEmployeeMapper
         e.Email = dto.PersonalEmail;
         e.AddressPermanent = dto.PermanentAddress;
         e.AddressCurrent = dto.TemporaryAddress;
-        e.Education = FromFeEducation(dto.Education);
+        e.Education = FromDisplayEducation(dto.Education);
         e.School = dto.School;
         e.Major = dto.Major;
         e.BankAccountName = dto.BankAccountName;
@@ -163,7 +163,7 @@ public static class HrEmployeeMapper
         e.HadSocialInsurance = dto.HadSocialInsurance;
         e.SiNumber = dto.SiNumber;
         e.Cccd = dto.CccdNumber;
-        e.CccdDate = string.IsNullOrWhiteSpace(dto.CccdIssueDate) ? null : ParseFeDate(dto.CccdIssueDate);
+        e.CccdDate = string.IsNullOrWhiteSpace(dto.CccdIssueDate) ? null : ParseDisplayDate(dto.CccdIssueDate);
         e.CccdPlace = dto.CccdIssuePlace;
         e.CmndNumber = dto.CmndNumber;
         e.CmndIssueDate = dto.CmndIssueDate;

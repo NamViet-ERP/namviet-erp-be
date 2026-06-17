@@ -1,7 +1,7 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
-using NamViet.ERP.Api.Application.Dtos.Wms;
+using NamViet.ERP.Api.Application.Dtos.Hr;
 using NamViet.ERP.Modules.Hr.Domain.Entities;
 using NamViet.ERP.Modules.Hr.Infrastructure.Persistence;
 
@@ -44,7 +44,7 @@ public static class CandidateWorkflowRepair
 
         try
         {
-            var dto = JsonSerializer.Deserialize<FeCandidateDto>(c.WorkflowData, WorkflowJson);
+            var dto = JsonSerializer.Deserialize<CandidateDto>(c.WorkflowData, WorkflowJson);
             return dto is null || string.IsNullOrWhiteSpace(dto.AppliedAt);
         }
         catch
@@ -55,12 +55,12 @@ public static class CandidateWorkflowRepair
 
     private static void RepairWorkflowAppliedAt(Candidate c)
     {
-        FeCandidateDto dto;
+        CandidateDto dto;
         if (!string.IsNullOrWhiteSpace(c.WorkflowData))
         {
             try
             {
-                dto = JsonSerializer.Deserialize<FeCandidateDto>(c.WorkflowData, WorkflowJson)
+                dto = JsonSerializer.Deserialize<CandidateDto>(c.WorkflowData, WorkflowJson)
                     ?? BuildFallbackDto(c);
             }
             catch
@@ -76,7 +76,7 @@ public static class CandidateWorkflowRepair
         c.WorkflowData = JsonSerializer.Serialize(LockAppliedAt(dto, c), WorkflowJson);
     }
 
-    private static FeCandidateDto LockAppliedAt(FeCandidateDto dto, Candidate c) =>
+    private static CandidateDto LockAppliedAt(CandidateDto dto, Candidate c) =>
         dto with
         {
             Id = c.Id.ToString(),
@@ -84,7 +84,7 @@ public static class CandidateWorkflowRepair
             CvFileUrl = dto.CvFileUrl ?? c.CvFileUrl,
         };
 
-    private static FeCandidateDto BuildFallbackDto(Candidate c) =>
+    private static CandidateDto BuildFallbackDto(Candidate c) =>
         new(c.Id.ToString(), c.FullName, c.Phone, c.Email,
             c.Gender == Gender.Female ? "Nữ" : "Nam", c.Address ?? "",
             c.BirthDate.ToString("dd/MM/yyyy"), c.Education.ToString(), "", "",

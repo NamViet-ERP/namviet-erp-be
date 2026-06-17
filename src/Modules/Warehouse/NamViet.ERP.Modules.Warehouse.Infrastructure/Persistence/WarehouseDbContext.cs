@@ -79,7 +79,7 @@ public class WarehouseDbContext(DbContextOptions<WarehouseDbContext> options) : 
             e.Property(p => p.Status).HasConversion<string>().HasMaxLength(20).IsRequired();
             e.Property(p => p.MaterialBudget).HasColumnType("numeric(18,2)").HasDefaultValue(0m);
             e.Property(p => p.PmName).HasMaxLength(255);
-            e.Property(p => p.FeId).HasMaxLength(50);
+            e.Property(p => p.ClientProjectId).HasMaxLength(50);
             e.Property(p => p.Stage).HasMaxLength(50);
             e.HasQueryFilter(p => p.DeletedAt == null);
         });

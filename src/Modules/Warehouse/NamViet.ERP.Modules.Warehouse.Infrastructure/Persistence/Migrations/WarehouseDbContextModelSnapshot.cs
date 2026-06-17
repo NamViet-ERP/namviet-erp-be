@@ -478,7 +478,7 @@ namespace NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence.Migrations
                     b.Property<DateOnly?>("EndDate")
                         .HasColumnType("date");
 
-                    b.Property<string>("FeId")
+                    b.Property<string>("ClientProjectId")
                         .HasMaxLength(50)
                         .HasColumnType("character varying(50)");
 

@@ -12,7 +12,8 @@ public interface ITokenService
 {
     string GenerateAccessToken(ApplicationUser user, IList<string> roles);
     string GenerateRefreshToken();
-    DateTime GetRefreshTokenExpiry();
+    DateTime GetAccessTokenExpiry();
+    DateTime GetRefreshTokenExpiry(bool rememberMe = true);
 }
 
 public class TokenService(IConfiguration configuration) : ITokenService
@@ -22,7 +23,8 @@ public class TokenService(IConfiguration configuration) : ITokenService
     private readonly string _issuer = configuration["Jwt:Issuer"] ?? "namviet-erp";
     private readonly string _audience = configuration["Jwt:Audience"] ?? "namviet-erp-client";
     private readonly int _accessMinutes = int.TryParse(configuration["Jwt:AccessTokenMinutes"], out var m) ? m : 60;
-    private readonly int _refreshDays = int.TryParse(configuration["Jwt:RefreshTokenDays"], out var d) ? d : 7;
+    private readonly int _refreshDays = int.TryParse(configuration["Jwt:RefreshTokenDays"], out var d) ? d : 30;
+    private readonly int _sessionRefreshDays = int.TryParse(configuration["Jwt:SessionRefreshTokenDays"], out var s) ? s : 1;
 
     public string GenerateAccessToken(ApplicationUser user, IList<string> roles)
     {
@@ -55,5 +57,9 @@ public class TokenService(IConfiguration configuration) : ITokenService
         return Convert.ToBase64String(bytes);
     }
 
-    public DateTime GetRefreshTokenExpiry() => DateTime.UtcNow.AddDays(_refreshDays);
+    public DateTime GetAccessTokenExpiry() =>
+        DateTime.UtcNow.AddMinutes(_accessMinutes);
+
+    public DateTime GetRefreshTokenExpiry(bool rememberMe = true) =>
+        DateTime.UtcNow.AddDays(rememberMe ? _refreshDays : _sessionRefreshDays);
 }

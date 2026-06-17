@@ -13,23 +13,23 @@ namespace NamViet.ERP.Api.Controllers.Wms;
 [ApiController]
 [Route("api/projects")]
 [Authorize]
-public class ProjectsFeController(WarehouseDbContext db) : ControllerBase
+public class ProjectsController(WarehouseDbContext db) : ControllerBase
 {
     [HttpGet]
-    public async Task<ActionResult<List<ProjectFeDto>>> List(CancellationToken ct)
+    public async Task<ActionResult<List<ProjectDto>>> List(CancellationToken ct)
     {
         var items = await db.Projects.Where(p => p.DeletedAt == null).ToListAsync(ct);
         return Ok(items.Select(WmsMapper.ToProject).ToList());
     }
 
     [HttpPost]
-    public async Task<ActionResult<ProjectFeDto>> Create([FromBody] ProjectFeDto dto, CancellationToken ct)
+    public async Task<ActionResult<ProjectDto>> Create([FromBody] ProjectDto dto, CancellationToken ct)
     {
         var code = dto.Id.StartsWith("proj-") ? $"DA-{dto.Id[5..].ToUpper()}" : dto.Id;
         var p = new Project
         {
             ProjectCode = code,
-            FeId = dto.Id,
+            ClientProjectId = dto.Id,
             ProjectName = dto.Name,
             Stage = dto.Stage,
             PmName = dto.Pm,
@@ -41,7 +41,7 @@ public class ProjectsFeController(WarehouseDbContext db) : ControllerBase
     }
 
     [HttpPut("{id}")]
-    public async Task<ActionResult<ProjectFeDto>> Update(string id, [FromBody] ProjectFeDto dto, CancellationToken ct)
+    public async Task<ActionResult<ProjectDto>> Update(string id, [FromBody] ProjectDto dto, CancellationToken ct)
     {
         var p = await FindProjectAsync(id, ct);
         if (p is null) return NotFound();
@@ -72,7 +72,7 @@ public class ProjectsFeController(WarehouseDbContext db) : ControllerBase
             result.Add(new ProjectStockCellDto(
                 m.MaterialCode, "general", generalQty, 0, 0, generalQty));
             result.Add(new ProjectStockCellDto(
-                m.MaterialCode, p.FeId ?? p.ProjectCode,
+                m.MaterialCode, p.ClientProjectId ?? p.ProjectCode,
                 pi?.ActualImportQty - pi?.ActualExportQty ?? 0,
                 pi?.ActualImportQty ?? 0, pi?.ActualExportQty ?? 0,
                 (pi?.ActualImportQty ?? 0) - (pi?.ActualExportQty ?? 0)));
@@ -87,7 +87,7 @@ public class ProjectsFeController(WarehouseDbContext db) : ControllerBase
         if (p is null) return NotFound();
         var quotas = await db.ConsumableQuotas.Where(q => q.ProjectCode == p.ProjectCode).ToListAsync(ct);
         return Ok(quotas.Select(q => new ConsumableQuotaDto(
-            p.FeId ?? p.ProjectCode, q.MaterialCode, q.QuotaQty, q.IssuedQty)).ToList());
+            p.ClientProjectId ?? p.ProjectCode, q.MaterialCode, q.QuotaQty, q.IssuedQty)).ToList());
     }
 
     [HttpPost("{id}/consumable-quotas")]
@@ -104,7 +104,7 @@ public class ProjectsFeController(WarehouseDbContext db) : ControllerBase
         }
         else q.QuotaQty = dto.QuotaQty;
         await db.SaveChangesAsync(ct);
-        return Ok(new ConsumableQuotaDto(p.FeId ?? p.ProjectCode, q.MaterialCode, q.QuotaQty, q.IssuedQty));
+        return Ok(new ConsumableQuotaDto(p.ClientProjectId ?? p.ProjectCode, q.MaterialCode, q.QuotaQty, q.IssuedQty));
     }
 
     [HttpPost("{id}/consumable-issue")]
@@ -117,7 +117,7 @@ public class ProjectsFeController(WarehouseDbContext db) : ControllerBase
         if (q is null) return NotFound("Quota not found");
         q.IssuedQty += dto.IssuedQty;
         await db.SaveChangesAsync(ct);
-        return Ok(new ConsumableQuotaDto(p.FeId ?? p.ProjectCode, q.MaterialCode, q.QuotaQty, q.IssuedQty));
+        return Ok(new ConsumableQuotaDto(p.ClientProjectId ?? p.ProjectCode, q.MaterialCode, q.QuotaQty, q.IssuedQty));
     }
 
     [HttpGet("{id}/bom")]
@@ -143,7 +143,7 @@ public class ProjectsFeController(WarehouseDbContext db) : ControllerBase
 
     private async Task<Project?> FindProjectAsync(string id, CancellationToken ct) =>
         await db.Projects.FirstOrDefaultAsync(p =>
-            (p.FeId == id || p.ProjectCode == id) && p.DeletedAt == null, ct);
+            (p.ClientProjectId == id || p.ProjectCode == id) && p.DeletedAt == null, ct);
 }
 
 [ApiController]

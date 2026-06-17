@@ -56,6 +56,17 @@ public static class WmsMapper
         _ => role
     };
 
+    public static string ToIdentityRole(string feRole) => feRole.ToLowerInvariant() switch
+    {
+        "admin" => "Admin",
+        "storekeeper" => "Warehouse_Keeper",
+        "accountant" => "Accountant",
+        "procurement" => "Procurement",
+        "pm" => "PM",
+        "hr" => "HR",
+        _ => feRole
+    };
+
     public static string FormatDate(DateTime dt) => dt.ToString("dd/MM/yyyy");
 
     public static string FormatDate(DateOnly d) => d.ToString("dd/MM/yyyy");
@@ -132,8 +143,8 @@ public static class WmsMapper
                 i.MaterialCode, i.Sku, i.Name, i.Qty, i.Unit, i.Reason)).ToList(),
             c.Status, c.CreatedByName, c.ApprovedByName, c.Note);
 
-    public static ProjectFeDto ToProject(Project p) =>
-        new(p.FeId ?? p.ProjectCode, p.ProjectName, p.Stage ?? "Chế tạo", p.PmName);
+    public static ProjectDto ToProject(Project p) =>
+        new(p.ClientProjectId ?? p.ProjectCode, p.ProjectName, p.Stage ?? "Chế tạo", p.PmName);
 
     public static LendingLogDto ToLendingLog(ProjectMaterialLoan l) =>
         new(l.LoanCode, l.LoanCode, FormatDate(l.LoanDate),

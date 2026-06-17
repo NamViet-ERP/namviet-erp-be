@@ -140,6 +140,9 @@ namespace NamViet.ERP.Modules.Identity.Infrastructure.Persistence.Migrations
                         .HasMaxLength(255)
                         .HasColumnType("character varying(255)");
 
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
                     b.Property<string>("Module")
                         .IsRequired()
                         .ValueGeneratedOnAdd()

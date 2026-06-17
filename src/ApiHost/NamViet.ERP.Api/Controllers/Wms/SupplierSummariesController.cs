@@ -9,10 +9,10 @@ namespace NamViet.ERP.Api.Controllers.Wms;
 [ApiController]
 [Route("api/suppliers")]
 [Authorize]
-public class SuppliersFeController(WarehouseDbContext db) : ControllerBase
+public class SupplierSummariesController(WarehouseDbContext db) : ControllerBase
 {
     [HttpGet]
-    public async Task<ActionResult<List<SupplierFeDto>>> List([FromQuery] string? category, CancellationToken ct)
+    public async Task<ActionResult<List<SupplierSummaryDto>>> List([FromQuery] string? category, CancellationToken ct)
     {
         var suppliers = await db.Suppliers.Where(s => s.DeletedAt == null).ToListAsync(ct);
         var supplierIds = suppliers.Select(s => s.Id).ToList();
@@ -25,7 +25,7 @@ public class SuppliersFeController(WarehouseDbContext db) : ControllerBase
         var result = suppliers.Select(s =>
         {
             var avgPrice = avgPrices.GetValueOrDefault(s.Id);
-            return new SupplierFeDto(s.SupplierName, avgPrice, s.MaxDebtDays, 7,
+            return new SupplierSummaryDto(s.SupplierName, avgPrice, s.MaxDebtDays, 7,
                 s.Rating, s.Rating == "A" ? "Tốt nhất" : "Khuyến nghị");
         }).ToList();
         return Ok(result);
@@ -47,5 +47,5 @@ public class SuppliersFeController(WarehouseDbContext db) : ControllerBase
     }
 
     [HttpGet("ranked")]
-    public Task<ActionResult<List<SupplierFeDto>>> Ranked(CancellationToken ct) => List(null, ct);
+    public Task<ActionResult<List<SupplierSummaryDto>>> Ranked(CancellationToken ct) => List(null, ct);
 }

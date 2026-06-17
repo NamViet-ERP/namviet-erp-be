@@ -6,7 +6,7 @@ using Microsoft.AspNetCore.Mvc;
 
 using Microsoft.EntityFrameworkCore;
 
-using NamViet.ERP.Api.Application.Dtos.Wms;
+using NamViet.ERP.Api.Application.Dtos.Hr;
 using NamViet.ERP.Api.Application.Services.Hr;
 using NamViet.ERP.Modules.Hr.Domain.Entities;
 
@@ -42,7 +42,7 @@ public class CandidatesController(HrDbContext db, IWebHostEnvironment env, ILogg
 
     [HttpGet]
 
-    public async Task<ActionResult<FeCandidatePagedResult>> List(
+    public async Task<ActionResult<CandidatePagedResponse>> List(
 
         [FromQuery] int page = 1,
 
@@ -178,7 +178,7 @@ public class CandidatesController(HrDbContext db, IWebHostEnvironment env, ILogg
 
 
 
-        return Ok(new FeCandidatePagedResult(
+        return Ok(new CandidatePagedResponse(
 
             items.Select(ToDto).ToList(),
 
@@ -210,7 +210,7 @@ public class CandidatesController(HrDbContext db, IWebHostEnvironment env, ILogg
 
     [HttpGet("{id}")]
 
-    public async Task<ActionResult<FeCandidateDto>> GetById(string id, CancellationToken ct)
+    public async Task<ActionResult<CandidateDto>> GetById(string id, CancellationToken ct)
 
     {
 
@@ -286,7 +286,7 @@ public class CandidatesController(HrDbContext db, IWebHostEnvironment env, ILogg
 
     [AllowAnonymous]
 
-    public async Task<ActionResult<FeCandidateDto>> Create([FromBody] FeCandidateDto dto, CancellationToken ct)
+    public async Task<ActionResult<CandidateDto>> Create([FromBody] CandidateDto dto, CancellationToken ct)
 
     {
 
@@ -310,7 +310,7 @@ public class CandidatesController(HrDbContext db, IWebHostEnvironment env, ILogg
 
     [HttpPut("{id}")]
 
-    public async Task<ActionResult<FeCandidateDto>> Update(string id, [FromBody] FeCandidateDto dto, CancellationToken ct)
+    public async Task<ActionResult<CandidateDto>> Update(string id, [FromBody] CandidateDto dto, CancellationToken ct)
 
     {
 
@@ -358,7 +358,7 @@ public class CandidatesController(HrDbContext db, IWebHostEnvironment env, ILogg
 
     private static async Task ApplyCandidateFromDto(
 
-        Candidate c, FeCandidateDto dto, HrDbContext db, CancellationToken ct)
+        Candidate c, CandidateDto dto, HrDbContext db, CancellationToken ct)
 
     {
 
@@ -550,7 +550,7 @@ public class CandidatesController(HrDbContext db, IWebHostEnvironment env, ILogg
 
 
 
-    private static FeCandidateDto LockAppliedAt(FeCandidateDto dto, Candidate c) =>
+    private static CandidateDto LockAppliedAt(CandidateDto dto, Candidate c) =>
 
         dto with
 
@@ -565,7 +565,7 @@ public class CandidatesController(HrDbContext db, IWebHostEnvironment env, ILogg
         };
 
 
-    private static FeCandidateDto BuildFallbackDto(Candidate c) =>
+    private static CandidateDto BuildFallbackDto(Candidate c) =>
         new(c.Id.ToString(), c.FullName, c.Phone, c.Email,
             c.Gender == Gender.Female ? "Nữ" : "Nam", c.Address ?? "",
             c.BirthDate.ToString("dd/MM/yyyy"), c.Education.ToString(), "", "",
@@ -574,7 +574,7 @@ public class CandidatesController(HrDbContext db, IWebHostEnvironment env, ILogg
             null, null, null, null, null, null, null, null, null, null, null, null, null, null,
             c.CvFileUrl);
 
-    private static FeCandidateDto ToDto(Candidate c)
+    private static CandidateDto ToDto(Candidate c)
 
     {
 
@@ -588,7 +588,7 @@ public class CandidatesController(HrDbContext db, IWebHostEnvironment env, ILogg
 
             {
 
-                var dto = JsonSerializer.Deserialize<FeCandidateDto>(c.WorkflowData, WorkflowJson)!;
+                var dto = JsonSerializer.Deserialize<CandidateDto>(c.WorkflowData, WorkflowJson)!;
 
                 return dto with
 

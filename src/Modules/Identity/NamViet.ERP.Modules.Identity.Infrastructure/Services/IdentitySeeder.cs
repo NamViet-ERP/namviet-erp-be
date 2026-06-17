@@ -40,7 +40,8 @@ public static class IdentitySeeder
                 {
                     Name = name,
                     Module = module,
-                    Description = description
+                    Description = description,
+                    IsActive = true
                 });
                 logger.LogInformation("Created role: {Role}", name);
             }

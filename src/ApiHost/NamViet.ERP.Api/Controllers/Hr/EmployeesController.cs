@@ -1,7 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using NamViet.ERP.Api.Application.Dtos.Wms;
+using NamViet.ERP.Api.Application.Dtos.Hr;
 using NamViet.ERP.Api.Application.Mappers.Hr;
 using NamViet.ERP.Modules.Hr.Domain.Entities;
 using NamViet.ERP.Modules.Hr.Infrastructure.Persistence;
@@ -14,7 +14,7 @@ namespace NamViet.ERP.Api.Controllers.Hr;
 public class EmployeesController(HrDbContext db) : ControllerBase
 {
     [HttpGet]
-    public async Task<ActionResult<List<FeEmployeeDto>>> List(
+    public async Task<ActionResult<List<EmployeeDto>>> List(
         [FromQuery] bool activeOnly = false, CancellationToken ct = default)
     {
         var query = db.Employees
@@ -29,7 +29,7 @@ public class EmployeesController(HrDbContext db) : ControllerBase
     }
 
     [HttpGet("{id}")]
-    public async Task<ActionResult<FeEmployeeDto>> GetById(string id, CancellationToken ct)
+    public async Task<ActionResult<EmployeeDto>> GetById(string id, CancellationToken ct)
     {
         var e = await FindAsync(id, ct);
         if (e is null) return NotFound();
@@ -55,7 +55,7 @@ public class EmployeesController(HrDbContext db) : ControllerBase
     }
 
     [HttpPost]
-    public async Task<ActionResult<FeEmployeeDto>> Create([FromBody] FeEmployeeDto dto, CancellationToken ct)
+    public async Task<ActionResult<EmployeeDto>> Create([FromBody] EmployeeDto dto, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(dto.Code))
             return BadRequest("Vui lòng nhập mã nhân viên.");
@@ -75,7 +75,7 @@ public class EmployeesController(HrDbContext db) : ControllerBase
 
     [HttpPost("onboard")]
     [AllowAnonymous]
-    public async Task<ActionResult<FeEmployeeDto>> Onboard([FromBody] FeEmployeeDto dto, CancellationToken ct)
+    public async Task<ActionResult<EmployeeDto>> Onboard([FromBody] EmployeeDto dto, CancellationToken ct)
     {
         var onboardDto = dto with
         {
@@ -94,7 +94,7 @@ public class EmployeesController(HrDbContext db) : ControllerBase
     }
 
     [HttpPut("{id}")]
-    public async Task<ActionResult<FeEmployeeDto>> Update(string id, [FromBody] FeEmployeeDto dto, CancellationToken ct)
+    public async Task<ActionResult<EmployeeDto>> Update(string id, [FromBody] EmployeeDto dto, CancellationToken ct)
     {
         if (!int.TryParse(id, out var eid)) return NotFound();
         var e = await db.Employees

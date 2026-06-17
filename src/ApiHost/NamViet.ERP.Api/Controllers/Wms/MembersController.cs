@@ -20,7 +20,7 @@ public class MembersController(
     IdentityDbContext identityDb,
     HrDbContext hrDb) : ControllerBase
 {
-    private static readonly Dictionary<string, string> FeRoleToIdentity = new(StringComparer.OrdinalIgnoreCase)
+    private static readonly Dictionary<string, string> ClientRoleToIdentity = new(StringComparer.OrdinalIgnoreCase)
     {
         ["admin"] = "Admin",
         ["storekeeper"] = "Warehouse_Keeper",
@@ -68,7 +68,7 @@ public class MembersController(
         if (!result.Succeeded)
             return BadRequest(new { errors = result.Errors.Select(e => e.Description) });
 
-        var identityRole = FeRoleToIdentity.GetValueOrDefault(dto.Role, "Employee");
+        var identityRole = ClientRoleToIdentity.GetValueOrDefault(dto.Role, "Employee");
         await userManager.AddToRoleAsync(user, identityRole);
 
         var dept = await IdentitySeeder.EnsureDefaultDepartmentAsync(hrDb);
@@ -107,7 +107,7 @@ public class MembersController(
         {
             var currentRoles = await userManager.GetRolesAsync(user);
             await userManager.RemoveFromRolesAsync(user, currentRoles);
-            var identityRole = FeRoleToIdentity.GetValueOrDefault(dto.Role, "Employee");
+            var identityRole = ClientRoleToIdentity.GetValueOrDefault(dto.Role, "Employee");
             await userManager.AddToRoleAsync(user, identityRole);
         }
 
@@ -180,7 +180,7 @@ public class MembersController(
         string? roleLabelOverride)
     {
         var roles = lookups.RolesByUserId.GetValueOrDefault(user.Id) ?? [];
-        var identityRole = roles.FirstOrDefault(r => FeRoleToIdentity.ContainsValue(r)) ?? roles.FirstOrDefault() ?? "Employee";
+        var identityRole = roles.FirstOrDefault(r => ClientRoleToIdentity.ContainsValue(r)) ?? roles.FirstOrDefault() ?? "Employee";
         var feRole = feRoleOverride ?? WmsMapper.ToClientRole(identityRole);
         var roleLabel = roleLabelOverride ?? WmsMapper.ToClientRoleLabel(identityRole);
 

@@ -26,6 +26,9 @@ public class LoginHandler(
         if (user.DeletedAt.HasValue)
             throw new UnauthorizedAccessException("Tài khoản đã bị vô hiệu hóa.");
 
+        if (!user.IsActive)
+            throw new UnauthorizedAccessException("Tài khoản của bạn đã bị khóa hoặc chưa được kích hoạt.");
+
         var validPassword = await userManager.CheckPasswordAsync(user, request.Password);
         if (!validPassword)
             throw new UnauthorizedAccessException("Email hoặc mật khẩu không đúng.");
@@ -43,7 +46,7 @@ public class LoginHandler(
         {
             UserId = user.Id,
             Token = refreshTokenValue,
-            ExpiresAt = tokenService.GetRefreshTokenExpiry()
+            ExpiresAt = tokenService.GetRefreshTokenExpiry(request.RememberMe)
         };
         db.RefreshTokens.Add(refreshToken);
 
@@ -57,7 +60,7 @@ public class LoginHandler(
         return new AuthResponse(
             accessToken,
             refreshTokenValue,
-            DateTime.UtcNow.AddMinutes(60),
+            tokenService.GetAccessTokenExpiry(),
             new UserDto(user.Id, user.EmployeeCode, user.Name, user.Email!,
                 employee?.Department?.Name, user.AvatarUrl, [.. roles]));
     }

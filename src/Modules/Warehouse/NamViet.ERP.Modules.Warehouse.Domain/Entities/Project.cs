@@ -15,7 +15,8 @@ public class Project : BaseEntity
     public DateOnly? EndDate { get; set; }
     public decimal MaterialBudget { get; set; } = 0m;
     public ProjectStatus Status { get; set; } = ProjectStatus.Active;
-    public string? FeId { get; set; }
+    /// <summary>Client-facing project identifier (e.g. proj-xxx from UI). Falls back to <see cref="ProjectCode"/> when null.</summary>
+    public string? ClientProjectId { get; set; }
     public string? Stage { get; set; }
 
     public ICollection<ProjectInventory> Inventories { get; set; } = [];

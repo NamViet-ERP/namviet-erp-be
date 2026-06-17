@@ -1,7 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using NamViet.ERP.Api.Application.Dtos.Wms;
+using NamViet.ERP.Api.Application.Dtos.Hr;
 using NamViet.ERP.Modules.Hr.Domain.Entities;
 using NamViet.ERP.Modules.Hr.Infrastructure.Persistence;
 
@@ -14,17 +14,17 @@ public class RecruitmentPositionsController(HrDbContext db) : ControllerBase
 {
     [HttpGet]
     [AllowAnonymous]
-    public async Task<ActionResult<List<RecruitmentPositionFeDto>>> List(CancellationToken ct)
+    public async Task<ActionResult<List<RecruitmentPositionDto>>> List(CancellationToken ct)
     {
         var items = await db.RecruitmentPositions
             .Where(p => p.DeletedAt == null)
             .OrderBy(p => p.Name)
             .ToListAsync(ct);
-        return Ok(items.Select(p => new RecruitmentPositionFeDto(p.Name, p.IsActive)).ToList());
+        return Ok(items.Select(p => new RecruitmentPositionDto(p.Name, p.IsActive)).ToList());
     }
 
     [HttpPost]
-    public async Task<ActionResult<RecruitmentPositionFeDto>> Create([FromBody] RecruitmentPositionFeDto dto, CancellationToken ct)
+    public async Task<ActionResult<RecruitmentPositionDto>> Create([FromBody] RecruitmentPositionDto dto, CancellationToken ct)
     {
         db.RecruitmentPositions.Add(new RecruitmentPosition { Name = dto.Name, IsActive = dto.IsActive });
         await db.SaveChangesAsync(ct);
