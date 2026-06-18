@@ -1,22 +1,35 @@
+using FluentValidation;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using NamViet.ERP.Api.Application.Dtos.Hr;
 using NamViet.ERP.Api.Application.Mappers.Hr;
+using NamViet.ERP.Api.Infrastructure.RateLimiting;
 using NamViet.ERP.Modules.Hr.Domain.Entities;
 using NamViet.ERP.Modules.Hr.Infrastructure.Persistence;
+using NamViet.ERP.SharedKernel.Common;
 using NamViet.ERP.SharedKernel.Interfaces;
 
 namespace NamViet.ERP.Api.Controllers.Hr;
 
+/// <summary>
+/// FE-facing employee API (<c>/api/employees</c>) using <see cref="EmployeeDto"/> contract for the Members module.
+/// </summary>
 [ApiController]
 [Route("api/employees")]
 [Authorize]
-public class EmployeesController(HrDbContext db, IAccountStatusProvider accountStatus) : ControllerBase
+public class EmployeesController(
+    HrDbContext db,
+    IAccountStatusProvider accountStatus,
+    IValidator<EmployeeDto> onboardValidator) : ControllerBase
 {
     [HttpGet]
-    public async Task<ActionResult<List<EmployeeDto>>> List(
-        [FromQuery] bool activeOnly = false, CancellationToken ct = default)
+    public async Task<IActionResult> List(
+        [FromQuery] bool activeOnly = false,
+        [FromQuery] int? page = null,
+        [FromQuery] int? pageSize = null,
+        CancellationToken ct = default)
     {
         var query = db.Employees
             .Include(e => e.Department).Include(e => e.Position)
@@ -25,26 +38,39 @@ public class EmployeesController(HrDbContext db, IAccountStatusProvider accountS
         if (activeOnly)
             query = query.Where(e => e.Status == EmployeeStatus.Active || e.Status == EmployeeStatus.OnLeave);
 
-        var items = await query.OrderByDescending(e => e.CreatedAt).ToListAsync(ct);
+        query = query.OrderByDescending(e => e.CreatedAt);
 
-        // Batch-enrich linked account status for employees with UserId
+        if (page.HasValue || pageSize.HasValue)
+        {
+            var p = Math.Max(1, page ?? 1);
+            var ps = Math.Clamp(pageSize ?? 20, 1, 200);
+            var total = await query.CountAsync(ct);
+            var pageItems = await query.Skip((p - 1) * ps).Take(ps).ToListAsync(ct);
+            var pageDtos = await EnrichDtosAsync(pageItems, ct);
+            return Ok(PagedResult<EmployeeDto>.Create(pageDtos, total, p, ps));
+        }
+
+        var items = await query.ToListAsync(ct);
+        return Ok(await EnrichDtosAsync(items, ct));
+    }
+
+    private async Task<List<EmployeeDto>> EnrichDtosAsync(List<Employee> items, CancellationToken ct)
+    {
         var withUserId = items.Where(e => e.UserId.HasValue).ToList();
-        Dictionary<Guid, NamViet.ERP.SharedKernel.Interfaces.AccountLinkStatus> statuses = [];
+        Dictionary<Guid, AccountLinkStatus> statuses = [];
         if (withUserId.Count > 0)
         {
             statuses = await accountStatus.GetStatusByUserIdsAsync(
                 withUserId.Select(e => e.UserId!.Value), ct);
         }
 
-        var dtos = items.Select(e =>
+        return items.Select(e =>
         {
             var dto = HrEmployeeMapper.ToDto(e);
             if (e.UserId.HasValue && statuses.TryGetValue(e.UserId.Value, out var s))
                 dto = dto with { LinkedAccountStatus = s.ToString().ToLowerInvariant() };
             return dto;
         }).ToList();
-
-        return Ok(dtos);
     }
 
     [HttpGet("{id}")]
@@ -103,8 +129,11 @@ public class EmployeesController(HrDbContext db, IAccountStatusProvider accountS
 
     [HttpPost("onboard")]
     [AllowAnonymous]
+    [EnableRateLimiting(RateLimitPolicies.PublicWrite)]
     public async Task<ActionResult<EmployeeDto>> Onboard([FromBody] EmployeeDto dto, CancellationToken ct)
     {
+        await onboardValidator.ValidateAndThrowAsync(dto, ct);
+
         var onboardDto = dto with
         {
             Status = string.IsNullOrWhiteSpace(dto.Status) ? "Đang làm" : dto.Status,

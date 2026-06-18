@@ -2,9 +2,8 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
-using NamViet.ERP.Modules.Hr.Domain.Entities;
-using NamViet.ERP.Modules.Hr.Infrastructure.Persistence;
 using NamViet.ERP.Modules.Identity.Domain.Entities;
+using NamViet.ERP.SharedKernel.Interfaces;
 
 namespace NamViet.ERP.Modules.Identity.Infrastructure.Services;
 
@@ -84,11 +83,9 @@ public static class IdentitySeeder
 
     public static async Task SeedDemoMembersAsync(
         UserManager<ApplicationUser> userManager,
-        HrDbContext hrDb,
+        IEmployeeUserLinkService employeeLinks,
         ILogger logger)
     {
-        var defaultDept = await EnsureDefaultDepartmentAsync(hrDb);
-
         var members = new (string Code, string Name, string Role, string Email, string Phone, string JoinedDate, string Password)[]
         {
             ("NV-0021", "Phan Văn Vỹ", "Warehouse_Keeper", "vy.phan@namviet.vn", "0901.234.567", "12/03/2022", "Demo@12345"),
@@ -117,7 +114,9 @@ public static class IdentitySeeder
             if (result.Succeeded)
             {
                 await userManager.AddToRoleAsync(user, m.Role);
-                await UpsertEmployeeAsync(hrDb, user, m.Phone, m.JoinedDate, defaultDept.Id);
+                await employeeLinks.UpsertFromUserAsync(new EmployeeUserLinkRequest(
+                    user.Id, user.EmployeeCode, user.Name, user.Email, m.Phone, m.JoinedDate,
+                    "DEFAULT", "Mặc định"));
                 logger.LogInformation("Created demo member: {Email}", m.Email);
             }
         }
@@ -137,11 +136,10 @@ public static class IdentitySeeder
 
     public static async Task SeedHrStaffAsync(
         UserManager<ApplicationUser> userManager,
-        HrDbContext hrDb,
+        IEmployeeUserLinkService employeeLinks,
         ILogger logger)
     {
         const string password = "Demo@12345";
-        var hrDept = await EnsureHrDepartmentAsync(hrDb);
         var canonicalEmails = HrStaffMembers
             .Select(m => m.Email)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -169,7 +167,9 @@ public static class IdentitySeeder
                 if (!await userManager.IsInRoleAsync(existing, "HR"))
                     await userManager.AddToRoleAsync(existing, "HR");
 
-                await UpsertEmployeeAsync(hrDb, existing, m.Phone, m.JoinedDate, hrDept.Id);
+                await employeeLinks.UpsertFromUserAsync(new EmployeeUserLinkRequest(
+                    existing.Id, existing.EmployeeCode, existing.Name, existing.Email, m.Phone, m.JoinedDate,
+                    "HR", "Nhân sự"));
                 continue;
             }
 
@@ -181,14 +181,16 @@ public static class IdentitySeeder
                 UserName = m.Email,
                 PhoneNumber = m.Phone,
                 EmailConfirmed = true,
-                IsActive = true,
+                IsActive = true
             };
             var result = await userManager.CreateAsync(user, password);
             if (result.Succeeded)
             {
                 await userManager.AddToRoleAsync(user, "HR");
-                await UpsertEmployeeAsync(hrDb, user, m.Phone, m.JoinedDate, hrDept.Id);
-                logger.LogInformation("Created HR staff: {Name} ({Email})", m.Name, m.Email);
+                await employeeLinks.UpsertFromUserAsync(new EmployeeUserLinkRequest(
+                    user.Id, user.EmployeeCode, user.Name, user.Email, m.Phone, m.JoinedDate,
+                    "HR", "Nhân sự"));
+                logger.LogInformation("Created HR staff: {Email}", m.Email);
             }
             else
             {
@@ -196,67 +198,5 @@ public static class IdentitySeeder
                     m.Email, string.Join(", ", result.Errors.Select(e => e.Description)));
             }
         }
-    }
-
-    public static async Task<Department> EnsureHrDepartmentAsync(HrDbContext hrDb)
-    {
-        var dept = await hrDb.Departments.FirstOrDefaultAsync(d => d.Code == "HR");
-        if (dept is not null) return dept;
-
-        dept = new Department { Code = "HR", Name = "Nhân sự" };
-        hrDb.Departments.Add(dept);
-        await hrDb.SaveChangesAsync();
-        return dept;
-    }
-
-    public static async Task<Department> EnsureDefaultDepartmentAsync(HrDbContext hrDb)
-    {
-        var dept = await hrDb.Departments.FirstOrDefaultAsync(d => d.Code == "DEFAULT");
-        if (dept is not null) return dept;
-
-        dept = new Department { Code = "DEFAULT", Name = "Mặc định" };
-        hrDb.Departments.Add(dept);
-        await hrDb.SaveChangesAsync();
-        return dept;
-    }
-
-    public static async Task UpsertEmployeeAsync(
-        HrDbContext hrDb, ApplicationUser user, string? phone, string? joinedDate, int departmentId)
-    {
-        var employee = await hrDb.Employees
-            .FirstOrDefaultAsync(e => e.UserId == user.Id || e.Code == user.EmployeeCode);
-
-        var joinDate = DateOnly.TryParseExact(joinedDate, "dd/MM/yyyy", out var parsedJoin)
-            ? parsedJoin
-            : DateOnly.FromDateTime(DateTime.UtcNow);
-
-        if (employee is null)
-        {
-            hrDb.Employees.Add(new Employee
-            {
-                Code = user.EmployeeCode,
-                UserId = user.Id,
-                FullName = user.Name,
-                Email = user.Email,
-                Phone = phone ?? user.PhoneNumber,
-                DepartmentId = departmentId,
-                JoinDate = joinDate,
-                BirthDate = new DateOnly(1990, 1, 1),
-                Gender = Gender.Other,
-                Education = Education.Other,
-                Status = EmployeeStatus.Active
-            });
-        }
-        else
-        {
-            employee.UserId = user.Id;
-            employee.FullName = user.Name;
-            employee.Email = user.Email;
-            employee.Phone = phone ?? user.PhoneNumber;
-            employee.JoinDate = joinDate;
-            employee.UpdatedAt = DateTime.UtcNow;
-        }
-
-        await hrDb.SaveChangesAsync();
     }
 }

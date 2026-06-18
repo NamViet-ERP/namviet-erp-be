@@ -1,6 +1,8 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using NamViet.ERP.Api.Application.Dtos.Hr;
+using NamViet.ERP.Api.Infrastructure.RateLimiting;
 using NamViet.ERP.Api.Services.Storage;
 
 namespace NamViet.ERP.Api.Controllers.Hr;
@@ -24,6 +26,7 @@ public class HrFilesController(IFileStorage storage) : ControllerBase
 
     [HttpPost("upload")]
     [AllowAnonymous]
+    [EnableRateLimiting(RateLimitPolicies.PublicUpload)]
     [RequestSizeLimit(MaxBytes + 1024)]
     public async Task<ActionResult<FileUploadResponse>> Upload(
         IFormFile file,

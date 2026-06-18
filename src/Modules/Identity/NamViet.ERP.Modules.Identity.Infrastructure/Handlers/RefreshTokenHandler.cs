@@ -1,12 +1,12 @@
 using MediatR;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
-using NamViet.ERP.Modules.Hr.Infrastructure.Persistence;
 using NamViet.ERP.Modules.Identity.Application.Commands;
 using NamViet.ERP.Modules.Identity.Application.DTOs;
 using NamViet.ERP.Modules.Identity.Domain.Entities;
 using NamViet.ERP.Modules.Identity.Infrastructure.Persistence;
 using NamViet.ERP.Modules.Identity.Infrastructure.Services;
+using NamViet.ERP.SharedKernel.Interfaces;
 
 namespace NamViet.ERP.Modules.Identity.Infrastructure.Handlers;
 
@@ -14,8 +14,7 @@ public class RefreshTokenHandler(
     UserManager<ApplicationUser> userManager,
     ITokenService tokenService,
     IdentityDbContext db,
-    HrDbContext hrDb)
-    : IRequestHandler<RefreshTokenCommand, AuthResponse>
+    IEmployeeInfoProvider employeeInfo) : IRequestHandler<RefreshTokenCommand, AuthResponse>
 {
     public async Task<AuthResponse> Handle(RefreshTokenCommand request, CancellationToken ct)
     {
@@ -49,15 +48,13 @@ public class RefreshTokenHandler(
         user.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
 
-        var employee = await hrDb.Employees
-            .Include(e => e.Department)
-            .FirstOrDefaultAsync(e => e.UserId == user.Id || e.Code == user.EmployeeCode, ct);
+        var linked = await employeeInfo.GetByUserAsync(user.Id, user.EmployeeCode, ct);
 
         return new AuthResponse(
             accessToken,
             newRefreshValue,
             tokenService.GetAccessTokenExpiry(),
             new UserDto(user.Id, user.EmployeeCode, user.Name, user.Email!,
-                employee?.Department?.Name, user.AvatarUrl, [.. roles]));
+                linked?.DepartmentName, user.AvatarUrl, [.. roles]));
     }
 }

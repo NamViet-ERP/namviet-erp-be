@@ -9,6 +9,7 @@ using NamViet.ERP.Modules.Hr.Infrastructure.Persistence;
 using NamViet.ERP.Modules.Identity.Domain.Entities;
 using NamViet.ERP.Modules.Identity.Infrastructure.Persistence;
 using NamViet.ERP.Modules.Identity.Infrastructure.Services;
+using NamViet.ERP.SharedKernel.Interfaces;
 
 namespace NamViet.ERP.Api.Controllers.Wms;
 
@@ -18,7 +19,8 @@ namespace NamViet.ERP.Api.Controllers.Wms;
 public class MembersController(
     UserManager<ApplicationUser> userManager,
     IdentityDbContext identityDb,
-    HrDbContext hrDb) : ControllerBase
+    HrDbContext hrDb,
+    IEmployeeUserLinkService employeeLinks) : ControllerBase
 {
     private static readonly Dictionary<string, string> ClientRoleToIdentity = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -71,8 +73,9 @@ public class MembersController(
         var identityRole = ClientRoleToIdentity.GetValueOrDefault(dto.Role, "Employee");
         await userManager.AddToRoleAsync(user, identityRole);
 
-        var dept = await IdentitySeeder.EnsureDefaultDepartmentAsync(hrDb);
-        await IdentitySeeder.UpsertEmployeeAsync(hrDb, user, dto.Phone, dto.JoinedDate, dept.Id);
+        await employeeLinks.UpsertFromUserAsync(new EmployeeUserLinkRequest(
+            user.Id, user.EmployeeCode, user.Name, user.Email, dto.Phone, dto.JoinedDate,
+            "DEFAULT", "Mặc định"), ct);
 
         var lookups = await BuildMemberLookupsAsync([user], ct);
         return Ok(ToMemberDto(user, lookups, dto.Role, dto.RoleLabel));
@@ -94,8 +97,9 @@ public class MembersController(
 
         await userManager.UpdateAsync(user);
 
-        var dept = await IdentitySeeder.EnsureDefaultDepartmentAsync(hrDb);
-        await IdentitySeeder.UpsertEmployeeAsync(hrDb, user, dto.Phone, dto.JoinedDate, dept.Id);
+        await employeeLinks.UpsertFromUserAsync(new EmployeeUserLinkRequest(
+            user.Id, user.EmployeeCode, user.Name, user.Email, dto.Phone, dto.JoinedDate,
+            "DEFAULT", "Mặc định"), ct);
 
         if (!string.IsNullOrEmpty(dto.Password))
         {

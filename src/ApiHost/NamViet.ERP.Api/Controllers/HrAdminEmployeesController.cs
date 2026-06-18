@@ -1,34 +1,17 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using NamViet.ERP.Api.Application.Dtos.Hr;
 using NamViet.ERP.Modules.Hr.Domain.Entities;
 using NamViet.ERP.Modules.Hr.Infrastructure.Persistence;
 using NamViet.ERP.SharedKernel.Common;
 
 namespace NamViet.ERP.Api.Controllers;
 
-public record CreateEmployeeRequest(
-    string Code, string FullName, string Gender, string BirthDate,
-    string? Phone, string? Email, string? Cccd, string? CccdDate, string? CccdPlace,
-    string? AddressPermanent, string? AddressCurrent,
-    int DepartmentId, int? PositionId, int? ManagerId,
-    string JoinDate, string Education,
-    string? BankAccount, string? BankName, string? TaxCode, string? SiNumber, string? PhotoUrl);
-
-public record UpdateEmployeeRequest(
-    string FullName, string? Phone, string? Email, string? Cccd,
-    string? AddressPermanent, string? AddressCurrent,
-    int DepartmentId, int? PositionId, int? ManagerId, string Status,
-    string? BankAccount, string? BankName, string? TaxCode, string? SiNumber, string? PhotoUrl);
-
-public record CreateContractRequest(
-    string ContractNo, string Type, string StartDate, string? EndDate,
-    decimal Salary, decimal Allowance, string? FileUrl);
-
-public record CreateAppointmentRequest(
-    int? OldPositionId, int NewPositionId, string? DecisionNo,
-    string EffectiveDate, string? Note);
-
+/// <summary>
+/// Internal HR admin API: paged list, contracts, appointments.
+/// Uses structured request DTOs — not consumed by the current React FE (which uses <see cref="Hr.EmployeesController"/>).
+/// </summary>
 [ApiController]
 [Route("api/hr/employees")]
 [Authorize]
@@ -165,7 +148,6 @@ public class HrAdminEmployeesController(HrDbContext db) : ControllerBase
         return NoContent();
     }
 
-    // ── Hợp đồng ──────────────────────────────────────────────────────────────
     [HttpGet("{id:int}/contracts")]
     public async Task<IActionResult> GetContracts(int id, CancellationToken ct)
     {
@@ -207,7 +189,6 @@ public class HrAdminEmployeesController(HrDbContext db) : ControllerBase
         return CreatedAtAction(nameof(GetContracts), new { id }, new { contract.Id });
     }
 
-    // ── Bổ nhiệm ───────────────────────────────────────────────────────────────
     [HttpGet("{id:int}/appointments")]
     public async Task<IActionResult> GetAppointments(int id, CancellationToken ct)
     {
@@ -245,7 +226,6 @@ public class HrAdminEmployeesController(HrDbContext db) : ControllerBase
         };
         db.Appointments.Add(appt);
 
-        // Cập nhật position hiện tại của nhân viên
         var emp = await db.Employees.FindAsync([id], ct);
         if (emp is not null) { emp.PositionId = req.NewPositionId; emp.UpdatedAt = DateTime.UtcNow; }
 
