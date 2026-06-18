@@ -133,8 +133,10 @@ public static class HrEmployeeMapper
         if (!string.IsNullOrWhiteSpace(dto.FullName))
             e.FullName = dto.FullName;
         e.Gender = FromDisplayGender(dto.Gender);
-        e.BirthDate = ParseDisplayDate(dto.BirthDate);
-        e.JoinDate = ParseDisplayDate(dto.JoinDate);
+        if (!string.IsNullOrWhiteSpace(dto.BirthDate))
+            e.BirthDate = ParseDisplayDate(dto.BirthDate);
+        if (!string.IsNullOrWhiteSpace(dto.JoinDate))
+            e.JoinDate = ParseDisplayDate(dto.JoinDate);
         if (!string.IsNullOrWhiteSpace(dto.OfficialDate))
             e.OfficialDate = ParseDisplayDate(dto.OfficialDate);
         e.Status = FromClientStatus(dto.Status);
