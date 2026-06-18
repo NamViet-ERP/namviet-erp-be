@@ -5,13 +5,17 @@ namespace NamViet.ERP.Modules.Warehouse.Domain.Entities;
 /// <summary>Vật tư – material_code format: XX-YYY-ZZZZ-SX</summary>
 public class Material : BaseEntity
 {
-    public string MaterialCode { get; set; } = string.Empty;    // PK
+    public string MaterialCode { get; set; } = string.Empty;
     public string MaterialName { get; set; } = string.Empty;
-    public string? MaterialCategory { get; set; }               // Mã nhóm vật tư chính
-    public string Unit { get; set; } = string.Empty;            // ĐVT
-    public string? TechnicalSpec { get; set; }                  // Quy cách kỹ thuật
-    public string? QualityStandard { get; set; }                // ASTM, JIS...
+    public int CategoryId { get; set; }
+    public string Unit { get; set; } = string.Empty;
+    public string? TechnicalSpec { get; set; }
+    public string? QualityStandard { get; set; }
+    public bool IsConsumable { get; set; }
+    /// <summary>false = ngừng sử dụng; vẫn giữ lịch sử dự án/phiếu.</summary>
+    public bool IsActive { get; set; } = true;
 
+    public MaterialCategory Category { get; set; } = null!;
     public ICollection<PriceBook> PriceBooks { get; set; } = [];
     public ICollection<ProjectInventory> ProjectInventories { get; set; } = [];
     public ICollection<WarehouseTransactionItem> TransactionItems { get; set; } = [];

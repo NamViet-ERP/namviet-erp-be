@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using NamViet.ERP.Modules.Warehouse.Application.DTOs;
 using NamViet.ERP.Modules.Warehouse.Domain.Entities;
 using NamViet.ERP.Modules.Warehouse.Domain.Enums;
+using NamViet.ERP.Modules.Warehouse.Domain.Services;
 using NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence;
 using NamViet.ERP.SharedKernel.Common;
 
@@ -12,7 +13,7 @@ namespace NamViet.ERP.Api.Controllers;
 [ApiController]
 [Route("api/warehouse/projects")]
 [Authorize]
-public class ProjectsController(WarehouseDbContext db) : ControllerBase
+public class ProjectsController(WarehouseDbContext db, IInventoryDomainService inventory) : ControllerBase
 {
     [HttpGet]
     public async Task<IActionResult> GetAll(
@@ -53,13 +54,35 @@ public class ProjectsController(WarehouseDbContext db) : ControllerBase
             .Include(pi => pi.Material)
             .Where(pi => pi.ProjectCode == code)
             .Select(pi => new ProjectInventoryDto(
-                pi.ProjectCode, pi.MaterialCode, pi.Material.MaterialName, pi.Material.Unit,
+                pi.ProjectCode, pi.MaterialCode,
+                pi.Material != null ? pi.Material.MaterialName : pi.MaterialCode,
+                pi.Material != null ? pi.Material.Unit : string.Empty,
                 pi.PlannedImportQty, pi.PlannedExportQty,
                 pi.ActualImportQty, pi.ActualExportQty,
                 pi.ActualImportQty - pi.ActualExportQty,
-                pi.PlannedImportQty - pi.PlannedExportQty))
+                pi.PlannedImportQty - pi.PlannedExportQty,
+                pi.ReservedQty))
             .ToListAsync(ct);
         return Ok(items);
+    }
+
+    [HttpPost("{code}/close")]
+    [Authorize(Roles = "Admin,Warehouse_Keeper,Storekeeper,PM")]
+    public async Task<IActionResult> CloseProject(string code, CancellationToken ct)
+    {
+        var project = await db.Projects.FirstOrDefaultAsync(p => p.ProjectCode == code, ct);
+        if (project is null) return NotFound();
+        if (project.Status == ProjectStatus.Closed)
+            return BadRequest("Dự án đã đóng kho.");
+
+        await using var tx = await db.Database.BeginTransactionAsync(ct);
+        await inventory.ApplyProjectCloseTransferAsync(code, ct);
+        project.Status = ProjectStatus.Closed;
+        project.EndDate = DateOnly.FromDateTime(DateTime.UtcNow);
+        project.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
+        await tx.CommitAsync(ct);
+        return Ok(new { projectCode = code, status = project.Status.ToString() });
     }
 
     [HttpPost]

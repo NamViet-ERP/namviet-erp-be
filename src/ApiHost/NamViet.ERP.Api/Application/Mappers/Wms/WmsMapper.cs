@@ -1,4 +1,5 @@
 using NamViet.ERP.Api.Application.Dtos.Wms;
+using NamViet.ERP.Modules.Warehouse.Infrastructure.Helpers;
 using NamViet.ERP.Modules.Warehouse.Domain.Entities;
 using NamViet.ERP.Modules.Warehouse.Domain.Enums;
 
@@ -10,6 +11,7 @@ public static class WmsMapper
     {
         ApprovalStatus.Approved => "approved",
         ApprovalStatus.Rejected => "rejected",
+        ApprovalStatus.Draft => "draft",
         _ => "pending"
     };
 
@@ -17,6 +19,7 @@ public static class WmsMapper
     {
         "approved" => ApprovalStatus.Approved,
         "rejected" => ApprovalStatus.Rejected,
+        "draft" => ApprovalStatus.Draft,
         _ => ApprovalStatus.Pending
     };
 
@@ -77,7 +80,7 @@ public static class WmsMapper
         : DateOnly.FromDateTime(DateTime.UtcNow);
 
     public static ProductDto ToProduct(Material m, decimal price) =>
-        new(m.MaterialCode, m.MaterialCode, m.MaterialName, m.MaterialCategory ?? "", m.Unit, price);
+        new(m.MaterialCode, m.MaterialCode, m.MaterialName, m.Category?.Name ?? "", m.Unit, price);
 
     public static WarehouseDto ToWarehouse(WmsWarehouse w, int totalStock, decimal totalValue) =>
         new(w.Id, w.Code, w.Name, w.Group, w.Address, w.Branch, w.Manager, totalStock, totalValue, w.Status);
@@ -86,8 +89,8 @@ public static class WmsMapper
     {
         var items = t.Items.Select(i => new ImportItemDto(
             i.MaterialCode, i.MaterialCode,
-            i.Material?.MaterialName ?? i.MaterialCode,
-            i.Quantity, i.Material?.Unit ?? "", i.UnitPrice)).ToList();
+            TransactionItemHelper.ResolveName(i),
+            i.Quantity, TransactionItemHelper.ResolveUnit(i), i.UnitPrice)).ToList();
         var total = items.Sum(x => x.Qty * x.UnitPrice);
         return new ImportDto(
             t.Id.ToString(), t.TicketCode, FormatDate(t.CreatedAt),
@@ -107,8 +110,8 @@ public static class WmsMapper
             t.WarehouseId ?? "", warehouseName ?? "",
             t.Items.Select(i => new ExportItemDto(
                 i.MaterialCode, i.MaterialCode,
-                i.Material?.MaterialName ?? i.MaterialCode,
-                i.Quantity, i.Material?.Unit ?? "")).ToList(),
+                TransactionItemHelper.ResolveName(i),
+                i.Quantity, TransactionItemHelper.ResolveUnit(i))).ToList(),
             ToClientApprovalStatus(t.ApprovalStatus),
             t.CreatedByName, t.Notes ?? "");
 
@@ -118,8 +121,8 @@ public static class WmsMapper
             t.ToWarehouseId ?? "", toName ?? "",
             t.Items.Select(i => new TransferItemDto(
                 i.MaterialCode, i.MaterialCode,
-                i.Material?.MaterialName ?? i.MaterialCode,
-                i.Quantity, i.Material?.Unit ?? "")).ToList(),
+                TransactionItemHelper.ResolveName(i),
+                i.Quantity, TransactionItemHelper.ResolveUnit(i))).ToList(),
             ToClientApprovalStatus(t.ApprovalStatus),
             t.CreatedByName, t.Notes ?? "", t.ApprovedByName);
 

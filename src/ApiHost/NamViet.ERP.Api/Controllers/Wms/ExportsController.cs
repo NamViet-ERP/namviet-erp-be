@@ -4,8 +4,10 @@ using Microsoft.EntityFrameworkCore;
 using NamViet.ERP.Api.Application.Dtos.Wms;
 using NamViet.ERP.Api.Application.Mappers.Wms;
 using NamViet.ERP.Api.Application.Services.Wms;
+using NamViet.ERP.Modules.Warehouse.Infrastructure.Helpers;
 using NamViet.ERP.Modules.Warehouse.Domain.Entities;
 using NamViet.ERP.Modules.Warehouse.Domain.Enums;
+using NamViet.ERP.Modules.Warehouse.Domain.Services;
 using NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence;
 using NamViet.ERP.SharedKernel.Interfaces;
 
@@ -14,7 +16,10 @@ namespace NamViet.ERP.Api.Controllers.Wms;
 [ApiController]
 [Route("api/exports")]
 [Authorize]
-public class ExportsController(WarehouseDbContext db, ICurrentUser currentUser) : ControllerBase
+public class ExportsController(
+    WarehouseDbContext db,
+    IInventoryDomainService inventory,
+    ICurrentUser currentUser) : ControllerBase
 {
     [HttpGet]
     public async Task<ActionResult<List<ExportDto>>> List(CancellationToken ct)
@@ -56,10 +61,14 @@ public class ExportsController(WarehouseDbContext db, ICurrentUser currentUser) 
                 Quantity = i.Qty
             }).ToList()
         };
+        await ValidateAndSnapshotItemsAsync(t.Items, ct);
+
+        await using var tx = await db.Database.BeginTransactionAsync(ct);
         db.WarehouseTransactions.Add(t);
         if (t.ApprovalStatus == ApprovalStatus.Approved)
-            await WmsInventoryHelper.ApplyApprovedExportAsync(db, t, ct);
+            await inventory.ApplyApprovedExportAsync(t, ct);
         await db.SaveChangesAsync(ct);
+        await tx.CommitAsync(ct);
         return Ok(WmsMapper.ToExport(t, dto.WarehouseName));
     }
 
@@ -68,6 +77,9 @@ public class ExportsController(WarehouseDbContext db, ICurrentUser currentUser) 
     {
         var t = await FindAsync(id, ct);
         if (t is null) return NotFound();
+        if (t.ApprovalStatus == ApprovalStatus.Approved)
+            return BadRequest("Phiếu đã duyệt, không thể chỉnh sửa.");
+
         var previousStatus = t.ApprovalStatus;
         t.WarehouseId = dto.WarehouseId;
         t.SoCode = dto.SoCode;
@@ -82,9 +94,13 @@ public class ExportsController(WarehouseDbContext db, ICurrentUser currentUser) 
             MaterialCode = string.IsNullOrEmpty(i.Sku) ? i.ProductId : i.Sku,
             Quantity = i.Qty
         }).ToList();
+        await ValidateAndSnapshotItemsAsync(t.Items, ct);
+
+        await using var tx = await db.Database.BeginTransactionAsync(ct);
         if (WmsInventoryHelper.IsNewlyApproved(previousStatus, t.ApprovalStatus))
-            await WmsInventoryHelper.ApplyApprovedExportAsync(db, t, ct);
+            await inventory.ApplyApprovedExportAsync(t, ct);
         await db.SaveChangesAsync(ct);
+        await tx.CommitAsync(ct);
         return Ok(WmsMapper.ToExport(t, dto.WarehouseName));
     }
 
@@ -93,6 +109,8 @@ public class ExportsController(WarehouseDbContext db, ICurrentUser currentUser) 
     {
         var t = await FindAsync(id, ct);
         if (t is null) return NotFound();
+        if (t.ApprovalStatus == ApprovalStatus.Approved)
+            return BadRequest("Phiếu đã duyệt, không thể xóa.");
         db.WarehouseTransactions.Remove(t);
         await db.SaveChangesAsync(ct);
         return NoContent();
@@ -116,5 +134,15 @@ public class ExportsController(WarehouseDbContext db, ICurrentUser currentUser) 
         var ids = items.Select(i => i.WarehouseId).Where(x => x != null).Distinct().ToList();
         return await db.WmsWarehouses.Where(w => ids.Contains(w.Id))
             .ToDictionaryAsync(w => w.Id, w => w.Name, ct);
+    }
+
+    private async Task ValidateAndSnapshotItemsAsync(
+        IEnumerable<WarehouseTransactionItem> items, CancellationToken ct)
+    {
+        var list = items.ToList();
+        var materials = await TransactionItemHelper.LoadMaterialsAsync(
+            db, list.Select(i => i.MaterialCode), ct);
+        TransactionItemHelper.EnsureActiveMaterials(list.Select(i => i.MaterialCode), materials);
+        await TransactionItemHelper.ApplySnapshotsAsync(db, list, ct);
     }
 }

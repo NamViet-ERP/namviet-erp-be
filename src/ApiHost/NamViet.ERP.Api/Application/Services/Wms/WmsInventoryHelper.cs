@@ -5,6 +5,7 @@ using NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence;
 
 namespace NamViet.ERP.Api.Application.Services.Wms;
 
+[Obsolete("Inject IInventoryDomainService instead.")]
 public static class WmsInventoryHelper
 {
     public static async Task UpdateWarehouseInventoryAsync(
@@ -22,37 +23,20 @@ public static class WmsInventoryHelper
         inv.UpdatedAt = DateTime.UtcNow;
     }
 
-    public static async Task ApplyApprovedImportAsync(
-        WarehouseDbContext db, WarehouseTransaction transaction, CancellationToken ct)
-    {
-        if (string.IsNullOrEmpty(transaction.WarehouseId)) return;
-        foreach (var item in transaction.Items)
-            await UpdateWarehouseInventoryAsync(
-                db, transaction.WarehouseId, item.MaterialCode, item.Quantity, ct);
-    }
+    [Obsolete("Use IInventoryDomainService.ApplyApprovedImportAsync")]
+    public static Task ApplyApprovedImportAsync(
+        WarehouseDbContext db, WarehouseTransaction transaction, CancellationToken ct) =>
+        ApplyLegacyImportAsync(db, transaction, ct);
 
-    public static async Task ApplyApprovedExportAsync(
-        WarehouseDbContext db, WarehouseTransaction transaction, CancellationToken ct)
-    {
-        if (string.IsNullOrEmpty(transaction.WarehouseId)) return;
-        foreach (var item in transaction.Items)
-            await UpdateWarehouseInventoryAsync(
-                db, transaction.WarehouseId, item.MaterialCode, -item.Quantity, ct);
-    }
+    [Obsolete("Use IInventoryDomainService.ApplyApprovedExportAsync")]
+    public static Task ApplyApprovedExportAsync(
+        WarehouseDbContext db, WarehouseTransaction transaction, CancellationToken ct) =>
+        ApplyLegacyExportAsync(db, transaction, ct);
 
-    public static async Task ApplyApprovedTransferAsync(
-        WarehouseDbContext db, WarehouseTransaction transaction, CancellationToken ct)
-    {
-        if (string.IsNullOrEmpty(transaction.FromWarehouseId) || string.IsNullOrEmpty(transaction.ToWarehouseId))
-            return;
-        foreach (var item in transaction.Items)
-        {
-            await UpdateWarehouseInventoryAsync(
-                db, transaction.FromWarehouseId, item.MaterialCode, -item.Quantity, ct);
-            await UpdateWarehouseInventoryAsync(
-                db, transaction.ToWarehouseId, item.MaterialCode, item.Quantity, ct);
-        }
-    }
+    [Obsolete("Use IInventoryDomainService.ApplyTransferAsync")]
+    public static Task ApplyApprovedTransferAsync(
+        WarehouseDbContext db, WarehouseTransaction transaction, CancellationToken ct) =>
+        ApplyLegacyTransferAsync(db, transaction, ct);
 
     public static bool IsNewlyApproved(ApprovalStatus previous, ApprovalStatus next) =>
         previous != ApprovalStatus.Approved && next == ApprovalStatus.Approved;
@@ -72,17 +56,48 @@ public static class WmsInventoryHelper
             .ToDictionaryAsync(x => x.MaterialCode, x => x.Price, ct);
 
         var totalStock = (int)items.Sum(i => i.Qty);
-        var totalValue = items.Sum(i => i.Qty * (prices.GetValueOrDefault(i.MaterialCode)));
+        var totalValue = items.Sum(i => i.Qty * prices.GetValueOrDefault(i.MaterialCode));
         return (totalStock, totalValue);
     }
 
     public static async Task<decimal> GetLatestPriceAsync(WarehouseDbContext db, string materialCode, CancellationToken ct)
     {
-        var price = await db.PriceBooks
+        return await db.PriceBooks
             .Where(p => p.MaterialCode == materialCode)
             .OrderByDescending(p => p.PriceDate)
             .Select(p => p.UnitPrice)
             .FirstOrDefaultAsync(ct);
-        return price;
+    }
+
+    private static async Task ApplyLegacyImportAsync(
+        WarehouseDbContext db, WarehouseTransaction transaction, CancellationToken ct)
+    {
+        if (string.IsNullOrEmpty(transaction.WarehouseId)) return;
+        foreach (var item in transaction.Items)
+            await UpdateWarehouseInventoryAsync(
+                db, transaction.WarehouseId, item.MaterialCode, item.Quantity, ct);
+    }
+
+    private static async Task ApplyLegacyExportAsync(
+        WarehouseDbContext db, WarehouseTransaction transaction, CancellationToken ct)
+    {
+        if (string.IsNullOrEmpty(transaction.WarehouseId)) return;
+        foreach (var item in transaction.Items)
+            await UpdateWarehouseInventoryAsync(
+                db, transaction.WarehouseId, item.MaterialCode, -item.Quantity, ct);
+    }
+
+    private static async Task ApplyLegacyTransferAsync(
+        WarehouseDbContext db, WarehouseTransaction transaction, CancellationToken ct)
+    {
+        if (string.IsNullOrEmpty(transaction.FromWarehouseId) || string.IsNullOrEmpty(transaction.ToWarehouseId))
+            return;
+        foreach (var item in transaction.Items)
+        {
+            await UpdateWarehouseInventoryAsync(
+                db, transaction.FromWarehouseId, item.MaterialCode, -item.Quantity, ct);
+            await UpdateWarehouseInventoryAsync(
+                db, transaction.ToWarehouseId, item.MaterialCode, item.Quantity, ct);
+        }
     }
 }

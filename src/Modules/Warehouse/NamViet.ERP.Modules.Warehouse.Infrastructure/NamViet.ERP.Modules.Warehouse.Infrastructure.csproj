@@ -12,4 +12,9 @@
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
   </ItemGroup>
+  <ItemGroup>
+    <None Update="Data\material-categories-tree.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
 </Project>

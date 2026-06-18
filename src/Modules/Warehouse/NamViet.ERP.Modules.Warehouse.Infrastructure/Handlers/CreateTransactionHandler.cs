@@ -1,6 +1,7 @@
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 using NamViet.ERP.Modules.Warehouse.Application.DTOs;
+using NamViet.ERP.Modules.Warehouse.Infrastructure.Helpers;
 using NamViet.ERP.Modules.Warehouse.Application.Transactions;
 using NamViet.ERP.Modules.Warehouse.Domain.Entities;
 using NamViet.ERP.Modules.Warehouse.Domain.Enums;
@@ -30,6 +31,7 @@ public class CreateTransactionHandler(
         foreach (var code in materialCodes)
             if (!materials.ContainsKey(code))
                 throw new InvalidOperationException($"Vật tư '{code}' không tồn tại.");
+        TransactionItemHelper.EnsureActiveMaterials(materialCodes, materials);
 
         var transaction = new WarehouseTransaction
         {
@@ -44,13 +46,19 @@ public class CreateTransactionHandler(
             CreatedById = currentUser.Id,
             CreatedByName = currentUser.Name,
             ApprovalStatus = ApprovalStatus.Pending,
-            Items = req.Items.Select(i => new WarehouseTransactionItem
+            Items = req.Items.Select(i =>
             {
-                MaterialCode = i.MaterialCode,
-                Quantity = i.Quantity,
-                UnitPrice = i.UnitPrice,
-                ConstructionPhase = i.ConstructionPhase,
-                Notes = i.Notes
+                var material = materials[i.MaterialCode];
+                var item = new WarehouseTransactionItem
+                {
+                    MaterialCode = i.MaterialCode,
+                    Quantity = i.Quantity,
+                    UnitPrice = i.UnitPrice,
+                    ConstructionPhase = i.ConstructionPhase,
+                    Notes = i.Notes
+                };
+                TransactionItemHelper.ApplySnapshot(item, material);
+                return item;
             }).ToList()
         };
 
@@ -69,8 +77,8 @@ public class CreateTransactionHandler(
             t.ApprovedByName, t.ApprovedAt, t.Notes, t.CreatedAt,
             t.Items.Select(i => new TransactionItemDto(
                 i.Id, i.MaterialCode,
-                materials.TryGetValue(i.MaterialCode, out var m) ? m.MaterialName : i.MaterialCode,
+                TransactionItemHelper.ResolveName(i),
                 i.Quantity,
-                materials.TryGetValue(i.MaterialCode, out var m2) ? m2.Unit : string.Empty,
+                TransactionItemHelper.ResolveUnit(i),
                 i.UnitPrice, i.TotalAmount, i.ConstructionPhase, i.Notes)).ToList());
 }

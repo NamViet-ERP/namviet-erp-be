@@ -7,6 +7,8 @@ namespace NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence;
 public class WarehouseDbContext(DbContextOptions<WarehouseDbContext> options) : DbContext(options)
 {
     public DbSet<Material> Materials => Set<Material>();
+    public DbSet<MaterialCategory> MaterialCategories => Set<MaterialCategory>();
+    public DbSet<InventoryReservation> InventoryReservations => Set<InventoryReservation>();
     public DbSet<Supplier> Suppliers => Set<Supplier>();
     public DbSet<PriceBook> PriceBooks => Set<PriceBook>();
     public DbSet<Project> Projects => Set<Project>();
@@ -35,15 +37,56 @@ public class WarehouseDbContext(DbContextOptions<WarehouseDbContext> options) : 
         base.OnModelCreating(model);
         model.HasDefaultSchema("warehouse");
 
+        model.Entity<MaterialCategory>(e =>
+        {
+            e.ToTable("material_categories");
+            e.HasKey(c => c.Id);
+            e.Property(c => c.Code).HasMaxLength(50).IsRequired();
+            e.HasIndex(c => c.Code).IsUnique();
+            e.Property(c => c.Name).HasMaxLength(255).IsRequired();
+            e.Property(c => c.Level).IsRequired();
+            e.HasIndex(c => c.ParentId);
+            e.HasOne(c => c.Parent).WithMany(c => c.Children)
+             .HasForeignKey(c => c.ParentId).OnDelete(DeleteBehavior.Restrict);
+        });
+
         model.Entity<Material>(e =>
         {
             e.ToTable("materials");
             e.HasKey(m => m.MaterialCode);
             e.Property(m => m.MaterialCode).HasMaxLength(100);
             e.Property(m => m.MaterialName).HasMaxLength(255).IsRequired();
-            e.Property(m => m.MaterialCategory).HasMaxLength(50);
             e.Property(m => m.Unit).HasMaxLength(50).IsRequired();
+            e.Property(m => m.IsActive).HasDefaultValue(true);
+            e.HasOne(m => m.Category).WithMany(c => c.Materials)
+             .HasForeignKey(m => m.CategoryId).OnDelete(DeleteBehavior.Restrict);
             e.HasQueryFilter(m => m.DeletedAt == null);
+        });
+
+        model.Entity<InventoryReservation>(e =>
+        {
+            e.ToTable("inventory_reservations");
+            e.HasKey(r => r.Id);
+            e.Property(r => r.WarehouseId).HasMaxLength(50).IsRequired();
+            e.Property(r => r.ProjectCode).HasMaxLength(50).IsRequired();
+            e.Property(r => r.MaterialCode).HasMaxLength(100).IsRequired();
+            e.Property(r => r.SourceTicketCode).HasMaxLength(50).IsRequired();
+            e.Property(r => r.ReservedQty).HasColumnType("numeric(18,4)").IsRequired();
+            e.Property(r => r.ExternalQty).HasColumnType("numeric(18,4)").HasDefaultValue(0m);
+            e.Property(r => r.FulfilledQty).HasColumnType("numeric(18,4)").HasDefaultValue(0m);
+            e.Property(r => r.Status).HasConversion<string>().HasMaxLength(20).IsRequired();
+            e.HasIndex(r => new { r.ProjectCode, r.MaterialCode });
+            e.HasIndex(r => new { r.WarehouseId, r.MaterialCode, r.Status });
+            e.HasOne(r => r.Warehouse).WithMany()
+             .HasForeignKey(r => r.WarehouseId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(r => r.Project).WithMany()
+             .HasForeignKey(r => r.ProjectCode).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(r => r.Material).WithMany()
+             .HasForeignKey(r => r.MaterialCode).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(r => r.SourceTransaction).WithMany(t => t.Reservations)
+             .HasForeignKey(r => r.SourceTicketCode)
+             .HasPrincipalKey(t => t.TicketCode)
+             .OnDelete(DeleteBehavior.Cascade);
         });
 
         model.Entity<Supplier>(e =>
@@ -93,8 +136,10 @@ public class WarehouseDbContext(DbContextOptions<WarehouseDbContext> options) : 
             e.Property(pi => pi.PlannedExportQty).HasColumnType("numeric(18,4)").HasDefaultValue(0m);
             e.Property(pi => pi.ActualImportQty).HasColumnType("numeric(18,4)").HasDefaultValue(0m);
             e.Property(pi => pi.ActualExportQty).HasColumnType("numeric(18,4)").HasDefaultValue(0m);
+            e.Property(pi => pi.ReservedQty).HasColumnType("numeric(18,4)").HasDefaultValue(0m);
             e.Ignore(pi => pi.ActualInventoryQty);
             e.Ignore(pi => pi.PlannedInventoryQty);
+            e.Ignore(pi => pi.ExpectedInventoryQty);
             e.HasOne(pi => pi.Project).WithMany(p => p.Inventories)
              .HasForeignKey(pi => pi.ProjectCode).OnDelete(DeleteBehavior.Cascade);
             e.HasOne(pi => pi.Material).WithMany(m => m.ProjectInventories)
@@ -140,6 +185,11 @@ public class WarehouseDbContext(DbContextOptions<WarehouseDbContext> options) : 
                 .HasDefaultValue(WarehouseKeeperApprovalStatus.Pending);
             e.Property(t => t.BeneficiaryProjectCode).HasMaxLength(50);
             e.Property(t => t.SupplierName).HasMaxLength(255);
+            e.Property(t => t.LinkedTicketCode).HasMaxLength(50);
+            e.HasOne(t => t.LinkedTransaction).WithMany()
+             .HasForeignKey(t => t.LinkedTicketCode)
+             .HasPrincipalKey(wt => wt.TicketCode)
+             .OnDelete(DeleteBehavior.SetNull);
             e.HasOne(t => t.Project).WithMany(p => p.Transactions)
              .HasForeignKey(t => t.ProjectCode).OnDelete(DeleteBehavior.Restrict).IsRequired(false);
             e.HasOne(t => t.Supplier).WithMany(s => s.Transactions)
@@ -150,6 +200,8 @@ public class WarehouseDbContext(DbContextOptions<WarehouseDbContext> options) : 
         {
             e.ToTable("warehouse_transaction_items");
             e.HasKey(i => i.Id);
+            e.Property(i => i.MaterialNameSnapshot).HasMaxLength(255);
+            e.Property(i => i.UnitSnapshot).HasMaxLength(50);
             e.Property(i => i.Quantity).HasColumnType("numeric(18,4)").IsRequired();
             e.Property(i => i.UnitPrice).HasColumnType("numeric(18,2)").IsRequired();
             e.Property(i => i.ConstructionPhase).HasMaxLength(255);

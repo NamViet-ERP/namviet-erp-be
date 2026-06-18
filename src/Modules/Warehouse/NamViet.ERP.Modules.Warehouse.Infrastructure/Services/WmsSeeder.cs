@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using NamViet.ERP.Modules.Warehouse.Domain;
 using NamViet.ERP.Modules.Warehouse.Domain.Entities;
 using NamViet.ERP.Modules.Warehouse.Domain.Enums;
 using NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence;
@@ -10,16 +11,19 @@ public static class WmsSeeder
 {
     public static async Task SeedAsync(WarehouseDbContext db, ILogger logger, CancellationToken ct = default)
     {
+        await MaterialCategoryTreeLoader.EnsureTreeSeededAsync(db, logger, ct);
+        await MaterialDemoSeeder.EnsureDemoMaterialsAsync(db, logger, ct);
+
         if (await db.WmsWarehouses.AnyAsync(ct))
         {
-            logger.LogInformation("WMS seed skipped – data already exists.");
+            logger.LogInformation("WMS seed skipped – warehouse data already exists.");
             return;
         }
 
         logger.LogInformation("Seeding WMS demo data...");
 
-        await SeedMaterialsAsync(db, ct);
         await SeedWarehousesAsync(db, ct);
+        await SeedSettingsAsync(db, ct);
         await SeedInventoryAsync(db, ct);
         await SeedTransactionsAsync(db, ct);
         await SeedStocktakesAsync(db, ct);
@@ -29,62 +33,12 @@ public static class WmsSeeder
         logger.LogInformation("WMS demo data seeded.");
     }
 
-    private static async Task SeedMaterialsAsync(WarehouseDbContext db, CancellationToken ct)
-    {
-        var supplier = new Supplier
-        {
-            SupplierCode = "NCC-DEMO",
-            SupplierName = "Nhà cung cấp demo",
-            Rating = "A"
-        };
-        db.Suppliers.Add(supplier);
-        await db.SaveChangesAsync(ct);
-
-        var products = new (string Sku, string Name, string Category, string Unit, decimal Price)[]
-        {
-            ("MNK-SC-7.5", "Máy nén khí trục vít 7.5HP", "Máy nén khí trục vít", "Cái", 45000000),
-            ("MNK-SC-15", "Máy nén khí trục vít 15HP", "Máy nén khí trục vít", "Cái", 78000000),
-            ("MNK-SC-20", "Máy nén khí trục vít 20HP", "Máy nén khí trục vít", "Cái", 95000000),
-            ("MNK-PT-3", "Máy nén khí piston 3HP", "Máy nén khí piston", "Cái", 12000000),
-            ("MNK-PT-5", "Máy nén khí piston 5HP", "Máy nén khí piston", "Cái", 18500000),
-            ("BLK-500", "Bình chứa khí nén 500L", "Bình chứa", "Cái", 8500000),
-            ("BLK-1000", "Bình chứa khí nén 1000L", "Bình chứa", "Cái", 15000000),
-            ("MBK-R22", "Máy sấy khí lạnh R22", "Máy sấy khí", "Cái", 25000000),
-            ("LLK-10", "Lọc khí công nghiệp 10μm", "Lọc khí", "Cái", 3500000),
-            ("DK-OIL-20L", "Dầu máy nén khí 20L", "Phụ kiện", "Thùng", 2800000),
-            ("MNK-SC-30", "Máy nén khí trục vít 30HP", "Máy nén khí trục vít", "Cái", 135000000),
-            ("MNK-SC-50", "Máy nén khí trục vít 50HP", "Máy nén khí trục vít", "Cái", 210000000),
-            ("QH-KT-421", "Que hàn điện Kim Tín KT-421", "Vật tư tiêu hao", "Hộp", 120000),
-            ("GT-BH-DA", "Găng tay bảo hộ hàn da bò", "Vật tư tiêu hao", "Đôi", 45000),
-            ("DC-HD-100", "Đá cắt sắt Hải Dương 100mm", "Vật tư tiêu hao", "Viên", 15000),
-        };
-
-        foreach (var p in products)
-        {
-            db.Materials.Add(new Material
-            {
-                MaterialCode = p.Sku,
-                MaterialName = p.Name,
-                MaterialCategory = p.Category,
-                Unit = p.Unit
-            });
-            db.PriceBooks.Add(new PriceBook
-            {
-                MaterialCode = p.Sku,
-                SupplierId = supplier.Id,
-                UnitPrice = p.Price,
-                PriceDate = DateTime.UtcNow
-            });
-        }
-        await db.SaveChangesAsync(ct);
-    }
-
     private static async Task SeedWarehousesAsync(WarehouseDbContext db, CancellationToken ct)
     {
         var warehouses = new WmsWarehouse[]
         {
-            new() { Id = "wh-001", Code = "KHO-HCM", Name = "Kho Hồ Chí Minh", Group = "Kho chính", Address = "123 Nguyễn Văn Linh, Q.7, TP.HCM", Branch = "HCM", Manager = "Phan Văn Vỹ", Status = "active" },
-            new() { Id = "wh-002", Code = "KHO-BD", Name = "Kho Bình Dương", Group = "Kho chính", Address = "456 Đại Lộ Bình Dương, Thủ Dầu Một", Branch = "Bình Dương", Manager = "Trần Huy Hoàng", Status = "active" },
+            new() { Id = WmsWarehouseIds.General, Code = "KHO-TONG", Name = "Kho tổng Nam Việt", Group = "Kho tổng", Address = "Kho tổng tập trung", Branch = "HCM", Manager = "Phan Văn Vỹ", Status = "active" },
+            new() { Id = "wh-001", Code = "KHO-HCM", Name = "Kho Hồ Chí Minh", Group = "Kho chính", Address = "123 Nguyễn Văn Linh, Q.7, TP.HCM", Branch = "HCM", Manager = "Phan Văn Vỹ", Status = "active" },            new() { Id = "wh-002", Code = "KHO-BD", Name = "Kho Bình Dương", Group = "Kho chính", Address = "456 Đại Lộ Bình Dương, Thủ Dầu Một", Branch = "Bình Dương", Manager = "Trần Huy Hoàng", Status = "active" },
             new() { Id = "wh-003", Code = "KHO-HN", Name = "Kho Hà Nội", Group = "Kho chính", Address = "789 Phạm Hùng, Nam Từ Liêm, Hà Nội", Branch = "Hà Nội", Manager = "Nguyễn Minh Tuấn", Status = "active" },
             new() { Id = "wh-004", Code = "KHO-CT", Name = "Kho Cần Thơ", Group = "Kho phụ", Address = "321 Trần Hưng Đạo, Ninh Kiều, Cần Thơ", Branch = "Cần Thơ", Manager = "Lê Thị Hồng", Status = "active" },
             new() { Id = "wh-005", Code = "KHO-DN", Name = "Kho Đà Nẵng", Group = "Kho phụ", Address = "654 Nguyễn Văn Linh, Hải Châu, Đà Nẵng", Branch = "Đà Nẵng", Manager = "Võ Anh Khoa", Status = "active" },
@@ -95,13 +49,27 @@ public static class WmsSeeder
         await db.SaveChangesAsync(ct);
     }
 
+    private static async Task SeedSettingsAsync(WarehouseDbContext db, CancellationToken ct)
+    {
+        db.WmsSettings.Add(new WmsSetting
+        {
+            Key = WmsSettingsKeys.GeneralWarehouseId,
+            Value = WmsWarehouseIds.General
+        });
+        await db.SaveChangesAsync(ct);
+    }
+
     private static async Task SeedInventoryAsync(WarehouseDbContext db, CancellationToken ct)
     {
         var entries = new (string WarehouseId, string Sku, decimal Qty)[]
         {
+            (WmsWarehouseIds.General, "MNK-SC-7.5", 120), (WmsWarehouseIds.General, "MNK-SC-15", 80),
+            (WmsWarehouseIds.General, "LLK-10", 200), (WmsWarehouseIds.General, "DK-OIL-20L", 150),
+            (WmsWarehouseIds.General, "TE-PLT-012-SA516", 45),
             ("wh-001", "MNK-SC-7.5", 45), ("wh-001", "MNK-SC-15", 22), ("wh-001", "LLK-10", 120),
-            ("wh-001", "DK-OIL-20L", 84), ("wh-002", "MNK-PT-3", 30), ("wh-002", "BLK-500", 50),
-            ("wh-003", "MNK-PT-5", 15), ("wh-003", "BLK-500", 20),
+            ("wh-001", "DK-OIL-20L", 84), ("wh-001", "BM-CN-15KW", 8), ("wh-001", "BLK-M12x50-88", 500),
+            ("wh-002", "BM-CN-15KW", 5), ("wh-002", "BLK-M12x50-88", 200),
+            ("wh-003", "VN-CAU-MB-DN100", 12), ("wh-003", "IX-304-2B-3T", 30),
         };
         foreach (var e in entries)
         {
@@ -183,7 +151,7 @@ public static class WmsSeeder
             Items =
             [
                 new WarehouseTransactionItem { MaterialCode = "MNK-SC-7.5", Quantity = 5, UnitPrice = 0 },
-                new WarehouseTransactionItem { MaterialCode = "BLK-500", Quantity = 10, UnitPrice = 0 }
+                new WarehouseTransactionItem { MaterialCode = "BLK-M12x50-88", Quantity = 10, UnitPrice = 0 }
             ]
         });
 
@@ -209,7 +177,7 @@ public static class WmsSeeder
             Items =
             [
                 new StocktakeItem { StocktakeId = "st-001", MaterialCode = "MNK-SC-7.5", Sku = "MNK-SC-7.5", Name = "Máy nén khí trục vít 7.5HP", SystemQty = 15, ActualQty = 14, Diff = -1 },
-                new StocktakeItem { StocktakeId = "st-001", MaterialCode = "MNK-PT-3", Sku = "MNK-PT-3", Name = "Máy nén khí piston 3HP", SystemQty = 30, ActualQty = 30, Diff = 0 }
+                new StocktakeItem { StocktakeId = "st-001", MaterialCode = "BM-CN-15KW", Sku = "BM-CN-15KW", Name = "Bơm ly tâm trục đứng 15kW", SystemQty = 8, ActualQty = 8, Diff = 0 }
             ]
         };
         db.Stocktakes.Add(st);
@@ -254,10 +222,10 @@ public static class WmsSeeder
                 new AdjustmentItem
                 {
                     AdjustmentId = "adj-001",
-                    MaterialCode = "BLK-500",
-                    Sku = "BLK-500",
-                    Name = "Bình chứa khí nén 500L",
-                    AdjustQty = 2,
+                    MaterialCode = "BLK-M12x50-88",
+                    Sku = "BLK-M12x50-88",
+                    Name = "Bulong M12×50 cấp 8.8",
+                    AdjustQty = 200,
                     Reason = "Thừa khi kiểm kê"
                 }
             ]

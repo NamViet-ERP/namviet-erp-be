@@ -36,10 +36,14 @@ public class WarehouseTransaction : BaseEntity
     public bool IsDirectProcurement { get; set; }
     public string? BeneficiaryProjectCode { get; set; }
     public string? SupplierName { get; set; }
+    /// <summary>Liên kết cặp phiếu NK↔XK cho Direct Issue.</summary>
+    public string? LinkedTicketCode { get; set; }
 
     public Project? Project { get; set; }
     public Supplier? Supplier { get; set; }
+    public WarehouseTransaction? LinkedTransaction { get; set; }
     public ICollection<WarehouseTransactionItem> Items { get; set; } = [];
+    public ICollection<InventoryReservation> Reservations { get; set; } = [];
 
     /// <summary>Sinh ticket_code tự động theo loại phiếu và số thứ tự</summary>
     public static string GenerateTicketCode(TransactionType type, int sequence)

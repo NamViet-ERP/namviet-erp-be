@@ -9,16 +9,59 @@ public class ProjectInventory : BaseEntity
     public string ProjectCode { get; set; } = string.Empty;
     public string MaterialCode { get; set; } = string.Empty;
 
-    public decimal PlannedImportQty { get; set; } = 0m;    // Nhập dự kiến
-    public decimal PlannedExportQty { get; set; } = 0m;    // Xuất dự kiến
-    public decimal ActualImportQty { get; set; } = 0m;     // Nhập thực tế
-    public decimal ActualExportQty { get; set; } = 0m;     // Xuất thực tế
+    public decimal PlannedImportQty { get; set; }
+    public decimal PlannedExportQty { get; set; }
+    public decimal ActualImportQty { get; set; }
+    public decimal ActualExportQty { get; set; }
+    /// <summary>Cache denormalized — nguồn sự thật: inventory_reservations (Holding).</summary>
+    public decimal ReservedQty { get; set; }
 
-    // Tính toán: actual_import - actual_export
     public decimal ActualInventoryQty => ActualImportQty - ActualExportQty;
-    // Tính toán: planned_import - planned_export
     public decimal PlannedInventoryQty => PlannedImportQty - PlannedExportQty;
+    public decimal ExpectedInventoryQty => ActualInventoryQty + PlannedInventoryQty;
 
     public Project Project { get; set; } = null!;
     public Material Material { get; set; } = null!;
+
+    public void AddPlannedImport(decimal qty)
+    {
+        if (qty < 0) throw new ArgumentOutOfRangeException(nameof(qty));
+        PlannedImportQty += qty;
+        UpdatedAt = DateTime.UtcNow;
+    }
+
+    public void RemovePlannedImport(decimal qty)
+    {
+        if (qty < 0) throw new ArgumentOutOfRangeException(nameof(qty));
+        PlannedImportQty -= qty;
+        UpdatedAt = DateTime.UtcNow;
+    }
+
+    public void AddReserved(decimal qty)
+    {
+        if (qty < 0) throw new ArgumentOutOfRangeException(nameof(qty));
+        ReservedQty += qty;
+        UpdatedAt = DateTime.UtcNow;
+    }
+
+    public void RemoveReserved(decimal qty)
+    {
+        if (qty < 0) throw new ArgumentOutOfRangeException(nameof(qty));
+        ReservedQty -= qty;
+        UpdatedAt = DateTime.UtcNow;
+    }
+
+    public void ApplyActualImport(decimal qty)
+    {
+        if (qty < 0) throw new ArgumentOutOfRangeException(nameof(qty));
+        ActualImportQty += qty;
+        UpdatedAt = DateTime.UtcNow;
+    }
+
+    public void ApplyActualExport(decimal qty)
+    {
+        if (qty < 0) throw new ArgumentOutOfRangeException(nameof(qty));
+        ActualExportQty += qty;
+        UpdatedAt = DateTime.UtcNow;
+    }
 }

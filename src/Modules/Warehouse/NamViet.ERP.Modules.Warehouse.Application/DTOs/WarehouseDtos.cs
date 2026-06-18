@@ -4,12 +4,14 @@ namespace NamViet.ERP.Modules.Warehouse.Application.DTOs;
 
 // ── Materials ─────────────────────────────────────────────────────────────
 public record MaterialDto(
-    string MaterialCode, string MaterialName, string? MaterialCategory,
-    string Unit, string? TechnicalSpec, string? QualityStandard);
+    string MaterialCode, string MaterialName, int CategoryId, string? CategoryName,
+    MaterialCategoryPathDto CategoryPath,
+    string Unit, string? TechnicalSpec, string? QualityStandard, bool IsConsumable,
+    bool IsActive);
 
 public record UpsertMaterialRequest(
-    string MaterialCode, string MaterialName, string? MaterialCategory,
-    string Unit, string? TechnicalSpec, string? QualityStandard);
+    string MaterialCode, string MaterialName, int CategoryId,
+    string Unit, string? TechnicalSpec, string? QualityStandard, bool IsConsumable = false);
 
 // ── Suppliers ─────────────────────────────────────────────────────────────
 public record SupplierDto(
@@ -50,7 +52,14 @@ public record ProjectInventoryDto(
     string ProjectCode, string MaterialCode, string MaterialName, string Unit,
     decimal PlannedImportQty, decimal PlannedExportQty,
     decimal ActualImportQty, decimal ActualExportQty,
-    decimal ActualInventoryQty, decimal PlannedInventoryQty);
+    decimal ActualInventoryQty, decimal PlannedInventoryQty,
+    decimal ReservedQty);
+
+public record MaterialCategoryDto(
+    int Id, string Code, string Name, int Level, int? ParentId, int SortOrder, bool IsActive);
+
+public record UpsertMaterialCategoryRequest(
+    string Code, string Name, int Level, int? ParentId, int SortOrder = 0, bool IsActive = true);
 
 // ── Transactions ──────────────────────────────────────────────────────────
 public record TransactionItemRequest(

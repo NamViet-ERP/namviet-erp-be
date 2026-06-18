@@ -1,0 +1,1090 @@
+[
+  {
+    "code": "CAT-B14887D27EAF",
+    "name": "Nguyên vật liệu",
+    "level": 1,
+    "parentCode": null,
+    "sortOrder": 0,
+    "isActive": true
+  },
+  {
+    "code": "CAT-B07968B76F4F",
+    "name": "Hệ thép",
+    "level": 2,
+    "parentCode": "CAT-B14887D27EAF",
+    "sortOrder": 1,
+    "isActive": true
+  },
+  {
+    "code": "CAT-F29FE3853BDE",
+    "name": "Thép tấm chịu nhiệt",
+    "level": 3,
+    "parentCode": "CAT-B07968B76F4F",
+    "sortOrder": 2,
+    "isActive": true
+  },
+  {
+    "code": "CAT-DC3CE73897FC",
+    "name": "Thép tấm thường",
+    "level": 3,
+    "parentCode": "CAT-B07968B76F4F",
+    "sortOrder": 3,
+    "isActive": true
+  },
+  {
+    "code": "CAT-B6FAA7F92218",
+    "name": "Thép ống đúc",
+    "level": 3,
+    "parentCode": "CAT-B07968B76F4F",
+    "sortOrder": 4,
+    "isActive": true
+  },
+  {
+    "code": "CAT-C90364AA151F",
+    "name": "Cán nóng",
+    "level": 4,
+    "parentCode": "CAT-B6FAA7F92218",
+    "sortOrder": 5,
+    "isActive": true
+  },
+  {
+    "code": "CAT-FFC736B52368",
+    "name": "Cán nguội",
+    "level": 4,
+    "parentCode": "CAT-B6FAA7F92218",
+    "sortOrder": 6,
+    "isActive": true
+  },
+  {
+    "code": "CAT-787376048D7E",
+    "name": "Thép ống hàn",
+    "level": 3,
+    "parentCode": "CAT-B07968B76F4F",
+    "sortOrder": 7,
+    "isActive": true
+  },
+  {
+    "code": "CAT-35AECE8B89F3",
+    "name": "Thép hình",
+    "level": 3,
+    "parentCode": "CAT-B07968B76F4F",
+    "sortOrder": 8,
+    "isActive": true
+  },
+  {
+    "code": "CAT-722536774109",
+    "name": "Hình V",
+    "level": 4,
+    "parentCode": "CAT-35AECE8B89F3",
+    "sortOrder": 9,
+    "isActive": true
+  },
+  {
+    "code": "CAT-ED8A37060671",
+    "name": "Hình U",
+    "level": 4,
+    "parentCode": "CAT-35AECE8B89F3",
+    "sortOrder": 10,
+    "isActive": true
+  },
+  {
+    "code": "CAT-134D6FFD6176",
+    "name": "Hình I",
+    "level": 4,
+    "parentCode": "CAT-35AECE8B89F3",
+    "sortOrder": 11,
+    "isActive": true
+  },
+  {
+    "code": "CAT-1FEBD3C4089B",
+    "name": "Hình H",
+    "level": 4,
+    "parentCode": "CAT-35AECE8B89F3",
+    "sortOrder": 12,
+    "isActive": true
+  },
+  {
+    "code": "CAT-B2B4D3796756",
+    "name": "Thép hộp",
+    "level": 3,
+    "parentCode": "CAT-B07968B76F4F",
+    "sortOrder": 13,
+    "isActive": true
+  },
+  {
+    "code": "CAT-9744BE1E141F",
+    "name": "Thép cuộn",
+    "level": 3,
+    "parentCode": "CAT-B07968B76F4F",
+    "sortOrder": 14,
+    "isActive": true
+  },
+  {
+    "code": "CAT-1867CFA07F08",
+    "name": "Hộp vuông",
+    "level": 4,
+    "parentCode": "CAT-9744BE1E141F",
+    "sortOrder": 15,
+    "isActive": true
+  },
+  {
+    "code": "CAT-93AD77A2A26B",
+    "name": "Hộp chữ nhật",
+    "level": 4,
+    "parentCode": "CAT-9744BE1E141F",
+    "sortOrder": 16,
+    "isActive": true
+  },
+  {
+    "code": "CAT-EB5A8DFF5455",
+    "name": "Lưới thép",
+    "level": 3,
+    "parentCode": "CAT-B07968B76F4F",
+    "sortOrder": 17,
+    "isActive": true
+  },
+  {
+    "code": "CAT-EBAF0680E36C",
+    "name": "Hệ inox",
+    "level": 2,
+    "parentCode": "CAT-B14887D27EAF",
+    "sortOrder": 18,
+    "isActive": true
+  },
+  {
+    "code": "CAT-DA09EA3E8793",
+    "name": "Inox tấm",
+    "level": 3,
+    "parentCode": "CAT-EBAF0680E36C",
+    "sortOrder": 19,
+    "isActive": true
+  },
+  {
+    "code": "CAT-EB1294BE84B6",
+    "name": "Inox 304",
+    "level": 4,
+    "parentCode": "CAT-DA09EA3E8793",
+    "sortOrder": 20,
+    "isActive": true
+  },
+  {
+    "code": "CAT-6E4454A1B693",
+    "name": "2B",
+    "level": 5,
+    "parentCode": "CAT-EB1294BE84B6",
+    "sortOrder": 21,
+    "isActive": true
+  },
+  {
+    "code": "CAT-352BDCDC350A",
+    "name": "No1",
+    "level": 5,
+    "parentCode": "CAT-EB1294BE84B6",
+    "sortOrder": 22,
+    "isActive": true
+  },
+  {
+    "code": "CAT-F48D0A4E5518",
+    "name": "Inox 201",
+    "level": 4,
+    "parentCode": "CAT-DA09EA3E8793",
+    "sortOrder": 23,
+    "isActive": true
+  },
+  {
+    "code": "CAT-A32D71E67059",
+    "name": "BA",
+    "level": 5,
+    "parentCode": "CAT-F48D0A4E5518",
+    "sortOrder": 24,
+    "isActive": true
+  },
+  {
+    "code": "CAT-220326717D1B",
+    "name": "Inox hình",
+    "level": 3,
+    "parentCode": "CAT-EBAF0680E36C",
+    "sortOrder": 25,
+    "isActive": true
+  },
+  {
+    "code": "CAT-4C539EF2CB8D",
+    "name": "Hình V",
+    "level": 4,
+    "parentCode": "CAT-220326717D1B",
+    "sortOrder": 26,
+    "isActive": true
+  },
+  {
+    "code": "CAT-8E6E882E5D8A",
+    "name": "Hình U",
+    "level": 4,
+    "parentCode": "CAT-220326717D1B",
+    "sortOrder": 27,
+    "isActive": true
+  },
+  {
+    "code": "CAT-F0A16BCCBE3C",
+    "name": "Hình I",
+    "level": 4,
+    "parentCode": "CAT-220326717D1B",
+    "sortOrder": 28,
+    "isActive": true
+  },
+  {
+    "code": "CAT-2916582B2FB6",
+    "name": "Hình H",
+    "level": 4,
+    "parentCode": "CAT-220326717D1B",
+    "sortOrder": 29,
+    "isActive": true
+  },
+  {
+    "code": "CAT-1C1D92DE81AC",
+    "name": "Láp inox",
+    "level": 3,
+    "parentCode": "CAT-EBAF0680E36C",
+    "sortOrder": 30,
+    "isActive": true
+  },
+  {
+    "code": "CAT-8881984856EE",
+    "name": "Phụ kiện",
+    "level": 1,
+    "parentCode": null,
+    "sortOrder": 31,
+    "isActive": true
+  },
+  {
+    "code": "CAT-11C6F80B6F15",
+    "name": "Phụ kiện lắp đặt",
+    "level": 2,
+    "parentCode": "CAT-8881984856EE",
+    "sortOrder": 32,
+    "isActive": true
+  },
+  {
+    "code": "CAT-7F565B9CC8B0",
+    "name": "Co",
+    "level": 3,
+    "parentCode": "CAT-11C6F80B6F15",
+    "sortOrder": 33,
+    "isActive": true
+  },
+  {
+    "code": "CAT-95146559EDEA",
+    "name": "Đúc",
+    "level": 4,
+    "parentCode": "CAT-7F565B9CC8B0",
+    "sortOrder": 34,
+    "isActive": true
+  },
+  {
+    "code": "CAT-C42BF5DA3F66",
+    "name": "Co 45",
+    "level": 5,
+    "parentCode": "CAT-95146559EDEA",
+    "sortOrder": 35,
+    "isActive": true
+  },
+  {
+    "code": "CAT-EB76839F495E",
+    "name": "Co 90",
+    "level": 5,
+    "parentCode": "CAT-95146559EDEA",
+    "sortOrder": 36,
+    "isActive": true
+  },
+  {
+    "code": "CAT-6A6A15E92BA9",
+    "name": "Co 180",
+    "level": 5,
+    "parentCode": "CAT-95146559EDEA",
+    "sortOrder": 37,
+    "isActive": true
+  },
+  {
+    "code": "CAT-B16F21872681",
+    "name": "Hàn",
+    "level": 4,
+    "parentCode": "CAT-7F565B9CC8B0",
+    "sortOrder": 38,
+    "isActive": true
+  },
+  {
+    "code": "CAT-EFA45F98552C",
+    "name": "Co 45",
+    "level": 5,
+    "parentCode": "CAT-B16F21872681",
+    "sortOrder": 39,
+    "isActive": true
+  },
+  {
+    "code": "CAT-4185FDA33E41",
+    "name": "Co 90",
+    "level": 5,
+    "parentCode": "CAT-B16F21872681",
+    "sortOrder": 40,
+    "isActive": true
+  },
+  {
+    "code": "CAT-67B12E22FE79",
+    "name": "Co 180",
+    "level": 5,
+    "parentCode": "CAT-B16F21872681",
+    "sortOrder": 41,
+    "isActive": true
+  },
+  {
+    "code": "CAT-8580CF724AFA",
+    "name": "Tê",
+    "level": 3,
+    "parentCode": "CAT-11C6F80B6F15",
+    "sortOrder": 42,
+    "isActive": true
+  },
+  {
+    "code": "CAT-1B25E1367869",
+    "name": "Đúc",
+    "level": 4,
+    "parentCode": "CAT-8580CF724AFA",
+    "sortOrder": 43,
+    "isActive": true
+  },
+  {
+    "code": "CAT-05D87267C853",
+    "name": "Hàn",
+    "level": 4,
+    "parentCode": "CAT-8580CF724AFA",
+    "sortOrder": 44,
+    "isActive": true
+  },
+  {
+    "code": "CAT-E524EA3120AC",
+    "name": "Giảm",
+    "level": 3,
+    "parentCode": "CAT-11C6F80B6F15",
+    "sortOrder": 45,
+    "isActive": true
+  },
+  {
+    "code": "CAT-1006ADD4C677",
+    "name": "Đúc",
+    "level": 4,
+    "parentCode": "CAT-E524EA3120AC",
+    "sortOrder": 46,
+    "isActive": true
+  },
+  {
+    "code": "CAT-4FC38A449FB9",
+    "name": "Thường",
+    "level": 5,
+    "parentCode": "CAT-1006ADD4C677",
+    "sortOrder": 47,
+    "isActive": true
+  },
+  {
+    "code": "CAT-EBFFE1588D56",
+    "name": "Lệch tâm",
+    "level": 5,
+    "parentCode": "CAT-1006ADD4C677",
+    "sortOrder": 48,
+    "isActive": true
+  },
+  {
+    "code": "CAT-F8136B7B7C45",
+    "name": "Hàn",
+    "level": 4,
+    "parentCode": "CAT-E524EA3120AC",
+    "sortOrder": 49,
+    "isActive": true
+  },
+  {
+    "code": "CAT-E80AC6650F28",
+    "name": "Thường",
+    "level": 5,
+    "parentCode": "CAT-F8136B7B7C45",
+    "sortOrder": 50,
+    "isActive": true
+  },
+  {
+    "code": "CAT-8B0E46E62EAB",
+    "name": "Lệch tâm",
+    "level": 5,
+    "parentCode": "CAT-F8136B7B7C45",
+    "sortOrder": 51,
+    "isActive": true
+  },
+  {
+    "code": "CAT-93924255218C",
+    "name": "Mặt bích",
+    "level": 3,
+    "parentCode": "CAT-11C6F80B6F15",
+    "sortOrder": 52,
+    "isActive": true
+  },
+  {
+    "code": "CAT-254DDC993E3B",
+    "name": "Bích rỗng",
+    "level": 4,
+    "parentCode": "CAT-93924255218C",
+    "sortOrder": 53,
+    "isActive": true
+  },
+  {
+    "code": "CAT-37847B1E8349",
+    "name": "Bích mù",
+    "level": 4,
+    "parentCode": "CAT-93924255218C",
+    "sortOrder": 54,
+    "isActive": true
+  },
+  {
+    "code": "CAT-AF3C8C31CAB0",
+    "name": "Ống đúc hai đầu ren",
+    "level": 3,
+    "parentCode": "CAT-11C6F80B6F15",
+    "sortOrder": 55,
+    "isActive": true
+  },
+  {
+    "code": "CAT-A08B57D70D0C",
+    "name": "Ống măng xông",
+    "level": 3,
+    "parentCode": "CAT-11C6F80B6F15",
+    "sortOrder": 56,
+    "isActive": true
+  },
+  {
+    "code": "CAT-88306221F885",
+    "name": "Thép",
+    "level": 4,
+    "parentCode": "CAT-A08B57D70D0C",
+    "sortOrder": 57,
+    "isActive": true
+  },
+  {
+    "code": "CAT-5F37B8DDEE89",
+    "name": "Inox",
+    "level": 4,
+    "parentCode": "CAT-A08B57D70D0C",
+    "sortOrder": 58,
+    "isActive": true
+  },
+  {
+    "code": "CAT-55E59728278C",
+    "name": "Rắc co hơi",
+    "level": 3,
+    "parentCode": "CAT-11C6F80B6F15",
+    "sortOrder": 59,
+    "isActive": true
+  },
+  {
+    "code": "CAT-5AC689688C44",
+    "name": "Van kính thủy bồn nước\nren đồng \nLắp ống thủy Ø20",
+    "level": 3,
+    "parentCode": "CAT-11C6F80B6F15",
+    "sortOrder": 60,
+    "isActive": true
+  },
+  {
+    "code": "CAT-4EA8472075C7",
+    "name": "Ống thủy tinh",
+    "level": 3,
+    "parentCode": "CAT-11C6F80B6F15",
+    "sortOrder": 61,
+    "isActive": true
+  },
+  {
+    "code": "CAT-084825BA6BB4",
+    "name": "Béc phun nước inox",
+    "level": 3,
+    "parentCode": "CAT-11C6F80B6F15",
+    "sortOrder": 62,
+    "isActive": true
+  },
+  {
+    "code": "CAT-23567EFF4979",
+    "name": "Ống xiphong",
+    "level": 3,
+    "parentCode": "CAT-11C6F80B6F15",
+    "sortOrder": 63,
+    "isActive": true
+  },
+  {
+    "code": "CAT-9DD96328857A",
+    "name": "Phụ kiện chống sét",
+    "level": 2,
+    "parentCode": "CAT-8881984856EE",
+    "sortOrder": 64,
+    "isActive": true
+  },
+  {
+    "code": "CAT-8FE6376C37BB",
+    "name": "Cọc thu lôi",
+    "level": 3,
+    "parentCode": "CAT-9DD96328857A",
+    "sortOrder": 65,
+    "isActive": true
+  },
+  {
+    "code": "CAT-6B77A1A8C861",
+    "name": "Cọc tiếp địa",
+    "level": 3,
+    "parentCode": "CAT-9DD96328857A",
+    "sortOrder": 66,
+    "isActive": true
+  },
+  {
+    "code": "CAT-86D5595C4ACD",
+    "name": "Dây thu lôi",
+    "level": 3,
+    "parentCode": "CAT-9DD96328857A",
+    "sortOrder": 67,
+    "isActive": true
+  },
+  {
+    "code": "CAT-8E05A0C8BAC3",
+    "name": "Ốc siết cáp dây thu lôi",
+    "level": 3,
+    "parentCode": "CAT-9DD96328857A",
+    "sortOrder": 68,
+    "isActive": true
+  },
+  {
+    "code": "CAT-44468ED09104",
+    "name": "Dây cáp thép bọc nhựa",
+    "level": 3,
+    "parentCode": "CAT-9DD96328857A",
+    "sortOrder": 69,
+    "isActive": true
+  },
+  {
+    "code": "CAT-0828C5350B93",
+    "name": "Ốc siết cáp",
+    "level": 3,
+    "parentCode": "CAT-9DD96328857A",
+    "sortOrder": 70,
+    "isActive": true
+  },
+  {
+    "code": "CAT-C224BC892F13",
+    "name": "Tăng đơ thép",
+    "level": 3,
+    "parentCode": "CAT-9DD96328857A",
+    "sortOrder": 71,
+    "isActive": true
+  },
+  {
+    "code": "CAT-235944ED2D3A",
+    "name": "Qủa sứ",
+    "level": 3,
+    "parentCode": "CAT-9DD96328857A",
+    "sortOrder": 72,
+    "isActive": true
+  },
+  {
+    "code": "CAT-D6871AED326B",
+    "name": "Cùm chữ U",
+    "level": 3,
+    "parentCode": "CAT-9DD96328857A",
+    "sortOrder": 73,
+    "isActive": true
+  },
+  {
+    "code": "CAT-0925732B4D5E",
+    "name": "Phụ kiện đo",
+    "level": 2,
+    "parentCode": "CAT-8881984856EE",
+    "sortOrder": 74,
+    "isActive": true
+  },
+  {
+    "code": "CAT-868E0C61B68C",
+    "name": "Đồng hồ nhiệt độ",
+    "level": 3,
+    "parentCode": "CAT-0925732B4D5E",
+    "sortOrder": 75,
+    "isActive": true
+  },
+  {
+    "code": "CAT-FB7A82AF7028",
+    "name": "Đồng hồ áp suất",
+    "level": 3,
+    "parentCode": "CAT-0925732B4D5E",
+    "sortOrder": 76,
+    "isActive": true
+  },
+  {
+    "code": "CAT-7FE0F168DC11",
+    "name": "Phụ kiện cố định",
+    "level": 2,
+    "parentCode": "CAT-8881984856EE",
+    "sortOrder": 77,
+    "isActive": true
+  },
+  {
+    "code": "CAT-CFFBDB48F760",
+    "name": "Bulong thường",
+    "level": 3,
+    "parentCode": "CAT-7FE0F168DC11",
+    "sortOrder": 78,
+    "isActive": true
+  },
+  {
+    "code": "CAT-8FA5852AD22B",
+    "name": "Bulong neo",
+    "level": 3,
+    "parentCode": "CAT-7FE0F168DC11",
+    "sortOrder": 79,
+    "isActive": true
+  },
+  {
+    "code": "CAT-CB39B0425853",
+    "name": "Phụ kiện khác",
+    "level": 2,
+    "parentCode": "CAT-8881984856EE",
+    "sortOrder": 80,
+    "isActive": true
+  },
+  {
+    "code": "CAT-0BE6FDCA382C",
+    "name": "Cửa gang đúc",
+    "level": 3,
+    "parentCode": "CAT-CB39B0425853",
+    "sortOrder": 81,
+    "isActive": true
+  },
+  {
+    "code": "CAT-FB85E321ECAF",
+    "name": "Cửa người chui",
+    "level": 3,
+    "parentCode": "CAT-CB39B0425853",
+    "sortOrder": 82,
+    "isActive": true
+  },
+  {
+    "code": "CAT-8388420B63BF",
+    "name": "Nấm ghi gang đúc",
+    "level": 3,
+    "parentCode": "CAT-CB39B0425853",
+    "sortOrder": 83,
+    "isActive": true
+  },
+  {
+    "code": "CAT-8088FD32AA09",
+    "name": "Thiết bị công nghiệp",
+    "level": 1,
+    "parentCode": null,
+    "sortOrder": 84,
+    "isActive": true
+  },
+  {
+    "code": "CAT-CA49A32427D5",
+    "name": "Van",
+    "level": 2,
+    "parentCode": "CAT-8088FD32AA09",
+    "sortOrder": 85,
+    "isActive": true
+  },
+  {
+    "code": "CAT-ED49F8513660",
+    "name": "Van cầu",
+    "level": 3,
+    "parentCode": "CAT-CA49A32427D5",
+    "sortOrder": 86,
+    "isActive": true
+  },
+  {
+    "code": "CAT-0934B74ACF20",
+    "name": "Van an toàn",
+    "level": 3,
+    "parentCode": "CAT-CA49A32427D5",
+    "sortOrder": 87,
+    "isActive": true
+  },
+  {
+    "code": "CAT-AF695E6B0BF9",
+    "name": "Proportional",
+    "level": 4,
+    "parentCode": "CAT-0934B74ACF20",
+    "sortOrder": 88,
+    "isActive": true
+  },
+  {
+    "code": "CAT-4136A39D3981",
+    "name": "Full Lift",
+    "level": 4,
+    "parentCode": "CAT-0934B74ACF20",
+    "sortOrder": 89,
+    "isActive": true
+  },
+  {
+    "code": "CAT-424919C1D9C2",
+    "name": "Van bi tay gạt mặt bích",
+    "level": 3,
+    "parentCode": "CAT-CA49A32427D5",
+    "sortOrder": 90,
+    "isActive": true
+  },
+  {
+    "code": "CAT-B9143EAE64D5",
+    "name": "Van 1 chiều đĩa",
+    "level": 3,
+    "parentCode": "CAT-CA49A32427D5",
+    "sortOrder": 91,
+    "isActive": true
+  },
+  {
+    "code": "CAT-96F01C55AB46",
+    "name": "Van cầu ren gang",
+    "level": 3,
+    "parentCode": "CAT-CA49A32427D5",
+    "sortOrder": 92,
+    "isActive": true
+  },
+  {
+    "code": "CAT-5BC33C4614E9",
+    "name": "Lọc y",
+    "level": 2,
+    "parentCode": "CAT-8088FD32AA09",
+    "sortOrder": 93,
+    "isActive": true
+  },
+  {
+    "code": "CAT-5117DE574163",
+    "name": "Hơi",
+    "level": 3,
+    "parentCode": "CAT-5BC33C4614E9",
+    "sortOrder": 94,
+    "isActive": true
+  },
+  {
+    "code": "CAT-BC907EE95D5C",
+    "name": "Nước",
+    "level": 3,
+    "parentCode": "CAT-5BC33C4614E9",
+    "sortOrder": 95,
+    "isActive": true
+  },
+  {
+    "code": "CAT-DDDF37D1D5CA",
+    "name": "Kính thuy sáng",
+    "level": 2,
+    "parentCode": "CAT-8088FD32AA09",
+    "sortOrder": 96,
+    "isActive": true
+  },
+  {
+    "code": "CAT-72D2101F7512",
+    "name": "Cơ",
+    "level": 3,
+    "parentCode": "CAT-DDDF37D1D5CA",
+    "sortOrder": 97,
+    "isActive": true
+  },
+  {
+    "code": "CAT-091F41E352BC",
+    "name": "LED",
+    "level": 3,
+    "parentCode": "CAT-DDDF37D1D5CA",
+    "sortOrder": 98,
+    "isActive": true
+  },
+  {
+    "code": "CAT-6F3924E46A39",
+    "name": "Bẫy hơi",
+    "level": 2,
+    "parentCode": "CAT-8088FD32AA09",
+    "sortOrder": 99,
+    "isActive": true
+  },
+  {
+    "code": "CAT-F2BFE2C119A4",
+    "name": "Bẫy nhiệt động",
+    "level": 3,
+    "parentCode": "CAT-6F3924E46A39",
+    "sortOrder": 100,
+    "isActive": true
+  },
+  {
+    "code": "CAT-94425F632171",
+    "name": "Bẫy đồng tiền",
+    "level": 3,
+    "parentCode": "CAT-6F3924E46A39",
+    "sortOrder": 101,
+    "isActive": true
+  },
+  {
+    "code": "CAT-D5CA6B7FEA0D",
+    "name": "Đồng hồ",
+    "level": 2,
+    "parentCode": "CAT-8088FD32AA09",
+    "sortOrder": 102,
+    "isActive": true
+  },
+  {
+    "code": "CAT-8918D83E8817",
+    "name": "Điện tử",
+    "level": 3,
+    "parentCode": "CAT-D5CA6B7FEA0D",
+    "sortOrder": 103,
+    "isActive": true
+  },
+  {
+    "code": "CAT-934424CFC0EA",
+    "name": "Đồng hồ lưu lượng hơi",
+    "level": 4,
+    "parentCode": "CAT-8918D83E8817",
+    "sortOrder": 104,
+    "isActive": true
+  },
+  {
+    "code": "CAT-7BCB1907A5AA",
+    "name": "Đồng hồ lưu lượng nước",
+    "level": 4,
+    "parentCode": "CAT-8918D83E8817",
+    "sortOrder": 105,
+    "isActive": true
+  },
+  {
+    "code": "CAT-0206B3F2C922",
+    "name": "Cơ",
+    "level": 3,
+    "parentCode": "CAT-D5CA6B7FEA0D",
+    "sortOrder": 106,
+    "isActive": true
+  },
+  {
+    "code": "CAT-E7F9979EF872",
+    "name": "Đồng hồ nước nóng",
+    "level": 4,
+    "parentCode": "CAT-0206B3F2C922",
+    "sortOrder": 107,
+    "isActive": true
+  },
+  {
+    "code": "CAT-13012E84F574",
+    "name": "Đồng hồ nước lạnh",
+    "level": 4,
+    "parentCode": "CAT-0206B3F2C922",
+    "sortOrder": 108,
+    "isActive": true
+  },
+  {
+    "code": "CAT-B2D8ACC7FD99",
+    "name": "Thiết bị động cơ",
+    "level": 1,
+    "parentCode": null,
+    "sortOrder": 109,
+    "isActive": true
+  },
+  {
+    "code": "CAT-45072A34FC9A",
+    "name": "Đầu đốt",
+    "level": 2,
+    "parentCode": "CAT-B2D8ACC7FD99",
+    "sortOrder": 110,
+    "isActive": true
+  },
+  {
+    "code": "CAT-1ABAA7CF99F5",
+    "name": "Nhiên liệu gas",
+    "level": 3,
+    "parentCode": "CAT-45072A34FC9A",
+    "sortOrder": 111,
+    "isActive": true
+  },
+  {
+    "code": "CAT-EA833F17EBB0",
+    "name": "Nhiên liệu dầu",
+    "level": 3,
+    "parentCode": "CAT-45072A34FC9A",
+    "sortOrder": 112,
+    "isActive": true
+  },
+  {
+    "code": "CAT-B11049FEF033",
+    "name": "Băng tải",
+    "level": 2,
+    "parentCode": "CAT-B2D8ACC7FD99",
+    "sortOrder": 113,
+    "isActive": true
+  },
+  {
+    "code": "CAT-5FA054420F97",
+    "name": "Quạt",
+    "level": 2,
+    "parentCode": "CAT-B2D8ACC7FD99",
+    "sortOrder": 114,
+    "isActive": true
+  },
+  {
+    "code": "CAT-BEC21A3AEEC6",
+    "name": "Hút",
+    "level": 3,
+    "parentCode": "CAT-5FA054420F97",
+    "sortOrder": 115,
+    "isActive": true
+  },
+  {
+    "code": "CAT-21CA4A691A9D",
+    "name": "Thổi",
+    "level": 3,
+    "parentCode": "CAT-5FA054420F97",
+    "sortOrder": 116,
+    "isActive": true
+  },
+  {
+    "code": "CAT-89601CAB15C2",
+    "name": "Động cơ giảm tốc",
+    "level": 2,
+    "parentCode": "CAT-B2D8ACC7FD99",
+    "sortOrder": 117,
+    "isActive": true
+  },
+  {
+    "code": "CAT-98D9FA7A97F2",
+    "name": "Có thắng",
+    "level": 3,
+    "parentCode": "CAT-89601CAB15C2",
+    "sortOrder": 118,
+    "isActive": true
+  },
+  {
+    "code": "CAT-B6B794A10D6C",
+    "name": "Không thắng",
+    "level": 3,
+    "parentCode": "CAT-89601CAB15C2",
+    "sortOrder": 119,
+    "isActive": true
+  },
+  {
+    "code": "CAT-0501FD68D3AD",
+    "name": "Bơm",
+    "level": 2,
+    "parentCode": "CAT-B2D8ACC7FD99",
+    "sortOrder": 120,
+    "isActive": true
+  },
+  {
+    "code": "CAT-436E10B686C7",
+    "name": "Trục đứng",
+    "level": 3,
+    "parentCode": "CAT-0501FD68D3AD",
+    "sortOrder": 121,
+    "isActive": true
+  },
+  {
+    "code": "CAT-D478377DB618",
+    "name": "Trục ngang",
+    "level": 3,
+    "parentCode": "CAT-0501FD68D3AD",
+    "sortOrder": 122,
+    "isActive": true
+  },
+  {
+    "code": "CAT-76C74A2BED9D",
+    "name": "Palang",
+    "level": 2,
+    "parentCode": "CAT-B2D8ACC7FD99",
+    "sortOrder": 123,
+    "isActive": true
+  },
+  {
+    "code": "CAT-2913BC91EA96",
+    "name": "Kéo tay",
+    "level": 3,
+    "parentCode": "CAT-76C74A2BED9D",
+    "sortOrder": 124,
+    "isActive": true
+  },
+  {
+    "code": "CAT-B5356BE4A3B2",
+    "name": "Tự động",
+    "level": 3,
+    "parentCode": "CAT-76C74A2BED9D",
+    "sortOrder": 125,
+    "isActive": true
+  },
+  {
+    "code": "CAT-3BF4BA205BF9",
+    "name": "Vật tư bảo ôn",
+    "level": 1,
+    "parentCode": null,
+    "sortOrder": 126,
+    "isActive": true
+  },
+  {
+    "code": "CAT-73C602653998",
+    "name": "Bông ống",
+    "level": 2,
+    "parentCode": "CAT-3BF4BA205BF9",
+    "sortOrder": 127,
+    "isActive": true
+  },
+  {
+    "code": "CAT-00E684D78F32",
+    "name": "Có bạc",
+    "level": 3,
+    "parentCode": "CAT-73C602653998",
+    "sortOrder": 128,
+    "isActive": true
+  },
+  {
+    "code": "CAT-1A15463CE517",
+    "name": "Không bạc",
+    "level": 3,
+    "parentCode": "CAT-73C602653998",
+    "sortOrder": 129,
+    "isActive": true
+  },
+  {
+    "code": "CAT-88DBDF7C4CB8",
+    "name": "Bông cuộn Ceramic",
+    "level": 2,
+    "parentCode": "CAT-3BF4BA205BF9",
+    "sortOrder": 130,
+    "isActive": true
+  },
+  {
+    "code": "CAT-7043555E486D",
+    "name": "Bông tấm",
+    "level": 2,
+    "parentCode": "CAT-3BF4BA205BF9",
+    "sortOrder": 131,
+    "isActive": true
+  },
+  {
+    "code": "CAT-2A9ACA0EB057",
+    "name": "Kim loại",
+    "level": 2,
+    "parentCode": "CAT-3BF4BA205BF9",
+    "sortOrder": 132,
+    "isActive": true
+  },
+  {
+    "code": "CAT-EA4BD9216EEB",
+    "name": "Inox",
+    "level": 3,
+    "parentCode": "CAT-2A9ACA0EB057",
+    "sortOrder": 133,
+    "isActive": true
+  },
+  {
+    "code": "CAT-699747300DF5",
+    "name": "Tôn mạ màu",
+    "level": 3,
+    "parentCode": "CAT-2A9ACA0EB057",
+    "sortOrder": 134,
+    "isActive": true
+  },
+  {
+    "code": "CAT-C92720EF8FDD",
+    "name": "Vật tư phụ",
+    "level": 1,
+    "parentCode": null,
+    "sortOrder": 135,
+    "isActive": true
+  }
+]

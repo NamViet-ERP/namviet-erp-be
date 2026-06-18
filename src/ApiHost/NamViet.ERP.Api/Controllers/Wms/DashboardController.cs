@@ -58,9 +58,13 @@ public class DashboardController(WarehouseDbContext db) : ControllerBase
     [HttpGet("stock-by-category")]
     public async Task<ActionResult<List<DashboardCategoryDto>>> StockByCategory(CancellationToken ct)
     {
-        var materials = await db.Materials.Where(m => m.DeletedAt == null).ToListAsync(ct);
-        return Ok(materials.GroupBy(m => m.MaterialCategory ?? "Khác")
-            .Select(g => new DashboardCategoryDto(g.Key!, g.Count())).ToList());
+        var rows = await db.Materials
+            .Include(m => m.Category)
+            .Where(m => m.DeletedAt == null)
+            .GroupBy(m => m.Category.Name)
+            .Select(g => new DashboardCategoryDto(g.Key, g.Count()))
+            .ToListAsync(ct);
+        return Ok(rows);
     }
 
     [HttpGet("activity-feed")]

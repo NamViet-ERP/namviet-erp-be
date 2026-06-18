@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using NamViet.ERP.Modules.Warehouse.Application.DTOs;
+using NamViet.ERP.Modules.Warehouse.Infrastructure.Helpers;
 using NamViet.ERP.Modules.Warehouse.Application.Transactions;
 using NamViet.ERP.Modules.Warehouse.Domain.Enums;
 using NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence;
@@ -46,8 +47,8 @@ public class TransactionsController(WarehouseDbContext db, IMediator mediator) :
             t.CreatedByName, t.ApprovalStatus.ToString(),
             t.ApprovedByName, t.ApprovedAt, t.Notes, t.CreatedAt,
             t.Items.Select(i => new TransactionItemDto(
-                i.Id, i.MaterialCode, i.Material?.MaterialName ?? i.MaterialCode,
-                i.Quantity, i.Material?.Unit ?? "", i.UnitPrice, i.TotalAmount,
+                i.Id, i.MaterialCode, TransactionItemHelper.ResolveName(i),
+                i.Quantity, TransactionItemHelper.ResolveUnit(i), i.UnitPrice, i.TotalAmount,
                 i.ConstructionPhase, i.Notes)).ToList())).ToList();
 
         return Ok(PagedResult<TransactionDto>.Create(dtos, total, page, pageSize));
@@ -69,8 +70,8 @@ public class TransactionsController(WarehouseDbContext db, IMediator mediator) :
             t.CreatedByName, t.ApprovalStatus.ToString(),
             t.ApprovedByName, t.ApprovedAt, t.Notes, t.CreatedAt,
             t.Items.Select(i => new TransactionItemDto(
-                i.Id, i.MaterialCode, i.Material?.MaterialName ?? i.MaterialCode,
-                i.Quantity, i.Material?.Unit ?? "", i.UnitPrice, i.TotalAmount,
+                i.Id, i.MaterialCode, TransactionItemHelper.ResolveName(i),
+                i.Quantity, TransactionItemHelper.ResolveUnit(i), i.UnitPrice, i.TotalAmount,
                 i.ConstructionPhase, i.Notes)).ToList()));
     }
 

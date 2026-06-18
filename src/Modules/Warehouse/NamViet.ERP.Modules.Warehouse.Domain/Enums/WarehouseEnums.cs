@@ -32,8 +32,9 @@ public enum TransactionType
 
 public enum ApprovalStatus
 {
-    Pending,    // Chờ duyệt
-    Approved,   // Đã duyệt
+    Draft,      // Nháp — tạo reservation, chưa gửi duyệt
+    Pending,    // Chờ duyệt (Thủ kho)
+    Approved,   // Đã duyệt — khóa chỉnh sửa
     Rejected    // Từ chối
 }
 
