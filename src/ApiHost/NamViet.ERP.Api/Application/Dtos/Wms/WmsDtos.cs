@@ -20,7 +20,7 @@ public record ImportItemDto(
 public record ImportDto(
     string Id, string VoucherCode, string Date, string Supplier, string ReferenceCode,
     decimal TotalValue, string Status, string WarehouseApproval, string ApprovedBy,
-    string WarehouseKeeper, List<ImportItemDto> Items, string CreatedBy, string Note,
+    string? ApprovedAt, string WarehouseKeeper, List<ImportItemDto> Items, string CreatedBy, string Note,
     string WarehouseId, bool? IsDirectProcurement, string? Project);
 public record CreateImportDto(
     string VoucherCode, string Date, string Supplier, string ReferenceCode,
@@ -32,7 +32,8 @@ public record ExportItemDto(string ProductId, string Sku, string Name, decimal Q
 public record ExportDto(
     string Id, string VoucherCode, string Date, string SoCode, string Customer,
     string WarehouseId, string WarehouseName, List<ExportItemDto> Items,
-    string Status, string CreatedBy, string Note, string? Project, string? ProjectName);
+    string Status, string CreatedBy, string Note, string? ApprovedBy, string? ApprovedAt,
+    string? Project, string? ProjectName);
 public record CreateExportDto(
     string VoucherCode, string Date, string SoCode, string Customer,
     string WarehouseId, List<ExportItemDto> Items,
@@ -43,7 +44,7 @@ public record TransferItemDto(
 public record TransferDto(
     string Id, string VoucherCode, string Date, string FromWarehouseId, string FromWarehouseName,
     string ToWarehouseId, string ToWarehouseName, List<TransferItemDto> Items,
-    string Status, string CreatedBy, string Note, string? ApprovedBy,
+    string Status, string CreatedBy, string Note, string? ApprovedBy, string? ApprovedAt,
     string? Project, string? ProjectName, string? ToProject, string? ToProjectName);
 public record CreateTransferDto(
     string VoucherCode, string Date, string FromWarehouseId, string ToWarehouseId,
@@ -72,7 +73,7 @@ public record UpdateMemberDto(
     string? Code, string? Name, string? Role, string? RoleLabel,
     string? Email, string? Phone, string? Status, string? JoinedDate, string? Password);
 
-public record ProjectDto(string Id, string Name, string Stage, string Pm);
+public record WmsLegacyProjectDto(string Id, string Name, string Stage, string Pm);
 public record ConsumableQuotaDto(string ProjectId, string ProductId, decimal QuotaQty, decimal IssuedQty);
 public record ProjectStockCellDto(
     string ProductId, string ProjectId, decimal OpeningQty,

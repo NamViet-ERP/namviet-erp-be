@@ -13,7 +13,7 @@ namespace NamViet.ERP.Api.Controllers.Wms;
 [ApiController]
 [Route("api/products")]
 [Authorize]
-public class ProductsController(WarehouseDbContext db) : ControllerBase
+public class ProductsController(WarehouseDbContext db, IWmsCatalogQueryService catalog) : ControllerBase
 {
     [HttpGet]
     public async Task<ActionResult<List<ProductDto>>> List(CancellationToken ct)
@@ -25,7 +25,7 @@ public class ProductsController(WarehouseDbContext db) : ControllerBase
         var result = new List<ProductDto>();
         foreach (var m in materials)
         {
-            var price = await WmsInventoryHelper.GetLatestPriceAsync(db, m.MaterialCode, ct);
+            var price = await catalog.GetLatestPriceAsync(m.MaterialCode, ct);
             result.Add(WmsMapper.ToProduct(m, price));
         }
         return Ok(result);
@@ -38,7 +38,7 @@ public class ProductsController(WarehouseDbContext db) : ControllerBase
             .Include(x => x.Category)
             .FirstOrDefaultAsync(x => x.MaterialCode == id && x.DeletedAt == null, ct);
         if (m is null) return NotFound();
-        var price = await WmsInventoryHelper.GetLatestPriceAsync(db, m.MaterialCode, ct);
+        var price = await catalog.GetLatestPriceAsync(m.MaterialCode, ct);
         return Ok(WmsMapper.ToProduct(m, price));
     }
 
@@ -89,7 +89,7 @@ public class ProductsController(WarehouseDbContext db) : ControllerBase
         m.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
         await db.Entry(m).Reference(x => x.Category).LoadAsync(ct);
-        var price = await WmsInventoryHelper.GetLatestPriceAsync(db, m.MaterialCode, ct);
+        var price = await catalog.GetLatestPriceAsync(m.MaterialCode, ct);
         return Ok(WmsMapper.ToProduct(m, price));
     }
 

@@ -59,7 +59,7 @@ public static class WmsMapper
         _ => role
     };
 
-    public static string ToIdentityRole(string feRole) => feRole.ToLowerInvariant() switch
+    public static string ToIdentityRole(string clientRole) => clientRole.ToLowerInvariant() switch
     {
         "admin" => "Admin",
         "storekeeper" => "Warehouse_Keeper",
@@ -67,12 +67,15 @@ public static class WmsMapper
         "procurement" => "Procurement",
         "pm" => "PM",
         "hr" => "HR",
-        _ => feRole
+        _ => clientRole
     };
 
     public static string FormatDate(DateTime dt) => dt.ToString("dd/MM/yyyy");
 
     public static string FormatDate(DateOnly d) => d.ToString("dd/MM/yyyy");
+
+    public static string? FormatApprovedAt(DateTime? value) =>
+        value.HasValue ? value.Value.ToString("o") : null;
 
     public static DateOnly ParseClientDate(string? value) =>
         DateOnly.TryParseExact(value, "dd/MM/yyyy", out var d) ? d
@@ -99,7 +102,7 @@ public static class WmsMapper
             t.ReferenceCode ?? t.InvoiceNumber ?? "", total,
             ToClientApprovalStatus(t.ApprovalStatus),
             ToClientKeeperApprovalStatus(t.WarehouseApprovalStatus),
-            t.ApprovedByName ?? "", t.WarehouseKeeper ?? "",
+            t.ApprovedByName ?? "", FormatApprovedAt(t.ApprovedAt), t.WarehouseKeeper ?? "",
             items, t.CreatedByName, t.Notes ?? "",
             t.WarehouseId ?? "", t.IsDirectProcurement,
             t.BeneficiaryProjectCode);
@@ -115,7 +118,7 @@ public static class WmsMapper
                 TransactionItemHelper.ResolveName(i),
                 i.Quantity, TransactionItemHelper.ResolveUnit(i))).ToList(),
             ToClientApprovalStatus(t.ApprovalStatus),
-            t.CreatedByName, t.Notes ?? "",
+            t.CreatedByName, t.Notes ?? "", t.ApprovedByName, FormatApprovedAt(t.ApprovedAt),
             t.ProjectCode ?? t.BeneficiaryProjectCode,
             projectName);
 
@@ -134,7 +137,7 @@ public static class WmsMapper
                 i.Quantity, TransactionItemHelper.ResolveUnit(i),
                 i.ConstructionPhase)).ToList(),
             ToClientApprovalStatus(t.ApprovalStatus),
-            t.CreatedByName, t.Notes ?? "", t.ApprovedByName,
+            t.CreatedByName, t.Notes ?? "", t.ApprovedByName, FormatApprovedAt(t.ApprovedAt),
             t.ProjectCode,
             projectName,
             IsCrossProjectTransferEntity(t) ? t.BeneficiaryProjectCode : null,
@@ -165,7 +168,7 @@ public static class WmsMapper
                 i.MaterialCode, i.Sku, i.Name, i.Qty, i.Unit, i.Reason)).ToList(),
             c.Status, c.CreatedByName, c.ApprovedByName, c.Note);
 
-    public static ProjectDto ToProject(Project p) =>
+    public static WmsLegacyProjectDto ToLegacyProject(Project p) =>
         new(p.ClientProjectId ?? p.ProjectCode, p.ProjectName, p.Stage ?? "Chế tạo", p.PmName);
 
     public static LendingLogDto ToLendingLog(ProjectMaterialLoan l) =>

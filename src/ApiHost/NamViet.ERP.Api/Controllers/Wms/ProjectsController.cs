@@ -13,17 +13,18 @@ namespace NamViet.ERP.Api.Controllers.Wms;
 [ApiController]
 [Route("api/projects")]
 [Authorize]
+[Obsolete("Legacy facade — prefer /api/warehouse/projects for new integrations.")]
 public class ProjectsController(WarehouseDbContext db) : ControllerBase
 {
     [HttpGet]
-    public async Task<ActionResult<List<ProjectDto>>> List(CancellationToken ct)
+    public async Task<ActionResult<List<WmsLegacyProjectDto>>> List(CancellationToken ct)
     {
         var items = await db.Projects.Where(p => p.DeletedAt == null).ToListAsync(ct);
-        return Ok(items.Select(WmsMapper.ToProject).ToList());
+        return Ok(items.Select(WmsMapper.ToLegacyProject).ToList());
     }
 
     [HttpPost]
-    public async Task<ActionResult<ProjectDto>> Create([FromBody] ProjectDto dto, CancellationToken ct)
+    public async Task<ActionResult<WmsLegacyProjectDto>> Create([FromBody] WmsLegacyProjectDto dto, CancellationToken ct)
     {
         var code = dto.Id.StartsWith("proj-") ? $"DA-{dto.Id[5..].ToUpper()}" : dto.Id;
         var p = new Project
@@ -37,11 +38,11 @@ public class ProjectsController(WarehouseDbContext db) : ControllerBase
         };
         db.Projects.Add(p);
         await db.SaveChangesAsync(ct);
-        return Ok(WmsMapper.ToProject(p));
+        return Ok(WmsMapper.ToLegacyProject(p));
     }
 
     [HttpPut("{id}")]
-    public async Task<ActionResult<ProjectDto>> Update(string id, [FromBody] ProjectDto dto, CancellationToken ct)
+    public async Task<ActionResult<WmsLegacyProjectDto>> Update(string id, [FromBody] WmsLegacyProjectDto dto, CancellationToken ct)
     {
         var p = await FindProjectAsync(id, ct);
         if (p is null) return NotFound();
@@ -50,7 +51,7 @@ public class ProjectsController(WarehouseDbContext db) : ControllerBase
         p.PmName = dto.Pm;
         p.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
-        return Ok(WmsMapper.ToProject(p));
+        return Ok(WmsMapper.ToLegacyProject(p));
     }
 
     [HttpGet("{id}/stock-matrix")]

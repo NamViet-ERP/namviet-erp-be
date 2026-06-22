@@ -37,14 +37,14 @@ public class AuthController(
 
         var auth = await mediator.Send(new LoginCommand(user.Email!, request.Password, request.RememberMe), ct);
         var roles = await userManager.GetRolesAsync(user);
-        var feRole = WmsMapper.ToClientRole(roles.FirstOrDefault() ?? "Employee");
+        var clientRole = WmsMapper.ToClientRole(roles.FirstOrDefault() ?? "Employee");
         var linked = await employeeInfo.GetByUserAsync(user.Id, user.EmployeeCode, ct);
         var initials = string.Concat(user.Name.Split(' ', StringSplitOptions.RemoveEmptyEntries)
             .Take(2).Select(w => w[0])).ToUpper();
 
         return Ok(new LoginResponse(auth.AccessToken, auth.RefreshToken,
             new AuthUserDto(user.Id.ToString(), user.UserName ?? user.Email ?? "",
-                feRole, user.Name, initials, WmsMapper.ToClientRoleLabel(roles.FirstOrDefault() ?? "Employee"),
+                clientRole, user.Name, initials, WmsMapper.ToClientRoleLabel(roles.FirstOrDefault() ?? "Employee"),
                 user.Email ?? "", linked?.EmployeeId.ToString(), linked?.ClientStatus)));
     }
 
@@ -86,11 +86,11 @@ public class AuthController(
             if (appUser is not null)
             {
                 var roles = await userManager.GetRolesAsync(appUser);
-                var feRole = WmsMapper.ToClientRole(roles.FirstOrDefault() ?? "Employee");
+                var clientRole = WmsMapper.ToClientRole(roles.FirstOrDefault() ?? "Employee");
                 var initials = string.Concat(appUser.Name.Split(' ', StringSplitOptions.RemoveEmptyEntries)
                     .Take(2).Select(w => w[0])).ToUpper();
                 return Ok(new AuthUserDto(appUser.Id.ToString(), appUser.UserName ?? "",
-                    feRole, appUser.Name, initials, WmsMapper.ToClientRoleLabel(roles.FirstOrDefault() ?? "Employee"),
+                    clientRole, appUser.Name, initials, WmsMapper.ToClientRoleLabel(roles.FirstOrDefault() ?? "Employee"),
                     appUser.Email ?? "", null, null));
             }
         }

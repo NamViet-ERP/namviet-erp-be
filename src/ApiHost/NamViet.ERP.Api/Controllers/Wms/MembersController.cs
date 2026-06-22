@@ -180,19 +180,19 @@ public class MembersController(
     private static MemberDto ToMemberDto(
         ApplicationUser user,
         MemberLookups lookups,
-        string? feRoleOverride,
+        string? clientRoleOverride,
         string? roleLabelOverride)
     {
         var roles = lookups.RolesByUserId.GetValueOrDefault(user.Id) ?? [];
         var identityRole = roles.FirstOrDefault(r => ClientRoleToIdentity.ContainsValue(r)) ?? roles.FirstOrDefault() ?? "Employee";
-        var feRole = feRoleOverride ?? WmsMapper.ToClientRole(identityRole);
+        var clientRole = clientRoleOverride ?? WmsMapper.ToClientRole(identityRole);
         var roleLabel = roleLabelOverride ?? WmsMapper.ToClientRoleLabel(identityRole);
 
         lookups.EmployeeByUserId.TryGetValue(user.Id, out var employee);
         employee ??= lookups.EmployeeByCode.GetValueOrDefault(user.EmployeeCode);
 
         return new MemberDto(
-            user.Id.ToString(), user.EmployeeCode, user.Name, feRole, roleLabel,
+            user.Id.ToString(), user.EmployeeCode, user.Name, clientRole, roleLabel,
             user.Email ?? "", employee?.Phone ?? user.PhoneNumber ?? "",
             user.IsActive ? "active" : "inactive",
             employee?.JoinDate.ToString("dd/MM/yyyy") ?? WmsMapper.FormatDate(user.CreatedAt));

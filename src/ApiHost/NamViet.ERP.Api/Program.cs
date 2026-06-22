@@ -98,6 +98,10 @@ builder.Services.AddRateLimiter(options =>
 // ── Current user ───────────────────────────────────────────────────────────
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ICurrentUser, CurrentUserService>();
+builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Wms.IWmsCatalogQueryService, NamViet.ERP.Api.Application.Services.Wms.WmsCatalogQueryService>();
+builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Wms.IImportApplicationService, NamViet.ERP.Api.Application.Services.Wms.ImportApplicationService>();
+builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Wms.IExportApplicationService, NamViet.ERP.Api.Application.Services.Wms.ExportApplicationService>();
+builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Wms.ITransferApplicationService, NamViet.ERP.Api.Application.Services.Wms.TransferApplicationService>();
 builder.Services.AddSingleton<NamViet.ERP.Api.Services.Storage.IFileStorage, NamViet.ERP.Api.Services.Storage.LocalFileStorage>();
 
 // ── CORS ───────────────────────────────────────────────────────────────────

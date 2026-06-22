@@ -12,7 +12,7 @@ namespace NamViet.ERP.Api.Controllers.Wms;
 [ApiController]
 [Route("api/warehouses")]
 [Authorize]
-public class WarehousesController(WarehouseDbContext db) : ControllerBase
+public class WarehousesController(WarehouseDbContext db, IWmsCatalogQueryService catalog) : ControllerBase
 {
     [HttpGet]
     public async Task<ActionResult<List<WarehouseDto>>> List(CancellationToken ct)
@@ -21,7 +21,7 @@ public class WarehousesController(WarehouseDbContext db) : ControllerBase
         var result = new List<WarehouseDto>();
         foreach (var w in warehouses)
         {
-            var (stock, value) = await WmsInventoryHelper.GetWarehouseTotalsAsync(db, w.Id, ct);
+            var (stock, value) = await catalog.GetWarehouseTotalsAsync(w.Id, ct);
             result.Add(WmsMapper.ToWarehouse(w, stock, value));
         }
         return Ok(result);
@@ -32,7 +32,7 @@ public class WarehousesController(WarehouseDbContext db) : ControllerBase
     {
         var w = await db.WmsWarehouses.FirstOrDefaultAsync(x => x.Id == id && x.DeletedAt == null, ct);
         if (w is null) return NotFound();
-        var (stock, value) = await WmsInventoryHelper.GetWarehouseTotalsAsync(db, w.Id, ct);
+        var (stock, value) = await catalog.GetWarehouseTotalsAsync(w.Id, ct);
         return Ok(WmsMapper.ToWarehouse(w, stock, value));
     }
 
@@ -70,7 +70,7 @@ public class WarehousesController(WarehouseDbContext db) : ControllerBase
         if (dto.Status is not null) w.Status = dto.Status;
         w.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
-        var (stock, value) = await WmsInventoryHelper.GetWarehouseTotalsAsync(db, w.Id, ct);
+        var (stock, value) = await catalog.GetWarehouseTotalsAsync(w.Id, ct);
         return Ok(WmsMapper.ToWarehouse(w, stock, value));
     }
 
