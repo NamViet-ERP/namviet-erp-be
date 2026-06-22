@@ -1261,6 +1261,13 @@ namespace NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence.Migrations
                     b.Property<decimal>("Quantity")
                         .HasColumnType("numeric(18,4)");
 
+                    b.Property<int?>("SupplierId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("SupplierName")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
                     b.Property<string>("TicketCode")
                         .IsRequired()
                         .HasColumnType("character varying(50)");
@@ -1275,6 +1282,8 @@ namespace NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("MaterialCode");
+
+                    b.HasIndex("SupplierId");
 
                     b.HasIndex("TicketCode");
 
@@ -1727,6 +1736,11 @@ namespace NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence.Migrations
                         .HasForeignKey("TicketCode")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+
+                    b.HasOne("NamViet.ERP.Modules.Warehouse.Domain.Entities.Supplier", null)
+                        .WithMany()
+                        .HasForeignKey("SupplierId")
+                        .OnDelete(DeleteBehavior.SetNull);
 
                     b.Navigation("Material");
 

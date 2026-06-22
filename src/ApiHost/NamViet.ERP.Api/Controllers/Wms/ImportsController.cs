@@ -56,7 +56,7 @@ public class ImportsController(
         await using var tx = await db.Database.BeginTransactionAsync(ct);
         db.WarehouseTransactions.Add(transaction);
 
-        if (approvalStatus == ApprovalStatus.Draft)
+        if (approvalStatus is ApprovalStatus.Draft or ApprovalStatus.Pending)
             await CreateDraftReservationsAsync(transaction, ct);
         else if (approvalStatus == ApprovalStatus.Approved)
             await inventory.ApplyApprovedImportAsync(transaction, ct);
@@ -81,11 +81,14 @@ public class ImportsController(
         await using var tx = await db.Database.BeginTransactionAsync(ct);
 
         if (t.ApprovalStatus == ApprovalStatus.Draft)
+        {
             await inventory.CancelReservationsAsync(t.TicketCode, ct);
+            await inventory.CancelProjectImportPlannedAsync(t, ct);
+        }
 
         t.WarehouseId = dto.WarehouseId;
         t.ReferenceCode = dto.ReferenceCode;
-        t.SupplierName = dto.Supplier;
+        t.SupplierName = ResolveHeaderSupplier(dto);
         t.WarehouseKeeper = dto.WarehouseKeeper;
         t.WarehouseApprovalStatus = WmsMapper.FromClientKeeperStatus(dto.WarehouseApproval);
         t.IsDirectProcurement = dto.IsDirectProcurement ?? false;
@@ -100,7 +103,9 @@ public class ImportsController(
             TicketCode = t.TicketCode,
             MaterialCode = string.IsNullOrEmpty(i.Sku) ? i.ProductId : i.Sku,
             Quantity = i.Qty,
-            UnitPrice = i.UnitPrice
+            UnitPrice = i.UnitPrice,
+            SupplierId = i.SupplierId,
+            SupplierName = ResolveLineSupplierName(i, dto.Supplier),
         }).ToList();
         await ValidateAndSnapshotItemsAsync(t.Items, ct);
 
@@ -138,6 +143,22 @@ public class ImportsController(
         return Ok(WmsMapper.ToImport(t));
     }
 
+    /// <summary>PM chốt phiếu nháp → chờ thủ kho duyệt (giữ nguyên reservation).</summary>
+    [HttpPost("{id}/submit")]
+    [Authorize(Roles = "Admin,PM,Warehouse_Keeper,Storekeeper")]
+    public async Task<ActionResult<ImportDto>> Submit(string id, CancellationToken ct)
+    {
+        var t = await FindImportAsync(id, ct);
+        if (t is null) return NotFound();
+        if (t.ApprovalStatus != ApprovalStatus.Draft)
+            return BadRequest("Chỉ phiếu nháp mới được PM chốt.");
+
+        t.ApprovalStatus = ApprovalStatus.Pending;
+        t.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
+        return Ok(WmsMapper.ToImport(t));
+    }
+
     [HttpDelete("{id}")]
     public async Task<IActionResult> Delete(string id, CancellationToken ct)
     {
@@ -148,7 +169,10 @@ public class ImportsController(
 
         await using var tx = await db.Database.BeginTransactionAsync(ct);
         if (t.ApprovalStatus == ApprovalStatus.Draft)
+        {
             await inventory.CancelReservationsAsync(t.TicketCode, ct);
+            await inventory.CancelProjectImportPlannedAsync(t, ct);
+        }
         db.WarehouseTransactions.Remove(t);
         await db.SaveChangesAsync(ct);
         await tx.CommitAsync(ct);
@@ -160,20 +184,7 @@ public class ImportsController(
         if (transaction.IsDirectProcurement || string.IsNullOrWhiteSpace(transaction.BeneficiaryProjectCode))
             return;
 
-        var warehouseId = string.IsNullOrWhiteSpace(transaction.WarehouseId)
-            ? await inventory.GetGeneralWarehouseIdAsync(ct)
-            : transaction.WarehouseId;
-
-        foreach (var item in transaction.Items)
-        {
-            await inventory.CreateReservationAsync(
-                warehouseId,
-                transaction.BeneficiaryProjectCode,
-                item.MaterialCode,
-                item.Quantity,
-                transaction.TicketCode,
-                ct);
-        }
+        await inventory.CreateProjectImportPlannedAsync(transaction, ct);
     }
 
     private WarehouseTransaction BuildTransaction(
@@ -185,7 +196,7 @@ public class ImportsController(
             TransactionType = TransactionType.Import,
             WarehouseId = dto.WarehouseId,
             ReferenceCode = dto.ReferenceCode,
-            SupplierName = dto.Supplier,
+            SupplierName = ResolveHeaderSupplier(dto),
             WarehouseKeeper = dto.WarehouseKeeper,
             WarehouseApprovalStatus = WmsMapper.FromClientKeeperStatus(dto.WarehouseApproval),
             IsDirectProcurement = dto.IsDirectProcurement ?? false,
@@ -198,9 +209,34 @@ public class ImportsController(
             {
                 MaterialCode = string.IsNullOrEmpty(i.Sku) ? i.ProductId : i.Sku,
                 Quantity = i.Qty,
-                UnitPrice = i.UnitPrice
+                UnitPrice = i.UnitPrice,
+                SupplierId = i.SupplierId,
+                SupplierName = ResolveLineSupplierName(i, dto.Supplier),
             }).ToList()
         };
+
+    private static string ResolveLineSupplierName(ImportItemDto item, string? headerSupplier)
+    {
+        if (!string.IsNullOrWhiteSpace(item.Supplier)) return item.Supplier.Trim();
+        return headerSupplier?.Trim() ?? "";
+    }
+
+    private static string ResolveHeaderSupplier(CreateImportDto dto)
+    {
+        var lineNames = dto.Items
+            .Select(i => ResolveLineSupplierName(i, null))
+            .Where(s => !string.IsNullOrWhiteSpace(s))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (lineNames.Count == 0)
+            return dto.Supplier?.Trim() ?? "";
+
+        if (lineNames.Count == 1)
+            return lineNames[0];
+
+        return "Nhiều NCC";
+    }
 
     private async Task ValidateAndSnapshotItemsAsync(
         IEnumerable<WarehouseTransactionItem> items, CancellationToken ct)

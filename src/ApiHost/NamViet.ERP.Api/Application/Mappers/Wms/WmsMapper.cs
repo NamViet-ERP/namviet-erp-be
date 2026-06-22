@@ -90,7 +90,8 @@ public static class WmsMapper
         var items = t.Items.Select(i => new ImportItemDto(
             i.MaterialCode, i.MaterialCode,
             TransactionItemHelper.ResolveName(i),
-            i.Quantity, TransactionItemHelper.ResolveUnit(i), i.UnitPrice)).ToList();
+            i.Quantity, TransactionItemHelper.ResolveUnit(i), i.UnitPrice,
+            i.SupplierName, i.SupplierId)).ToList();
         var total = items.Sum(x => x.Qty * x.UnitPrice);
         return new ImportDto(
             t.Id.ToString(), t.TicketCode, FormatDate(t.CreatedAt),
@@ -104,27 +105,45 @@ public static class WmsMapper
             t.BeneficiaryProjectCode);
     }
 
-    public static ExportDto ToExport(WarehouseTransaction t, string? warehouseName = null) =>
+    public static ExportDto ToExport(
+        WarehouseTransaction t, string? warehouseName = null, string? projectName = null) =>
         new(t.Id.ToString(), t.TicketCode, FormatDate(t.CreatedAt),
             t.SoCode ?? "", t.Customer ?? "",
-            t.WarehouseId ?? "", warehouseName ?? "",
+            t.WarehouseId ?? "", warehouseName ?? projectName ?? "",
             t.Items.Select(i => new ExportItemDto(
                 i.MaterialCode, i.MaterialCode,
                 TransactionItemHelper.ResolveName(i),
                 i.Quantity, TransactionItemHelper.ResolveUnit(i))).ToList(),
             ToClientApprovalStatus(t.ApprovalStatus),
-            t.CreatedByName, t.Notes ?? "");
+            t.CreatedByName, t.Notes ?? "",
+            t.ProjectCode ?? t.BeneficiaryProjectCode,
+            projectName);
 
-    public static TransferDto ToTransfer(WarehouseTransaction t, string? fromName = null, string? toName = null) =>
+    public static TransferDto ToTransfer(
+        WarehouseTransaction t,
+        string? fromName = null,
+        string? toName = null,
+        string? projectName = null,
+        string? toProjectName = null) =>
         new(t.Id.ToString(), t.TicketCode, FormatDate(t.CreatedAt),
-            t.FromWarehouseId ?? "", fromName ?? "",
-            t.ToWarehouseId ?? "", toName ?? "",
+            t.FromWarehouseId ?? "", fromName ?? projectName ?? "",
+            t.ToWarehouseId ?? "", toName ?? toProjectName ?? "",
             t.Items.Select(i => new TransferItemDto(
                 i.MaterialCode, i.MaterialCode,
                 TransactionItemHelper.ResolveName(i),
-                i.Quantity, TransactionItemHelper.ResolveUnit(i))).ToList(),
+                i.Quantity, TransactionItemHelper.ResolveUnit(i),
+                i.ConstructionPhase)).ToList(),
             ToClientApprovalStatus(t.ApprovalStatus),
-            t.CreatedByName, t.Notes ?? "", t.ApprovedByName);
+            t.CreatedByName, t.Notes ?? "", t.ApprovedByName,
+            t.ProjectCode,
+            projectName,
+            IsCrossProjectTransferEntity(t) ? t.BeneficiaryProjectCode : null,
+            IsCrossProjectTransferEntity(t) ? toProjectName : null);
+
+    private static bool IsCrossProjectTransferEntity(WarehouseTransaction t) =>
+        !string.IsNullOrWhiteSpace(t.ProjectCode)
+        && !string.IsNullOrWhiteSpace(t.BeneficiaryProjectCode)
+        && !string.Equals(t.ProjectCode, t.BeneficiaryProjectCode, StringComparison.OrdinalIgnoreCase);
 
     public static StocktakeDto ToStocktake(Stocktake s) =>
         new(s.Id, s.VoucherCode, FormatDate(s.VoucherDate), s.CreatedByName, s.Status,

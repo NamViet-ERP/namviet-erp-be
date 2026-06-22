@@ -168,7 +168,6 @@ using (var scope = app.Services.CreateScope())
         await IdentitySeeder.SeedDemoMembersAsync(userManager, employeeLinks, logger);
         await IdentitySeeder.SeedHrStaffAsync(userManager, employeeLinks, logger);
         await HrSeeder.SeedAsync(hrDb, logger);
-        await WmsSeeder.SeedAsync(services.GetRequiredService<AppWarehouseDbContext>(), logger);
 
         if (app.Environment.IsDevelopment())
             await CandidateWorkflowRepair.RepairAllAsync(hrDb, logger);

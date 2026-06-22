@@ -47,7 +47,17 @@ public class ApproveTransactionHandler(
                     await inventory.ApplyApprovedExportAsync(transaction, ct);
                     break;
                 case TransactionType.Transfer:
-                    await inventory.ApplyTransferAsync(transaction, ct);
+                    if (!string.IsNullOrWhiteSpace(transaction.ProjectCode)
+                        && !string.IsNullOrWhiteSpace(transaction.BeneficiaryProjectCode)
+                        && !string.Equals(
+                            transaction.ProjectCode,
+                            transaction.BeneficiaryProjectCode,
+                            StringComparison.OrdinalIgnoreCase))
+                        await inventory.ApplyCrossProjectTransferAsync(transaction, ct);
+                    else if (!string.IsNullOrWhiteSpace(transaction.ProjectCode))
+                        await inventory.ApplyReturnToGeneralAsync(transaction, ct);
+                    else
+                        await inventory.ApplyTransferAsync(transaction, ct);
                     break;
             }
             await db.SaveChangesAsync(ct);

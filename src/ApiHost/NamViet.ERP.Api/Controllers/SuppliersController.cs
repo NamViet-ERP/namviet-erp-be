@@ -15,11 +15,13 @@ public class SuppliersController(WarehouseDbContext db) : ControllerBase
 {
     [HttpGet]
     public async Task<IActionResult> GetAll([FromQuery] int page = 1, [FromQuery] int pageSize = 20,
-        [FromQuery] string? search = null, CancellationToken ct = default)
+        [FromQuery] string? search = null, [FromQuery] string? rating = null, CancellationToken ct = default)
     {
         var query = db.Suppliers.AsQueryable();
         if (!string.IsNullOrWhiteSpace(search))
             query = query.Where(s => s.SupplierName.Contains(search) || s.SupplierCode.Contains(search));
+        if (!string.IsNullOrWhiteSpace(rating))
+            query = query.Where(s => s.Rating == rating);
         var total = await query.CountAsync(ct);
         var items = await query.OrderBy(s => s.SupplierCode).Skip((page - 1) * pageSize).Take(pageSize)
             .Select(s => new SupplierDto(s.Id, s.SupplierCode, s.SupplierName, s.ContactPhone, s.MaxDebtDays, s.Rating))

@@ -3,7 +3,6 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using NamViet.ERP.Api.Application.Dtos.Wms;
 using NamViet.ERP.Api.Application.Mappers.Wms;
-using NamViet.ERP.Api.Application.Services.Wms;
 using NamViet.ERP.Modules.Warehouse.Infrastructure.Helpers;
 using NamViet.ERP.Modules.Warehouse.Domain.Entities;
 using NamViet.ERP.Modules.Warehouse.Domain.Enums;
@@ -25,11 +24,9 @@ public class TransfersController(
     public async Task<ActionResult<List<TransferDto>>> List(CancellationToken ct)
     {
         var items = await Query().OrderByDescending(t => t.CreatedAt).ToListAsync(ct);
-        var names = await GetWarehouseNamesAsync(items, ct);
-        return Ok(items.Select(t => WmsMapper.ToTransfer(
-            t,
-            names.GetValueOrDefault(t.FromWarehouseId ?? ""),
-            names.GetValueOrDefault(t.ToWarehouseId ?? ""))).ToList());
+        var warehouseNames = await GetWarehouseNamesAsync(items, ct);
+        var projectNames = await GetProjectNamesAsync(items, ct);
+        return Ok(items.Select(t => MapTransfer(t, warehouseNames, projectNames)).ToList());
     }
 
     [HttpGet("{id}")]
@@ -37,76 +34,115 @@ public class TransfersController(
     {
         var t = await FindAsync(id, ct);
         if (t is null) return NotFound();
-        var names = await db.WmsWarehouses
-            .Where(w => w.Id == t.FromWarehouseId || w.Id == t.ToWarehouseId)
-            .ToDictionaryAsync(w => w.Id, w => w.Name, ct);
-        return Ok(WmsMapper.ToTransfer(
-            t,
-            names.GetValueOrDefault(t.FromWarehouseId ?? ""),
-            names.GetValueOrDefault(t.ToWarehouseId ?? "")));
+        var warehouseNames = await GetWarehouseNamesAsync([t], ct);
+        var projectNames = await GetProjectNamesAsync([t], ct);
+        return Ok(MapTransfer(t, warehouseNames, projectNames));
     }
 
     [HttpPost]
-    public async Task<ActionResult<TransferDto>> Create([FromBody] TransferDto dto, CancellationToken ct)
+    public async Task<ActionResult<TransferDto>> Create([FromBody] CreateTransferDto dto, CancellationToken ct)
     {
+        var validationError = await ValidateTransferRequestAsync(dto, ct);
+        if (validationError is not null) return BadRequest(validationError);
+
         var count = await db.WarehouseTransactions.CountAsync(t => t.TransactionType == TransactionType.Transfer, ct);
-        var t = new WarehouseTransaction
-        {
-            Id = Guid.NewGuid(),
-            TicketCode = string.IsNullOrWhiteSpace(dto.VoucherCode)
-                ? $"CK-{(count + 1):D6}" : dto.VoucherCode,
-            TransactionType = TransactionType.Transfer,
-            FromWarehouseId = dto.FromWarehouseId,
-            ToWarehouseId = dto.ToWarehouseId,
-            Notes = dto.Note,
-            ApprovedByName = dto.ApprovedBy,
-            CreatedById = currentUser.Id,
-            CreatedByName = string.IsNullOrEmpty(dto.CreatedBy) ? currentUser.Name : dto.CreatedBy,
-            ApprovalStatus = WmsMapper.FromClientApprovalStatus(dto.Status),
-            Items = dto.Items.Select(i => new WarehouseTransactionItem
-            {
-                MaterialCode = string.IsNullOrEmpty(i.Sku) ? i.ProductId : i.Sku,
-                Quantity = i.Qty
-            }).ToList()
-        };
-        await ValidateAndSnapshotItemsAsync(t.Items, ct);
+        var ticketCode = string.IsNullOrWhiteSpace(dto.VoucherCode)
+            ? WarehouseTransaction.GenerateTicketCode(TransactionType.Transfer, count + 1)
+            : dto.VoucherCode;
+
+        var approvalStatus = WmsMapper.FromClientApprovalStatus(dto.Status);
+        var transaction = await BuildTransactionAsync(dto, ticketCode, approvalStatus, ct);
+        await ValidateAndSnapshotItemsAsync(transaction.Items, ct);
+
         await using var tx = await db.Database.BeginTransactionAsync(ct);
-        db.WarehouseTransactions.Add(t);
-        if (t.ApprovalStatus == ApprovalStatus.Approved)
-            await inventory.ApplyTransferAsync(t, ct);
+        db.WarehouseTransactions.Add(transaction);
+        await ApplyDraftOrApprovedAsync(transaction, approvalStatus, ct);
         await db.SaveChangesAsync(ct);
         await tx.CommitAsync(ct);
-        return Ok(WmsMapper.ToTransfer(t, dto.FromWarehouseName, dto.ToWarehouseName));
+
+        await db.Entry(transaction).Collection(t => t.Items).LoadAsync(ct);
+        foreach (var item in transaction.Items)
+            await db.Entry(item).Reference(i => i.Material).LoadAsync(ct);
+
+        return Ok(await MapTransferResponseAsync(transaction, ct));
     }
 
     [HttpPut("{id}")]
-    public async Task<ActionResult<TransferDto>> Update(string id, [FromBody] TransferDto dto, CancellationToken ct)
+    public async Task<ActionResult<TransferDto>> Update(string id, [FromBody] CreateTransferDto dto, CancellationToken ct)
     {
+        var validationError = await ValidateTransferRequestAsync(dto, ct);
+        if (validationError is not null) return BadRequest(validationError);
+
         var t = await FindAsync(id, ct);
         if (t is null) return NotFound();
         if (t.ApprovalStatus == ApprovalStatus.Approved)
             return BadRequest("Phiếu đã duyệt, không thể chỉnh sửa.");
-        var previousStatus = t.ApprovalStatus;
+
+        await using var tx = await db.Database.BeginTransactionAsync(ct);
+
+        if (IsProjectOutbound(t) && t.ApprovalStatus == ApprovalStatus.Draft)
+            await inventory.CancelProjectExportPlannedAsync(t, ct);
+
         t.FromWarehouseId = dto.FromWarehouseId;
         t.ToWarehouseId = dto.ToWarehouseId;
+        t.ProjectCode = dto.Project?.Trim();
+        t.BeneficiaryProjectCode = ResolveBeneficiaryProjectCode(dto);
         t.Notes = dto.Note;
-        t.ApprovedByName = dto.ApprovedBy;
         t.ApprovalStatus = WmsMapper.FromClientApprovalStatus(dto.Status);
         t.UpdatedAt = DateTime.UtcNow;
+
         db.WarehouseTransactionItems.RemoveRange(t.Items);
-        t.Items = dto.Items.Select(i => new WarehouseTransactionItem
-        {
-            TicketCode = t.TicketCode,
-            MaterialCode = string.IsNullOrEmpty(i.Sku) ? i.ProductId : i.Sku,
-            Quantity = i.Qty
-        }).ToList();
+        t.Items = MapItems(dto.Items, t.TicketCode);
         await ValidateAndSnapshotItemsAsync(t.Items, ct);
-        await using var tx = await db.Database.BeginTransactionAsync(ct);
-        if (WmsInventoryHelper.IsNewlyApproved(previousStatus, t.ApprovalStatus))
-            await inventory.ApplyTransferAsync(t, ct);
+
+        if (IsProjectOutbound(t) && t.ApprovalStatus == ApprovalStatus.Draft)
+            await inventory.CreateProjectExportPlannedAsync(t, ct);
+
         await db.SaveChangesAsync(ct);
         await tx.CommitAsync(ct);
-        return Ok(WmsMapper.ToTransfer(t, dto.FromWarehouseName, dto.ToWarehouseName));
+
+        return Ok(await MapTransferResponseAsync(t, ct));
+    }
+
+    [HttpPost("{id}/approve")]
+    [Authorize(Roles = "Admin,Warehouse_Keeper,Storekeeper")]
+    public async Task<ActionResult<TransferDto>> Approve(string id, CancellationToken ct)
+    {
+        var t = await FindAsync(id, ct);
+        if (t is null) return NotFound();
+        if (t.ApprovalStatus is ApprovalStatus.Approved or ApprovalStatus.Rejected)
+            return BadRequest($"Phiếu đã ở trạng thái '{t.ApprovalStatus}', không thể duyệt lại.");
+        if (t.ApprovalStatus != ApprovalStatus.Pending && t.ApprovalStatus != ApprovalStatus.Draft)
+            return BadRequest($"Phiếu ở trạng thái '{t.ApprovalStatus}', không thể duyệt.");
+
+        await using var tx = await db.Database.BeginTransactionAsync(ct);
+        t.ApprovalStatus = ApprovalStatus.Approved;
+        t.ApprovedById = currentUser.Id;
+        t.ApprovedByName = currentUser.Name;
+        t.ApprovedAt = DateTime.UtcNow;
+        t.UpdatedAt = DateTime.UtcNow;
+
+        await ApplyApprovedTransferAsync(t, ct);
+        await db.SaveChangesAsync(ct);
+        await tx.CommitAsync(ct);
+
+        return Ok(await MapTransferResponseAsync(t, ct));
+    }
+
+    [HttpPost("{id}/submit")]
+    [Authorize(Roles = "Admin,PM,Warehouse_Keeper,Storekeeper")]
+    public async Task<ActionResult<TransferDto>> Submit(string id, CancellationToken ct)
+    {
+        var t = await FindAsync(id, ct);
+        if (t is null) return NotFound();
+        if (t.ApprovalStatus != ApprovalStatus.Draft)
+            return BadRequest("Chỉ phiếu nháp mới được PM chốt.");
+
+        t.ApprovalStatus = ApprovalStatus.Pending;
+        t.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
+
+        return Ok(await MapTransferResponseAsync(t, ct));
     }
 
     [HttpDelete("{id}")]
@@ -116,9 +152,146 @@ public class TransfersController(
         if (t is null) return NotFound();
         if (t.ApprovalStatus == ApprovalStatus.Approved)
             return BadRequest("Phiếu đã duyệt, không thể xóa.");
+
+        await using var tx = await db.Database.BeginTransactionAsync(ct);
+        if (IsProjectOutbound(t) && t.ApprovalStatus == ApprovalStatus.Draft)
+            await inventory.CancelProjectExportPlannedAsync(t, ct);
         db.WarehouseTransactions.Remove(t);
         await db.SaveChangesAsync(ct);
+        await tx.CommitAsync(ct);
         return NoContent();
+    }
+
+    private static bool IsProjectOutbound(WarehouseTransaction t) =>
+        !string.IsNullOrWhiteSpace(t.ProjectCode);
+
+    private static bool IsCrossProjectTransfer(WarehouseTransaction t) =>
+        !string.IsNullOrWhiteSpace(t.ProjectCode)
+        && !string.IsNullOrWhiteSpace(t.BeneficiaryProjectCode)
+        && !string.Equals(t.ProjectCode, t.BeneficiaryProjectCode, StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsProjectReturn(WarehouseTransaction t) =>
+        IsProjectOutbound(t) && !IsCrossProjectTransfer(t);
+
+    private static string? ResolveBeneficiaryProjectCode(CreateTransferDto dto)
+    {
+        var toProject = dto.ToProject?.Trim();
+        return string.IsNullOrWhiteSpace(toProject) ? null : toProject;
+    }
+
+    private async Task<string?> ValidateTransferRequestAsync(CreateTransferDto dto, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(dto.Project))
+            return "Vui lòng chọn kho dự án nguồn.";
+
+        var toProject = dto.ToProject?.Trim();
+        if (string.IsNullOrWhiteSpace(toProject))
+            return null;
+
+        if (string.Equals(dto.Project.Trim(), toProject, StringComparison.OrdinalIgnoreCase))
+            return "Kho nguồn và kho đích phải khác nhau.";
+
+        var target = await db.Projects.FirstOrDefaultAsync(p => p.ProjectCode == toProject, ct);
+        if (target is null)
+            return $"Không tìm thấy kho dự án đích '{toProject}'.";
+        if (target.Status != ProjectStatus.Active)
+            return $"Kho dự án đích '{toProject}' không ở trạng thái Active.";
+
+        return null;
+    }
+
+    private async Task ApplyDraftOrApprovedAsync(
+        WarehouseTransaction transaction, ApprovalStatus approvalStatus, CancellationToken ct)
+    {
+        if (!IsProjectOutbound(transaction))
+        {
+            if (approvalStatus == ApprovalStatus.Approved)
+                await inventory.ApplyTransferAsync(transaction, ct);
+            return;
+        }
+
+        if (approvalStatus is ApprovalStatus.Draft or ApprovalStatus.Pending)
+            await inventory.CreateProjectExportPlannedAsync(transaction, ct);
+        else if (approvalStatus == ApprovalStatus.Approved)
+            await ApplyApprovedTransferAsync(transaction, ct);
+    }
+
+    private async Task ApplyApprovedTransferAsync(WarehouseTransaction transaction, CancellationToken ct)
+    {
+        if (IsCrossProjectTransfer(transaction))
+            await inventory.ApplyCrossProjectTransferAsync(transaction, ct);
+        else if (IsProjectReturn(transaction))
+            await inventory.ApplyReturnToGeneralAsync(transaction, ct);
+        else
+            await inventory.ApplyTransferAsync(transaction, ct);
+    }
+
+    private async Task<WarehouseTransaction> BuildTransactionAsync(
+        CreateTransferDto dto, string ticketCode, ApprovalStatus approvalStatus, CancellationToken ct)
+    {
+        var generalWarehouseId = await inventory.GetGeneralWarehouseIdAsync(ct);
+        var isCrossProject = !string.IsNullOrWhiteSpace(dto.ToProject?.Trim());
+
+        return new WarehouseTransaction
+        {
+            Id = Guid.NewGuid(),
+            TicketCode = ticketCode,
+            TransactionType = TransactionType.Transfer,
+            FromWarehouseId = dto.FromWarehouseId,
+            ToWarehouseId = isCrossProject
+                ? null
+                : string.IsNullOrWhiteSpace(dto.ToWarehouseId) ? generalWarehouseId : dto.ToWarehouseId,
+            ProjectCode = dto.Project?.Trim(),
+            BeneficiaryProjectCode = ResolveBeneficiaryProjectCode(dto),
+            Notes = dto.Note,
+            CreatedById = currentUser.Id,
+            CreatedByName = string.IsNullOrEmpty(dto.CreatedBy) ? currentUser.Name : dto.CreatedBy,
+            ApprovalStatus = approvalStatus,
+            Items = MapItems(dto.Items, ticketCode),
+        };
+    }
+
+    private static List<WarehouseTransactionItem> MapItems(
+        IEnumerable<TransferItemDto> items, string ticketCode) =>
+        items.Select(i => new WarehouseTransactionItem
+        {
+            TicketCode = ticketCode,
+            MaterialCode = string.IsNullOrEmpty(i.Sku) ? i.ProductId : i.Sku,
+            Quantity = i.Qty,
+            ConstructionPhase = string.IsNullOrWhiteSpace(i.ConstructionPhase) ? null : i.ConstructionPhase.Trim(),
+        }).ToList();
+
+    private async Task<TransferDto> MapTransferResponseAsync(WarehouseTransaction t, CancellationToken ct)
+    {
+        var projectName = await ResolveProjectNameAsync(t.ProjectCode, ct);
+        if (IsCrossProjectTransfer(t))
+        {
+            var toProjectName = await ResolveProjectNameAsync(t.BeneficiaryProjectCode, ct);
+            return WmsMapper.ToTransfer(t, projectName: projectName, toName: toProjectName, toProjectName: toProjectName);
+        }
+
+        var generalName = await ResolveGeneralWarehouseNameAsync(ct);
+        return WmsMapper.ToTransfer(t, toName: generalName, projectName: projectName);
+    }
+
+    private TransferDto MapTransfer(
+        WarehouseTransaction t,
+        Dictionary<string, string> warehouseNames,
+        Dictionary<string, string> projectNames)
+    {
+        var projectName = t.ProjectCode != null ? projectNames.GetValueOrDefault(t.ProjectCode) : null;
+        if (IsCrossProjectTransfer(t))
+        {
+            var toProjectName = t.BeneficiaryProjectCode != null
+                ? projectNames.GetValueOrDefault(t.BeneficiaryProjectCode)
+                : null;
+            return WmsMapper.ToTransfer(t, projectName: projectName, toName: toProjectName, toProjectName: toProjectName);
+        }
+
+        var toName = !string.IsNullOrEmpty(t.ToWarehouseId)
+            ? warehouseNames.GetValueOrDefault(t.ToWarehouseId)
+            : null;
+        return WmsMapper.ToTransfer(t, toName: toName, projectName: projectName);
     }
 
     private IQueryable<WarehouseTransaction> Query() =>
@@ -141,6 +314,33 @@ public class TransfersController(
             .Where(x => x != null).Distinct().ToList();
         return await db.WmsWarehouses.Where(w => ids.Contains(w.Id))
             .ToDictionaryAsync(w => w.Id, w => w.Name, ct);
+    }
+
+    private async Task<Dictionary<string, string>> GetProjectNamesAsync(
+        List<WarehouseTransaction> items, CancellationToken ct)
+    {
+        var codes = items
+            .SelectMany(t => new[] { t.ProjectCode, t.BeneficiaryProjectCode })
+            .Where(c => !string.IsNullOrWhiteSpace(c))
+            .Distinct()
+            .ToList();
+        return await db.Projects
+            .Where(p => codes.Contains(p.ProjectCode))
+            .ToDictionaryAsync(p => p.ProjectCode, p => p.ProjectName, ct);
+    }
+
+    private async Task<string?> ResolveProjectNameAsync(string? code, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(code)) return null;
+        return await db.Projects.Where(p => p.ProjectCode == code)
+            .Select(p => p.ProjectName).FirstOrDefaultAsync(ct);
+    }
+
+    private async Task<string?> ResolveGeneralWarehouseNameAsync(CancellationToken ct)
+    {
+        var generalId = await inventory.GetGeneralWarehouseIdAsync(ct);
+        return await db.WmsWarehouses.Where(w => w.Id == generalId)
+            .Select(w => w.Name).FirstOrDefaultAsync(ct);
     }
 
     private async Task ValidateAndSnapshotItemsAsync(

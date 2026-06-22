@@ -64,4 +64,18 @@ public class ProjectInventory : BaseEntity
         ActualExportQty += qty;
         UpdatedAt = DateTime.UtcNow;
     }
+
+    public void AddPlannedExport(decimal qty)
+    {
+        if (qty < 0) throw new ArgumentOutOfRangeException(nameof(qty));
+        PlannedExportQty += qty;
+        UpdatedAt = DateTime.UtcNow;
+    }
+
+    public void RemovePlannedExport(decimal qty)
+    {
+        if (qty < 0) throw new ArgumentOutOfRangeException(nameof(qty));
+        PlannedExportQty -= qty;
+        UpdatedAt = DateTime.UtcNow;
+    }
 }

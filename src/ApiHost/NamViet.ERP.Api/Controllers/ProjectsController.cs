@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using NamViet.ERP.Api.Application.Mappers.Wms;
 using NamViet.ERP.Modules.Warehouse.Application.DTOs;
 using NamViet.ERP.Modules.Warehouse.Domain.Entities;
 using NamViet.ERP.Modules.Warehouse.Domain.Enums;
@@ -28,12 +29,12 @@ public class ProjectsController(WarehouseDbContext db, IInventoryDomainService i
             query = query.Where(p => p.Status == s);
 
         var total = await query.CountAsync(ct);
-        var items = await query
+        var pageProjects = await query
             .OrderByDescending(p => p.CreatedAt)
             .Skip((page - 1) * pageSize).Take(pageSize)
-            .Select(p => new ProjectDto(p.ProjectCode, p.ProjectName, p.ProjectType.ToString(),
-                p.PmId, p.PmName, p.StartDate, p.EndDate, p.MaterialBudget, p.Status.ToString()))
             .ToListAsync(ct);
+
+        var items = await MapProjectsWithStockAsync(pageProjects, ct);
 
         return Ok(PagedResult<ProjectDto>.Create(items, total, page, pageSize));
     }
@@ -43,8 +44,8 @@ public class ProjectsController(WarehouseDbContext db, IInventoryDomainService i
     {
         var p = await db.Projects.FirstOrDefaultAsync(x => x.ProjectCode == code, ct);
         if (p is null) return NotFound();
-        return Ok(new ProjectDto(p.ProjectCode, p.ProjectName, p.ProjectType.ToString(),
-            p.PmId, p.PmName, p.StartDate, p.EndDate, p.MaterialBudget, p.Status.ToString()));
+        var items = await MapProjectsWithStockAsync([p], ct);
+        return Ok(items[0]);
     }
 
     [HttpGet("{code}/inventory")]
@@ -64,6 +65,27 @@ public class ProjectsController(WarehouseDbContext db, IInventoryDomainService i
                 pi.ReservedQty))
             .ToListAsync(ct);
         return Ok(items);
+    }
+
+    [HttpGet("{code}/ledger")]
+    public async Task<IActionResult> GetLedger(string code, CancellationToken ct)
+    {
+        if (!await db.Projects.AnyAsync(p => p.ProjectCode == code, ct))
+            return NotFound();
+
+        var transactions = await db.WarehouseTransactions
+            .AsNoTracking()
+            .Include(t => t.Items)
+            .Where(t =>
+                (t.ProjectCode == code || t.BeneficiaryProjectCode == code)
+                && (t.TransactionType == TransactionType.Import
+                    || t.TransactionType == TransactionType.Export
+                    || t.TransactionType == TransactionType.Transfer))
+            .OrderByDescending(t => t.CreatedAt)
+            .ToListAsync(ct);
+
+        var entries = transactions.Select(MapLedgerEntry).ToList();
+        return Ok(entries);
     }
 
     [HttpPost("{code}/close")]
@@ -123,5 +145,65 @@ public class ProjectsController(WarehouseDbContext db, IInventoryDomainService i
         p.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
         return NoContent();
+    }
+
+    private async Task<List<ProjectDto>> MapProjectsWithStockAsync(
+        IReadOnlyList<Project> projects, CancellationToken ct)
+    {
+        if (projects.Count == 0) return [];
+
+        var codes = projects.Select(p => p.ProjectCode).ToList();
+        var stockRows = await db.ProjectInventories
+            .Where(pi => codes.Contains(pi.ProjectCode))
+            .GroupBy(pi => pi.ProjectCode)
+            .Select(g => new
+            {
+                ProjectCode = g.Key,
+                StockActualQty = g.Sum(pi => pi.ActualImportQty - pi.ActualExportQty),
+                StockPlannedQty = g.Sum(pi => pi.PlannedImportQty - pi.PlannedExportQty),
+                StockReservedQty = g.Sum(pi => pi.ReservedQty),
+                StockMaterialCount = g.Count(pi =>
+                    pi.ActualImportQty - pi.ActualExportQty != 0
+                    || pi.PlannedImportQty - pi.PlannedExportQty != 0
+                    || pi.ReservedQty != 0),
+            })
+            .ToListAsync(ct);
+
+        var stockByCode = stockRows.ToDictionary(x => x.ProjectCode);
+
+        return projects.Select(p =>
+        {
+            stockByCode.TryGetValue(p.ProjectCode, out var stock);
+            return new ProjectDto(
+                p.ProjectCode, p.ProjectName, p.ProjectType.ToString(),
+                p.PmId, p.PmName, p.StartDate, p.EndDate, p.MaterialBudget, p.Status.ToString(),
+                stock?.StockActualQty ?? 0,
+                stock?.StockPlannedQty ?? 0,
+                stock?.StockReservedQty ?? 0,
+                stock?.StockMaterialCount ?? 0);
+        }).ToList();
+    }
+
+    private static ProjectLedgerEntryDto MapLedgerEntry(WarehouseTransaction t)
+    {
+        var itemQty = t.Items.Sum(i => i.Quantity);
+        decimal? totalValue = t.TransactionType == TransactionType.Import
+            ? t.Items.Sum(i => i.Quantity * i.UnitPrice)
+            : null;
+
+        return new ProjectLedgerEntryDto(
+            t.Id.ToString(),
+            t.TransactionType switch
+            {
+                TransactionType.Import => "import",
+                TransactionType.Export => "export",
+                TransactionType.Transfer => "transfer",
+                _ => "other"
+            },
+            t.TicketCode,
+            WmsMapper.FormatDate(t.CreatedAt),
+            WmsMapper.ToClientApprovalStatus(t.ApprovalStatus),
+            itemQty,
+            totalValue);
     }
 }

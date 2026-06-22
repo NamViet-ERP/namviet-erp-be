@@ -16,6 +16,7 @@ public record StockMatrixRowDto(
     decimal GeneralActualQty,
     decimal GeneralReservedQty,
     decimal GeneralAvailableQty,
+    decimal WeightedAverageUnitCost,
     IReadOnlyList<StockMatrixProjectColumnDto> Projects);
 
 public record MaterialCategoryApiDto(

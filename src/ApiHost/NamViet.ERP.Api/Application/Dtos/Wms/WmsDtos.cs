@@ -14,7 +14,9 @@ public record UpdateWarehouseDto(
     string? Code, string? Name, string? Group, string? Address,
     string? Branch, string? Manager, string? Status);
 
-public record ImportItemDto(string ProductId, string Sku, string Name, decimal Qty, string Unit, decimal UnitPrice);
+public record ImportItemDto(
+    string ProductId, string Sku, string Name, decimal Qty, string Unit, decimal UnitPrice,
+    string? Supplier = null, int? SupplierId = null);
 public record ImportDto(
     string Id, string VoucherCode, string Date, string Supplier, string ReferenceCode,
     decimal TotalValue, string Status, string WarehouseApproval, string ApprovedBy,
@@ -30,13 +32,23 @@ public record ExportItemDto(string ProductId, string Sku, string Name, decimal Q
 public record ExportDto(
     string Id, string VoucherCode, string Date, string SoCode, string Customer,
     string WarehouseId, string WarehouseName, List<ExportItemDto> Items,
-    string Status, string CreatedBy, string Note);
+    string Status, string CreatedBy, string Note, string? Project, string? ProjectName);
+public record CreateExportDto(
+    string VoucherCode, string Date, string SoCode, string Customer,
+    string WarehouseId, List<ExportItemDto> Items,
+    string Status, string CreatedBy, string Note, string? Project);
 
-public record TransferItemDto(string ProductId, string Sku, string Name, decimal Qty, string Unit);
+public record TransferItemDto(
+    string ProductId, string Sku, string Name, decimal Qty, string Unit, string? ConstructionPhase = null);
 public record TransferDto(
     string Id, string VoucherCode, string Date, string FromWarehouseId, string FromWarehouseName,
     string ToWarehouseId, string ToWarehouseName, List<TransferItemDto> Items,
-    string Status, string CreatedBy, string Note, string? ApprovedBy);
+    string Status, string CreatedBy, string Note, string? ApprovedBy,
+    string? Project, string? ProjectName, string? ToProject, string? ToProjectName);
+public record CreateTransferDto(
+    string VoucherCode, string Date, string FromWarehouseId, string ToWarehouseId,
+    List<TransferItemDto> Items, string Status, string CreatedBy, string Note,
+    string? Project, string? ToProject);
 
 public record StocktakeItemDto(string ProductId, string Sku, string Name, decimal SystemQty, decimal ActualQty, decimal Diff);
 public record StocktakeDto(
@@ -76,8 +88,6 @@ public record ConversionDto(
     string FromType, string ToWarehouseId, string ToWarehouseName, string ToType,
     List<ConversionItemDto> Items, string Status, string CreatedBy, string? ApprovedBy, string Note);
 
-public record SupplierSummaryDto(string Name, decimal Price, int Credit, int LeadTime, string Rating, string Badge);
-public record PriceHistoryEntryDto(string Month, decimal Steel, decimal Cement, decimal Cable);
 public record ExpectedImportDto(string Id, string Project, string Sku, string Name, decimal Qty, decimal Surplus, string Unit, string Date);
 public record PoRecordDto(string Code, string Project, string Supplier, string Date, List<ReconciliationItemDto> Items);
 public record ReconciliationItemDto(string Sku, string Name, decimal EstPrice, decimal PoPrice, decimal Ordered, decimal Received, string Unit);

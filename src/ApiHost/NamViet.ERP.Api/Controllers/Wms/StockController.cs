@@ -53,6 +53,26 @@ public class StockController(WarehouseDbContext db, IInventoryDomainService inve
             .Select(g => new { MaterialCode = g.Key, Qty = g.Sum(x => x.ReservedQty) })
             .ToDictionaryAsync(x => x.MaterialCode, x => x.Qty, ct);
 
+        // WAC (Weighted Average Cost) — IAS 2: chỉ phiếu nhập đã duyệt, có đơn giá > 0
+        var wacByMaterial = await db.WarehouseTransactionItems
+            .AsNoTracking()
+            .Where(i =>
+                i.Transaction!.TransactionType == TransactionType.Import
+                && i.Transaction.ApprovalStatus == ApprovalStatus.Approved
+                && i.UnitPrice > 0
+                && i.Quantity > 0)
+            .GroupBy(i => i.MaterialCode)
+            .Select(g => new
+            {
+                MaterialCode = g.Key,
+                TotalQty = g.Sum(x => x.Quantity),
+                TotalCost = g.Sum(x => x.Quantity * x.UnitPrice),
+            })
+            .ToDictionaryAsync(
+                x => x.MaterialCode,
+                x => x.TotalQty > 0 ? x.TotalCost / x.TotalQty : 0m,
+                ct);
+
         var rows = new List<StockMatrixRowDto>();
         foreach (var material in materials)
         {
@@ -82,6 +102,7 @@ public class StockController(WarehouseDbContext db, IInventoryDomainService inve
                 generalActual,
                 generalReserved,
                 generalAvailable,
+                wacByMaterial.GetValueOrDefault(material.MaterialCode),
                 projectColumns));
         }
 

@@ -36,7 +36,11 @@ public record CreatePriceBookRequest(
 public record ProjectDto(
     string ProjectCode, string ProjectName, string ProjectType,
     Guid PmId, string PmName, DateOnly StartDate, DateOnly? EndDate,
-    decimal MaterialBudget, string Status);
+    decimal MaterialBudget, string Status,
+    decimal StockActualQty = 0,
+    decimal StockPlannedQty = 0,
+    decimal StockReservedQty = 0,
+    int StockMaterialCount = 0);
 
 public record CreateProjectRequest(
     string ProjectCode, string ProjectName, ProjectType ProjectType,
@@ -54,6 +58,15 @@ public record ProjectInventoryDto(
     decimal ActualImportQty, decimal ActualExportQty,
     decimal ActualInventoryQty, decimal PlannedInventoryQty,
     decimal ReservedQty);
+
+public record ProjectLedgerEntryDto(
+    string Id,
+    string Kind,
+    string VoucherCode,
+    string Date,
+    string Status,
+    decimal ItemQty,
+    decimal? TotalValue);
 
 public record MaterialCategoryDto(
     int Id, string Code, string Name, int Level, int? ParentId, int SortOrder, bool IsActive);

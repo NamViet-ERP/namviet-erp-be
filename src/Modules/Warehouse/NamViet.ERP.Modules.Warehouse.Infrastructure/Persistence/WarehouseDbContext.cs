@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using NamViet.ERP.Modules.Warehouse.Domain.Entities;
+using NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence.Converters;
 using NamViet.ERP.Modules.Warehouse.Domain.Enums;
 
 namespace NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence;
@@ -181,7 +182,9 @@ public class WarehouseDbContext(DbContextOptions<WarehouseDbContext> options) : 
             e.Property(t => t.SoCode).HasMaxLength(100);
             e.Property(t => t.Customer).HasMaxLength(255);
             e.Property(t => t.WarehouseKeeper).HasMaxLength(255);
-            e.Property(t => t.WarehouseApprovalStatus).HasConversion<string>().HasMaxLength(20)
+            e.Property(t => t.WarehouseApprovalStatus)
+                .HasConversion(new WarehouseKeeperApprovalStatusConverter())
+                .HasMaxLength(20)
                 .HasDefaultValue(WarehouseKeeperApprovalStatus.Pending);
             e.Property(t => t.BeneficiaryProjectCode).HasMaxLength(50);
             e.Property(t => t.SupplierName).HasMaxLength(255);
@@ -205,7 +208,10 @@ public class WarehouseDbContext(DbContextOptions<WarehouseDbContext> options) : 
             e.Property(i => i.Quantity).HasColumnType("numeric(18,4)").IsRequired();
             e.Property(i => i.UnitPrice).HasColumnType("numeric(18,2)").IsRequired();
             e.Property(i => i.ConstructionPhase).HasMaxLength(255);
+            e.Property(i => i.SupplierName).HasMaxLength(255);
             e.Ignore(i => i.TotalAmount);
+            e.HasOne<Supplier>().WithMany()
+             .HasForeignKey(i => i.SupplierId).OnDelete(DeleteBehavior.SetNull).IsRequired(false);
             e.HasOne(i => i.Transaction).WithMany(t => t.Items)
              .HasForeignKey(i => i.TicketCode).OnDelete(DeleteBehavior.Cascade);
             e.HasOne(i => i.Material).WithMany(m => m.TransactionItems)

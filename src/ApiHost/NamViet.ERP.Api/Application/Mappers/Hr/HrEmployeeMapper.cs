@@ -172,10 +172,10 @@ public static class HrEmployeeMapper
         e.CmndIssuePlace = dto.CmndIssuePlace;
         e.MaritalStatus = dto.MaritalStatus;
         e.TaxCode = dto.TaxCode;
-        if (!string.IsNullOrWhiteSpace(dto.PhotoUrl)) e.PhotoUrl = dto.PhotoUrl;
-        if (!string.IsNullOrWhiteSpace(dto.CccdFrontUrl)) e.CccdFrontUrl = dto.CccdFrontUrl;
-        if (!string.IsNullOrWhiteSpace(dto.CccdBackUrl)) e.CccdBackUrl = dto.CccdBackUrl;
-        if (!string.IsNullOrWhiteSpace(dto.DegreePhotoUrl)) e.DegreePhotoUrl = dto.DegreePhotoUrl;
+        e.PhotoUrl = string.IsNullOrWhiteSpace(dto.PhotoUrl) ? null : dto.PhotoUrl;
+        e.CccdFrontUrl = string.IsNullOrWhiteSpace(dto.CccdFrontUrl) ? null : dto.CccdFrontUrl;
+        e.CccdBackUrl = string.IsNullOrWhiteSpace(dto.CccdBackUrl) ? null : dto.CccdBackUrl;
+        e.DegreePhotoUrl = string.IsNullOrWhiteSpace(dto.DegreePhotoUrl) ? null : dto.DegreePhotoUrl;
 
         if (!string.IsNullOrWhiteSpace(dto.Department))
         {

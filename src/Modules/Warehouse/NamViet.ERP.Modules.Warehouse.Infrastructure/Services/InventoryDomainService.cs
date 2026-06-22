@@ -122,6 +122,73 @@ public class InventoryDomainService(WarehouseDbContext db) : IInventoryDomainSer
         }
     }
 
+    public async Task CreateProjectImportPlannedAsync(
+        WarehouseTransaction transaction, CancellationToken ct = default)
+    {
+        var projectCode = transaction.BeneficiaryProjectCode;
+        if (string.IsNullOrWhiteSpace(projectCode))
+            return;
+
+        foreach (var item in transaction.Items)
+        {
+            var projectInventory = await GetOrCreateProjectInventoryAsync(
+                projectCode, item.MaterialCode, ct);
+            projectInventory.AddPlannedImport(item.Quantity);
+        }
+    }
+
+    public async Task CancelProjectImportPlannedAsync(
+        WarehouseTransaction transaction, CancellationToken ct = default)
+    {
+        var projectCode = transaction.BeneficiaryProjectCode;
+        if (string.IsNullOrWhiteSpace(projectCode))
+            return;
+
+        foreach (var item in transaction.Items)
+        {
+            var projectInventory = await db.ProjectInventories
+                .FirstOrDefaultAsync(
+                    pi => pi.ProjectCode == projectCode && pi.MaterialCode == item.MaterialCode, ct);
+            projectInventory?.RemovePlannedImport(item.Quantity);
+        }
+    }
+
+    public async Task CreateProjectExportPlannedAsync(
+        WarehouseTransaction transaction, CancellationToken ct = default)
+    {
+        var projectCode = transaction.ProjectCode ?? transaction.BeneficiaryProjectCode;
+        if (string.IsNullOrWhiteSpace(projectCode))
+            throw new InvalidOperationException("Phiếu xuất dự án yêu cầu mã kho dự án.");
+
+        foreach (var item in transaction.Items)
+        {
+            var projectInventory = await GetOrCreateProjectInventoryAsync(
+                projectCode, item.MaterialCode, ct);
+            var available = projectInventory.ActualInventoryQty - projectInventory.PlannedExportQty;
+            if (item.Quantity > available)
+                throw new InvalidOperationException(
+                    $"Vật tư {item.MaterialCode} vượt tồn khả dụng ({available}).");
+
+            projectInventory.AddPlannedExport(item.Quantity);
+        }
+    }
+
+    public async Task CancelProjectExportPlannedAsync(
+        WarehouseTransaction transaction, CancellationToken ct = default)
+    {
+        var projectCode = transaction.ProjectCode ?? transaction.BeneficiaryProjectCode;
+        if (string.IsNullOrWhiteSpace(projectCode))
+            return;
+
+        foreach (var item in transaction.Items)
+        {
+            var projectInventory = await db.ProjectInventories
+                .FirstOrDefaultAsync(
+                    pi => pi.ProjectCode == projectCode && pi.MaterialCode == item.MaterialCode, ct);
+            projectInventory?.RemovePlannedExport(item.Quantity);
+        }
+    }
+
     public async Task ApplyApprovedImportAsync(
         WarehouseTransaction transaction, CancellationToken ct = default)
     {
@@ -140,6 +207,19 @@ public class InventoryDomainService(WarehouseDbContext db) : IInventoryDomainSer
             return;
         }
 
+        var projectCode = transaction.BeneficiaryProjectCode ?? transaction.ProjectCode;
+        if (!string.IsNullOrWhiteSpace(projectCode))
+        {
+            foreach (var item in transaction.Items)
+            {
+                var projectInventory = await GetOrCreateProjectInventoryAsync(
+                    projectCode, item.MaterialCode, ct);
+                projectInventory.ApplyActualImport(item.Quantity);
+                projectInventory.RemovePlannedImport(item.Quantity);
+            }
+            return;
+        }
+
         if (string.IsNullOrEmpty(transaction.WarehouseId))
             return;
 
@@ -151,6 +231,26 @@ public class InventoryDomainService(WarehouseDbContext db) : IInventoryDomainSer
     public async Task ApplyApprovedExportAsync(
         WarehouseTransaction transaction, CancellationToken ct = default)
     {
+        var projectCode = transaction.ProjectCode ?? transaction.BeneficiaryProjectCode;
+        if (!string.IsNullOrWhiteSpace(projectCode))
+        {
+            foreach (var item in transaction.Items)
+            {
+                var projectInventory = await GetOrCreateProjectInventoryAsync(
+                    projectCode, item.MaterialCode, ct);
+                if (item.Quantity > projectInventory.ActualInventoryQty)
+                    throw new InvalidOperationException(
+                        $"Vật tư {item.MaterialCode} không đủ tồn thực tế ({projectInventory.ActualInventoryQty}).");
+
+                var removePlanned = Math.Min(item.Quantity, projectInventory.PlannedExportQty);
+                if (removePlanned > 0)
+                    projectInventory.RemovePlannedExport(removePlanned);
+
+                projectInventory.ApplyActualExport(item.Quantity);
+            }
+            return;
+        }
+
         if (string.IsNullOrEmpty(transaction.WarehouseId))
             return;
 
@@ -228,6 +328,61 @@ public class InventoryDomainService(WarehouseDbContext db) : IInventoryDomainSer
                 transaction.FromWarehouseId, item.MaterialCode, -item.Quantity, ct);
             await AdjustWarehouseQtyAsync(
                 transaction.ToWarehouseId, item.MaterialCode, item.Quantity, ct);
+        }
+    }
+
+    public async Task ApplyReturnToGeneralAsync(
+        WarehouseTransaction transaction, CancellationToken ct = default)
+    {
+        var projectCode = transaction.ProjectCode ?? transaction.BeneficiaryProjectCode;
+        if (string.IsNullOrWhiteSpace(projectCode))
+            throw new InvalidOperationException("Phiếu hoàn trả yêu cầu mã kho dự án.");
+
+        var generalWarehouseId = await GetGeneralWarehouseIdAsync(ct);
+        transaction.ToWarehouseId = generalWarehouseId;
+
+        foreach (var item in transaction.Items)
+        {
+            var projectInventory = await GetOrCreateProjectInventoryAsync(
+                projectCode, item.MaterialCode, ct);
+            if (item.Quantity > projectInventory.ActualInventoryQty)
+                throw new InvalidOperationException(
+                    $"Vật tư {item.MaterialCode} không đủ tồn thực tế ({projectInventory.ActualInventoryQty}).");
+
+            var removePlanned = Math.Min(item.Quantity, projectInventory.PlannedExportQty);
+            if (removePlanned > 0)
+                projectInventory.RemovePlannedExport(removePlanned);
+
+            projectInventory.ApplyActualExport(item.Quantity);
+            await AdjustWarehouseQtyAsync(generalWarehouseId, item.MaterialCode, item.Quantity, ct);
+        }
+    }
+
+    public async Task ApplyCrossProjectTransferAsync(
+        WarehouseTransaction transaction, CancellationToken ct = default)
+    {
+        var fromCode = transaction.ProjectCode;
+        var toCode = transaction.BeneficiaryProjectCode;
+        if (string.IsNullOrWhiteSpace(fromCode) || string.IsNullOrWhiteSpace(toCode))
+            throw new InvalidOperationException("Phiếu chuyển dự án yêu cầu kho nguồn và kho đích.");
+        if (string.Equals(fromCode, toCode, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("Kho nguồn và kho đích phải khác nhau.");
+
+        foreach (var item in transaction.Items)
+        {
+            var sourceInventory = await GetOrCreateProjectInventoryAsync(fromCode, item.MaterialCode, ct);
+            if (item.Quantity > sourceInventory.ActualInventoryQty)
+                throw new InvalidOperationException(
+                    $"Vật tư {item.MaterialCode} không đủ tồn thực tế tại kho nguồn ({sourceInventory.ActualInventoryQty}).");
+
+            var removePlanned = Math.Min(item.Quantity, sourceInventory.PlannedExportQty);
+            if (removePlanned > 0)
+                sourceInventory.RemovePlannedExport(removePlanned);
+
+            sourceInventory.ApplyActualExport(item.Quantity);
+
+            var targetInventory = await GetOrCreateProjectInventoryAsync(toCode, item.MaterialCode, ct);
+            targetInventory.ApplyActualImport(item.Quantity);
         }
     }
 

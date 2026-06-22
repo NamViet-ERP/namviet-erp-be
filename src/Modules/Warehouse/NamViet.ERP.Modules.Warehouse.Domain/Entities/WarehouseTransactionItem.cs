@@ -15,6 +15,9 @@ public class WarehouseTransactionItem
     public decimal TotalAmount => Quantity * UnitPrice;         // Thành tiền (tính toán)
     public string? ConstructionPhase { get; set; }              // Cấu phần thi công (Móng, Thân, Ống...)
     public string? Notes { get; set; }
+    public int? SupplierId { get; set; }
+    /// <summary>NCC tại thời điểm lập dòng — mỗi VT có thể khác nhau.</summary>
+    public string? SupplierName { get; set; }
 
     public WarehouseTransaction Transaction { get; set; } = null!;
     public Material Material { get; set; } = null!;
