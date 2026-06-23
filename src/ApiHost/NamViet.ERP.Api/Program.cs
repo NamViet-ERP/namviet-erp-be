@@ -124,7 +124,7 @@ builder.Services.AddSwaggerGen(opt =>
     {
         Title = "NamViet ERP API",
         Version = "v1",
-        Description = "Backend API for NamViet ERP – Warehouse & HR Management"
+        Description = "Backend API for NamViet ERP"
     });
     opt.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
     {
