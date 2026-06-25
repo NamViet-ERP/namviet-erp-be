@@ -90,8 +90,8 @@ public class StockController(WarehouseDbContext db, IInventoryDomainService inve
                     p.ClientProjectId ?? p.ProjectCode,
                     p.ProjectName,
                     pi?.ActualImportQty - pi?.ActualExportQty ?? 0m,
-                    pi?.PlannedImportQty - pi?.PlannedExportQty ?? 0m,
-                    pi?.ReservedQty ?? 0m);
+                    pi?.PlannedImportQty ?? 0m,
+                    pi?.PlannedExportQty ?? 0m);
             }).ToList();
 
             rows.Add(new StockMatrixRowDto(

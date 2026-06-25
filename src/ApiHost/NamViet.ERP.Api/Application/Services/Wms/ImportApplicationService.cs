@@ -12,7 +12,7 @@ namespace NamViet.ERP.Api.Application.Services.Wms;
 
 public interface IImportApplicationService
 {
-    Task<List<ImportDto>> ListAsync(CancellationToken ct = default);
+    Task<List<ImportDto>> ListAsync(DateOnly? dateFrom = null, DateOnly? dateTo = null, CancellationToken ct = default);
     Task<ImportDto?> GetByIdAsync(string id, CancellationToken ct = default);
     Task<ImportDto> CreateAsync(CreateImportDto dto, CancellationToken ct = default);
     Task<ImportDto?> UpdateAsync(string id, CreateImportDto dto, CancellationToken ct = default);
@@ -26,9 +26,12 @@ public sealed class ImportApplicationService(
     IInventoryDomainService inventory,
     ICurrentUser currentUser) : IImportApplicationService
 {
-    public async Task<List<ImportDto>> ListAsync(CancellationToken ct = default)
+    public async Task<List<ImportDto>> ListAsync(DateOnly? dateFrom = null, DateOnly? dateTo = null, CancellationToken ct = default)
     {
-        var items = await ImportQuery().OrderByDescending(t => t.CreatedAt).ToListAsync(ct);
+        var items = await ImportQuery()
+            .WhereCreatedBetween(dateFrom, dateTo)
+            .OrderByDescending(t => t.CreatedAt)
+            .ToListAsync(ct);
         return items.Select(WmsMapper.ToImport).ToList();
     }
 

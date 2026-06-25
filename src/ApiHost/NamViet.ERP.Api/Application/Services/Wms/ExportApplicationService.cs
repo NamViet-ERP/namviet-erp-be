@@ -12,7 +12,7 @@ namespace NamViet.ERP.Api.Application.Services.Wms;
 
 public interface IExportApplicationService
 {
-    Task<List<ExportDto>> ListAsync(CancellationToken ct = default);
+    Task<List<ExportDto>> ListAsync(DateOnly? dateFrom = null, DateOnly? dateTo = null, CancellationToken ct = default);
     Task<ExportDto?> GetByIdAsync(string id, CancellationToken ct = default);
     Task<ExportDto> CreateAsync(CreateExportDto dto, CancellationToken ct = default);
     Task<ExportDto?> UpdateAsync(string id, CreateExportDto dto, CancellationToken ct = default);
@@ -26,9 +26,12 @@ public sealed class ExportApplicationService(
     IInventoryDomainService inventory,
     ICurrentUser currentUser) : IExportApplicationService
 {
-    public async Task<List<ExportDto>> ListAsync(CancellationToken ct = default)
+    public async Task<List<ExportDto>> ListAsync(DateOnly? dateFrom = null, DateOnly? dateTo = null, CancellationToken ct = default)
     {
-        var items = await ExportQuery().OrderByDescending(t => t.CreatedAt).ToListAsync(ct);
+        var items = await ExportQuery()
+            .WhereCreatedBetween(dateFrom, dateTo)
+            .OrderByDescending(t => t.CreatedAt)
+            .ToListAsync(ct);
         var warehouseNames = await GetWarehouseNamesAsync(items, ct);
         var projectNames = await GetProjectNamesAsync(items, ct);
         return items.Select(t =>

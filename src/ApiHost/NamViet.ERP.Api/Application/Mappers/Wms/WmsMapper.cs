@@ -74,6 +74,8 @@ public static class WmsMapper
 
     public static string FormatDate(DateOnly d) => d.ToString("dd/MM/yyyy");
 
+    public static string FormatCreatedAt(DateTime value) => value.ToString("o");
+
     public static string? FormatApprovedAt(DateTime? value) =>
         value.HasValue ? value.Value.ToString("o") : null;
 
@@ -105,7 +107,8 @@ public static class WmsMapper
             t.ApprovedByName ?? "", FormatApprovedAt(t.ApprovedAt), t.WarehouseKeeper ?? "",
             items, t.CreatedByName, t.Notes ?? "",
             t.WarehouseId ?? "", t.IsDirectProcurement,
-            t.BeneficiaryProjectCode);
+            t.BeneficiaryProjectCode,
+            FormatCreatedAt(t.CreatedAt));
     }
 
     public static ExportDto ToExport(
@@ -120,7 +123,8 @@ public static class WmsMapper
             ToClientApprovalStatus(t.ApprovalStatus),
             t.CreatedByName, t.Notes ?? "", t.ApprovedByName, FormatApprovedAt(t.ApprovedAt),
             t.ProjectCode ?? t.BeneficiaryProjectCode,
-            projectName);
+            projectName,
+            FormatCreatedAt(t.CreatedAt));
 
     public static TransferDto ToTransfer(
         WarehouseTransaction t,
@@ -141,7 +145,8 @@ public static class WmsMapper
             t.ProjectCode,
             projectName,
             IsCrossProjectTransferEntity(t) ? t.BeneficiaryProjectCode : null,
-            IsCrossProjectTransferEntity(t) ? toProjectName : null);
+            IsCrossProjectTransferEntity(t) ? toProjectName : null,
+            FormatCreatedAt(t.CreatedAt));
 
     private static bool IsCrossProjectTransferEntity(WarehouseTransaction t) =>
         !string.IsNullOrWhiteSpace(t.ProjectCode)
@@ -153,13 +158,6 @@ public static class WmsMapper
             s.WarehouseId, s.WarehouseName, s.Condition, s.IsFrozen, s.Note,
             s.Items.Select(i => new StocktakeItemDto(
                 i.MaterialCode, i.Sku, i.Name, i.SystemQty, i.ActualQty, i.Diff)).ToList());
-
-    public static AdjustmentDto ToAdjustment(Adjustment a) =>
-        new(a.Id, a.VoucherCode, FormatDate(a.VoucherDate), a.StocktakeCode, a.Type,
-            a.CreatedByName, a.Condition, a.WarehouseId, a.WarehouseName,
-            a.Note, a.IsNew,
-            a.Items.Select(i => new AdjustmentItemDto(
-                i.MaterialCode, i.Sku, i.Name, i.AdjustQty, i.Reason)).ToList());
 
     public static ConversionDto ToConversion(Conversion c) =>
         new(c.Id, c.VoucherCode, FormatDate(c.VoucherDate), c.FromWarehouseId, c.FromWarehouseName,

@@ -5,8 +5,8 @@ public record StockMatrixProjectColumnDto(
     string ProjectId,
     string ProjectName,
     decimal ActualQty,
-    decimal PlannedQty,
-    decimal ReservedQty);
+    decimal PlannedImportQty,
+    decimal PlannedExportQty);
 
 public record StockMatrixRowDto(
     string MaterialCode,

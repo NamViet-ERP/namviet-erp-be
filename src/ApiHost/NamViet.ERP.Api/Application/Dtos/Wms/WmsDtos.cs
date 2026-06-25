@@ -21,7 +21,8 @@ public record ImportDto(
     string Id, string VoucherCode, string Date, string Supplier, string ReferenceCode,
     decimal TotalValue, string Status, string WarehouseApproval, string ApprovedBy,
     string? ApprovedAt, string WarehouseKeeper, List<ImportItemDto> Items, string CreatedBy, string Note,
-    string WarehouseId, bool? IsDirectProcurement, string? Project);
+    string WarehouseId, bool? IsDirectProcurement, string? Project,
+    string CreatedAt);
 public record CreateImportDto(
     string VoucherCode, string Date, string Supplier, string ReferenceCode,
     decimal TotalValue, string Status, string WarehouseApproval, string ApprovedBy,
@@ -33,7 +34,8 @@ public record ExportDto(
     string Id, string VoucherCode, string Date, string SoCode, string Customer,
     string WarehouseId, string WarehouseName, List<ExportItemDto> Items,
     string Status, string CreatedBy, string Note, string? ApprovedBy, string? ApprovedAt,
-    string? Project, string? ProjectName);
+    string? Project, string? ProjectName,
+    string CreatedAt);
 public record CreateExportDto(
     string VoucherCode, string Date, string SoCode, string Customer,
     string WarehouseId, List<ExportItemDto> Items,
@@ -45,7 +47,8 @@ public record TransferDto(
     string Id, string VoucherCode, string Date, string FromWarehouseId, string FromWarehouseName,
     string ToWarehouseId, string ToWarehouseName, List<TransferItemDto> Items,
     string Status, string CreatedBy, string Note, string? ApprovedBy, string? ApprovedAt,
-    string? Project, string? ProjectName, string? ToProject, string? ToProjectName);
+    string? Project, string? ProjectName, string? ToProject, string? ToProjectName,
+    string CreatedAt);
 public record CreateTransferDto(
     string VoucherCode, string Date, string FromWarehouseId, string ToWarehouseId,
     List<TransferItemDto> Items, string Status, string CreatedBy, string Note,
@@ -56,12 +59,6 @@ public record StocktakeDto(
     string Id, string VoucherCode, string Date, string CreatedBy, string Status,
     string WarehouseId, string WarehouseName, string Condition, bool IsFrozen,
     string Note, List<StocktakeItemDto> Items);
-
-public record AdjustmentItemDto(string ProductId, string Sku, string Name, decimal AdjustQty, string Reason);
-public record AdjustmentDto(
-    string Id, string VoucherCode, string Date, string StocktakeCode, string Type,
-    string CreatedBy, string Condition, string WarehouseId, string WarehouseName,
-    string Note, bool IsNew, List<AdjustmentItemDto> Items);
 
 public record MemberDto(
     string Id, string Code, string Name, string Role, string RoleLabel,

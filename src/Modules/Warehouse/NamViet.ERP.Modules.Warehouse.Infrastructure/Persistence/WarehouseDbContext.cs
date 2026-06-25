@@ -51,8 +51,6 @@ public class WarehouseDbContext(DbContextOptions<WarehouseDbContext> options) : 
     public DbSet<WarehouseInventory> WarehouseInventories => Set<WarehouseInventory>();
     public DbSet<Stocktake> Stocktakes => Set<Stocktake>();
     public DbSet<StocktakeItem> StocktakeItems => Set<StocktakeItem>();
-    public DbSet<Adjustment> Adjustments => Set<Adjustment>();
-    public DbSet<AdjustmentItem> AdjustmentItems => Set<AdjustmentItem>();
     public DbSet<ConsumableQuota> ConsumableQuotas => Set<ConsumableQuota>();
     public DbSet<ProjectBom> ProjectBoms => Set<ProjectBom>();
     public DbSet<PurchaseOrder> PurchaseOrders => Set<PurchaseOrder>();
@@ -307,30 +305,6 @@ public class WarehouseDbContext(DbContextOptions<WarehouseDbContext> options) : 
             e.Property(i => i.MaterialCode).HasMaxLength(100);
             e.HasOne(i => i.Stocktake).WithMany(s => s.Items)
              .HasForeignKey(i => i.StocktakeId).OnDelete(DeleteBehavior.Cascade);
-            e.HasOne(i => i.Material).WithMany()
-             .HasForeignKey(i => i.MaterialCode).OnDelete(DeleteBehavior.Restrict);
-        });
-
-        model.Entity<Adjustment>(e =>
-        {
-            e.ToTable("adjustments");
-            e.HasKey(a => a.Id);
-            e.Property(a => a.Id).HasMaxLength(50);
-            e.Property(a => a.VoucherCode).HasMaxLength(50);
-            e.Property(a => a.CreatedByName).HasMaxLength(255);
-            e.HasIndex(a => a.VoucherCode).IsUnique();
-            e.HasOne(a => a.Warehouse).WithMany()
-             .HasForeignKey(a => a.WarehouseId).OnDelete(DeleteBehavior.Restrict);
-            e.HasQueryFilter(a => a.DeletedAt == null);
-        });
-
-        model.Entity<AdjustmentItem>(e =>
-        {
-            e.ToTable("adjustment_items");
-            e.HasKey(i => i.Id);
-            e.Property(i => i.MaterialCode).HasMaxLength(100);
-            e.HasOne(i => i.Adjustment).WithMany(a => a.Items)
-             .HasForeignKey(i => i.AdjustmentId).OnDelete(DeleteBehavior.Cascade);
             e.HasOne(i => i.Material).WithMany()
              .HasForeignKey(i => i.MaterialCode).OnDelete(DeleteBehavior.Restrict);
         });

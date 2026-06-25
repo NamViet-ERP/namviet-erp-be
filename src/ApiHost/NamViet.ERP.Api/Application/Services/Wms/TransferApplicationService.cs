@@ -12,7 +12,7 @@ namespace NamViet.ERP.Api.Application.Services.Wms;
 
 public interface ITransferApplicationService
 {
-    Task<List<TransferDto>> ListAsync(CancellationToken ct = default);
+    Task<List<TransferDto>> ListAsync(DateOnly? dateFrom = null, DateOnly? dateTo = null, CancellationToken ct = default);
     Task<TransferDto?> GetByIdAsync(string id, CancellationToken ct = default);
     Task<TransferDto> CreateAsync(CreateTransferDto dto, CancellationToken ct = default);
     Task<TransferDto?> UpdateAsync(string id, CreateTransferDto dto, CancellationToken ct = default);
@@ -26,9 +26,12 @@ public sealed class TransferApplicationService(
     IInventoryDomainService inventory,
     ICurrentUser currentUser) : ITransferApplicationService
 {
-    public async Task<List<TransferDto>> ListAsync(CancellationToken ct = default)
+    public async Task<List<TransferDto>> ListAsync(DateOnly? dateFrom = null, DateOnly? dateTo = null, CancellationToken ct = default)
     {
-        var items = await Query().OrderByDescending(t => t.CreatedAt).ToListAsync(ct);
+        var items = await Query()
+            .WhereCreatedBetween(dateFrom, dateTo)
+            .OrderByDescending(t => t.CreatedAt)
+            .ToListAsync(ct);
         var warehouseNames = await GetWarehouseNamesAsync(items, ct);
         var projectNames = await GetProjectNamesAsync(items, ct);
         return items.Select(t => MapTransfer(t, warehouseNames, projectNames)).ToList();
