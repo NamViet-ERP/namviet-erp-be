@@ -1,5 +1,6 @@
 using FluentValidation;
 using Microsoft.AspNetCore.Mvc;
+using NamViet.ERP.SharedKernel.Common;
 using System.Text.Json;
 
 namespace NamViet.ERP.Api.Middleware;
@@ -27,6 +28,7 @@ public class ExceptionMiddleware(RequestDelegate next, ILogger<ExceptionMiddlewa
                 string.Join("; ", ve.Errors.Select(e => e.ErrorMessage))),
             UnauthorizedAccessException => (401, "Không có quyền truy cập", ex.Message),
             KeyNotFoundException => (404, "Không tìm thấy dữ liệu", ex.Message),
+            ConcurrencyConflictException => (409, "Xung đột cập nhật", ex.Message),
             InvalidOperationException => (422, "Thao tác không hợp lệ", ex.Message),
             _ => (500, "Lỗi hệ thống", "Đã xảy ra lỗi, vui lòng thử lại sau.")
         };

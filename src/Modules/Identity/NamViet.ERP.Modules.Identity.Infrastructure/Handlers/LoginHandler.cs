@@ -16,21 +16,19 @@ public class LoginHandler(
     IdentityDbContext db,
     IEmployeeInfoProvider employeeInfo) : IRequestHandler<LoginCommand, AuthResponse>
 {
+    private const string InvalidLoginMessage = "Thông tin đăng nhập không chính xác.";
+
     public async Task<AuthResponse> Handle(LoginCommand request, CancellationToken ct)
     {
         var user = await userManager.FindByEmailAsync(request.Email)
-            ?? await userManager.Users.FirstOrDefaultAsync(u => u.UserName == request.Email, ct)
-            ?? throw new UnauthorizedAccessException("Email hoặc mật khẩu không đúng.");
+            ?? await userManager.Users.FirstOrDefaultAsync(u => u.UserName == request.Email, ct);
 
-        if (user.DeletedAt.HasValue)
-            throw new UnauthorizedAccessException("Tài khoản đã bị vô hiệu hóa.");
-
-        if (!user.IsActive)
-            throw new UnauthorizedAccessException("Tài khoản của bạn đã bị khóa hoặc chưa được kích hoạt.");
+        if (user is null || user.DeletedAt.HasValue || !user.IsActive)
+            throw new UnauthorizedAccessException(InvalidLoginMessage);
 
         var validPassword = await userManager.CheckPasswordAsync(user, request.Password);
         if (!validPassword)
-            throw new UnauthorizedAccessException("Email hoặc mật khẩu không đúng.");
+            throw new UnauthorizedAccessException(InvalidLoginMessage);
 
         var roles = await userManager.GetRolesAsync(user);
         var accessToken = tokenService.GenerateAccessToken(user, roles);

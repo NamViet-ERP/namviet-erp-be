@@ -39,6 +39,9 @@ public class WarehouseTransaction : BaseEntity
     /// <summary>Liên kết cặp phiếu NK↔XK cho Direct Issue.</summary>
     public string? LinkedTicketCode { get; set; }
 
+    /// <summary>Optimistic concurrency token (PostgreSQL xmin).</summary>
+    public uint RowVersion { get; set; }
+
     public Project? Project { get; set; }
     public Supplier? Supplier { get; set; }
     public WarehouseTransaction? LinkedTransaction { get; set; }

@@ -2,6 +2,7 @@ using FluentValidation;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi.Models;
+using NamViet.ERP.Api.Application.Services.Admin;
 using NamViet.ERP.Api.Application.Services.Hr;
 using NamViet.ERP.Api.Infrastructure.RateLimiting;
 using NamViet.ERP.Api.Infrastructure;
@@ -22,6 +23,8 @@ using AppWarehouseDbContext = NamViet.ERP.Modules.Warehouse.Infrastructure.Persi
 using AppHrDbContext = NamViet.ERP.Modules.Hr.Infrastructure.Persistence.HrDbContext;
 
 var builder = WebApplication.CreateBuilder(args);
+
+ConfigurationSecurityValidator.Validate(builder.Configuration, builder.Environment);
 
 // ── Serilog ────────────────────────────────────────────────────────────────
 builder.Host.UseSerilog((ctx, cfg) =>
@@ -99,6 +102,7 @@ builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Wms.IWmsCatalogQ
 builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Wms.IImportApplicationService, NamViet.ERP.Api.Application.Services.Wms.ImportApplicationService>();
 builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Wms.IExportApplicationService, NamViet.ERP.Api.Application.Services.Wms.ExportApplicationService>();
 builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Wms.ITransferApplicationService, NamViet.ERP.Api.Application.Services.Wms.TransferApplicationService>();
+builder.Services.AddScoped<IAdminUserQueryService, AdminUserQueryService>();
 builder.Services.AddSingleton<NamViet.ERP.Api.Services.Storage.IFileStorage, NamViet.ERP.Api.Services.Storage.LocalFileStorage>();
 
 // ── CORS ───────────────────────────────────────────────────────────────────

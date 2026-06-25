@@ -16,6 +16,9 @@ public class ProjectInventory : BaseEntity
     /// <summary>Cache denormalized — nguồn sự thật: inventory_reservations (Holding).</summary>
     public decimal ReservedQty { get; set; }
 
+    /// <summary>Optimistic concurrency token (PostgreSQL xmin).</summary>
+    public uint RowVersion { get; set; }
+
     public decimal ActualInventoryQty => ActualImportQty - ActualExportQty;
     public decimal PlannedInventoryQty => PlannedImportQty - PlannedExportQty;
     public decimal ExpectedInventoryQty => ActualInventoryQty + PlannedInventoryQty;

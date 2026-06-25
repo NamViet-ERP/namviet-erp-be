@@ -28,8 +28,13 @@ public class MaterialsController(WarehouseDbContext db) : ControllerBase
         [FromQuery] bool includeInactive = false,
         CancellationToken ct = default)
     {
-        var allCategories = await db.MaterialCategories.AsNoTracking().ToListAsync(ct);
-        var categoryById = allCategories.ToDictionary(c => c.Id);
+        var hasPathFilter = !string.IsNullOrWhiteSpace(danhMuc) || !string.IsNullOrWhiteSpace(nhomVatTu) ||
+            !string.IsNullOrWhiteSpace(loaiVatTu) || !string.IsNullOrWhiteSpace(phanLoai) ||
+            !string.IsNullOrWhiteSpace(kieu);
+
+        List<MaterialCategory>? allCategories = null;
+        if (hasPathFilter || categoryId.HasValue)
+            allCategories = await db.MaterialCategories.AsNoTracking().ToListAsync(ct);
 
         var query = db.Materials.AsNoTracking().Where(m => m.DeletedAt == null);
         if (!includeInactive)
@@ -38,11 +43,10 @@ public class MaterialsController(WarehouseDbContext db) : ControllerBase
         if (!string.IsNullOrWhiteSpace(search))
             query = query.Where(m => m.MaterialName.Contains(search) || m.MaterialCode.Contains(search));
 
-        var matchingIds = MaterialCategoryHelper.CollectCategoryIdsMatchingPathFilter(
-            allCategories, danhMuc, nhomVatTu, loaiVatTu, phanLoai, kieu);
-        var hasPathFilter = !string.IsNullOrWhiteSpace(danhMuc) || !string.IsNullOrWhiteSpace(nhomVatTu) ||
-            !string.IsNullOrWhiteSpace(loaiVatTu) || !string.IsNullOrWhiteSpace(phanLoai) ||
-            !string.IsNullOrWhiteSpace(kieu);
+        var matchingIds = hasPathFilter
+            ? MaterialCategoryHelper.CollectCategoryIdsMatchingPathFilter(
+                allCategories!, danhMuc, nhomVatTu, loaiVatTu, phanLoai, kieu)
+            : [];
         if (hasPathFilter)
         {
             if (matchingIds.Count == 0)
@@ -52,7 +56,7 @@ public class MaterialsController(WarehouseDbContext db) : ControllerBase
 
         if (categoryId.HasValue)
         {
-            var subtree = MaterialCategoryHelper.CollectSelfAndDescendantIds(categoryId.Value, allCategories);
+            var subtree = MaterialCategoryHelper.CollectSelfAndDescendantIds(categoryId.Value, allCategories!);
             query = query.Where(m => subtree.Contains(m.CategoryId));
         }
 
@@ -62,6 +66,9 @@ public class MaterialsController(WarehouseDbContext db) : ControllerBase
             .Skip((page - 1) * pageSize).Take(pageSize)
             .ToListAsync(ct);
 
+        var categoryById = allCategories is not null
+            ? allCategories.ToDictionary(c => c.Id)
+            : await LoadCategoryLookupAsync(materials.Select(m => m.CategoryId), ct);
         var items = materials.Select(m => ToDto(m, categoryById)).ToList();
         return Ok(PagedResult<MaterialDto>.Create(items, total, page, pageSize));
     }
@@ -73,8 +80,8 @@ public class MaterialsController(WarehouseDbContext db) : ControllerBase
             .FirstOrDefaultAsync(x => x.MaterialCode == code && x.DeletedAt == null, ct);
         if (m is null) return NotFound();
 
-        var allCategories = await db.MaterialCategories.AsNoTracking().ToListAsync(ct);
-        return Ok(ToDto(m, allCategories.ToDictionary(c => c.Id)));
+        var categoryById = await LoadCategoryLookupAsync([m.CategoryId], ct);
+        return Ok(ToDto(m, categoryById));
     }
 
     [HttpPost]
@@ -111,9 +118,9 @@ public class MaterialsController(WarehouseDbContext db) : ControllerBase
         db.Materials.Add(material);
         await db.SaveChangesAsync(ct);
 
-        var allCategories = await db.MaterialCategories.AsNoTracking().ToListAsync(ct);
+        var categoryById = await LoadCategoryLookupAsync([material.CategoryId], ct);
         return CreatedAtAction(nameof(GetById), new { code = material.MaterialCode },
-            ToDto(material, allCategories.ToDictionary(c => c.Id)));
+            ToDto(material, categoryById));
     }
 
     [HttpPut("{code}")]
@@ -193,6 +200,33 @@ public class MaterialsController(WarehouseDbContext db) : ControllerBase
         m.DeletedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
         return NoContent();
+    }
+
+    private async Task<IReadOnlyDictionary<int, MaterialCategory>> LoadCategoryLookupAsync(
+        IEnumerable<int> leafCategoryIds,
+        CancellationToken ct)
+    {
+        var lookup = new Dictionary<int, MaterialCategory>();
+        var pending = leafCategoryIds.Distinct().ToHashSet();
+
+        while (pending.Count > 0)
+        {
+            var batch = pending.ToList();
+            pending.Clear();
+
+            var rows = await db.MaterialCategories.AsNoTracking()
+                .Where(c => batch.Contains(c.Id))
+                .ToListAsync(ct);
+
+            foreach (var category in rows)
+            {
+                lookup[category.Id] = category;
+                if (category.ParentId is int parentId && !lookup.ContainsKey(parentId))
+                    pending.Add(parentId);
+            }
+        }
+
+        return lookup;
     }
 
     private static MaterialDto ToDto(Material m, IReadOnlyDictionary<int, MaterialCategory> categoryById)

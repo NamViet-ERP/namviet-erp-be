@@ -2,11 +2,40 @@ using Microsoft.EntityFrameworkCore;
 using NamViet.ERP.Modules.Warehouse.Domain.Entities;
 using NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence.Converters;
 using NamViet.ERP.Modules.Warehouse.Domain.Enums;
+using NamViet.ERP.SharedKernel.Common;
 
 namespace NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence;
 
 public class WarehouseDbContext(DbContextOptions<WarehouseDbContext> options) : DbContext(options)
 {
+    public override async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            return await base.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException ex)
+        {
+            throw new ConcurrencyConflictException(
+                "Dữ liệu đã được người khác cập nhật. Vui lòng tải lại và thử lại.",
+                ex);
+        }
+    }
+
+    public override int SaveChanges()
+    {
+        try
+        {
+            return base.SaveChanges();
+        }
+        catch (DbUpdateConcurrencyException ex)
+        {
+            throw new ConcurrencyConflictException(
+                "Dữ liệu đã được người khác cập nhật. Vui lòng tải lại và thử lại.",
+                ex);
+        }
+    }
+
     public DbSet<Material> Materials => Set<Material>();
     public DbSet<MaterialCategory> MaterialCategories => Set<MaterialCategory>();
     public DbSet<MaterialUnit> MaterialUnits => Set<MaterialUnit>();
@@ -155,6 +184,7 @@ public class WarehouseDbContext(DbContextOptions<WarehouseDbContext> options) : 
              .HasForeignKey(pi => pi.ProjectCode).OnDelete(DeleteBehavior.Cascade);
             e.HasOne(pi => pi.Material).WithMany(m => m.ProjectInventories)
              .HasForeignKey(pi => pi.MaterialCode).OnDelete(DeleteBehavior.Restrict);
+            e.Property(pi => pi.RowVersion).IsRowVersion();
         });
 
         model.Entity<ProjectMaterialLoan>(e =>
@@ -207,6 +237,7 @@ public class WarehouseDbContext(DbContextOptions<WarehouseDbContext> options) : 
              .HasForeignKey(t => t.ProjectCode).OnDelete(DeleteBehavior.Restrict).IsRequired(false);
             e.HasOne(t => t.Supplier).WithMany(s => s.Transactions)
              .HasForeignKey(t => t.SupplierId).OnDelete(DeleteBehavior.SetNull).IsRequired(false);
+            e.Property(t => t.RowVersion).IsRowVersion();
         });
 
         model.Entity<WarehouseTransactionItem>(e =>
