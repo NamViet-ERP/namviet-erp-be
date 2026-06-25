@@ -50,3 +50,6 @@ src/ApiHost/NamViet.ERP.Api/wwwroot/uploads/
 .claude/
 .sixth/
 .vscode/
+
+# Local task notes (keep on disk, do not push)
+docs/
