@@ -53,3 +53,9 @@ src/ApiHost/NamViet.ERP.Api/wwwroot/uploads/
 
 # Local task notes (keep on disk, do not push)
 docs/
+
+# Local demo seed (generate & run on machine only)
+scripts/generate-demo-seed-data.mjs
+scripts/seed-demo-data.ps1
+scripts/seed-demo-hr.sql
+scripts/seed-demo-warehouse.sql
