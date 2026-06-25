@@ -28,6 +28,19 @@ public static class HrEmployeeMapper
         return n;
     }
 
+    /// <summary>Mã NV mới → cũ (7964 trước 0106); pending/không parse được xuống cuối.</summary>
+    public static int CompareEmployeeCodeNewestFirst(string? a, string? b)
+    {
+        var aNum = ParseEmployeeCodeNumber(a);
+        var bNum = ParseEmployeeCodeNumber(b);
+        if (aNum is null && bNum is null)
+            return string.Compare(a, b, StringComparison.OrdinalIgnoreCase);
+        if (aNum is null) return 1;
+        if (bNum is null) return -1;
+        var cmp = bNum.Value.CompareTo(aNum.Value);
+        return cmp != 0 ? cmp : string.Compare(a, b, StringComparison.OrdinalIgnoreCase);
+    }
+
     public static string SuggestNextEmployeeCode(IEnumerable<string?> codes)
     {
         var max = 0;

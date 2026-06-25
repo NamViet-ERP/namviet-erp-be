@@ -1,3 +1,4 @@
+using FluentValidation;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -8,13 +9,18 @@ using NamViet.ERP.Modules.Warehouse.Domain.Enums;
 using NamViet.ERP.Modules.Warehouse.Domain.Services;
 using NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence;
 using NamViet.ERP.SharedKernel.Common;
+using System.Text.Json;
 
 namespace NamViet.ERP.Api.Controllers;
 
 [ApiController]
 [Route("api/warehouse/projects")]
 [Authorize]
-public class ProjectsController(WarehouseDbContext db, IInventoryDomainService inventory) : ControllerBase
+public class ProjectsController(
+    WarehouseDbContext db,
+    IInventoryDomainService inventory,
+    IValidator<CreateProjectRequest> createValidator,
+    IValidator<UpdateProjectRequest> updateValidator) : ControllerBase
 {
     [HttpGet]
     public async Task<IActionResult> GetAll(
@@ -111,6 +117,10 @@ public class ProjectsController(WarehouseDbContext db, IInventoryDomainService i
     [Authorize(Roles = "Admin,PM")]
     public async Task<IActionResult> Create([FromBody] CreateProjectRequest request, CancellationToken ct)
     {
+        var validation = await createValidator.ValidateAsync(request, ct);
+        if (!validation.IsValid)
+            return ValidationBadRequest(validation);
+
         if (await db.Projects.AnyAsync(p => p.ProjectCode == request.ProjectCode, ct))
             return Conflict($"Mã dự án '{request.ProjectCode}' đã tồn tại.");
 
@@ -134,6 +144,10 @@ public class ProjectsController(WarehouseDbContext db, IInventoryDomainService i
     [Authorize(Roles = "Admin,PM")]
     public async Task<IActionResult> Update(string code, [FromBody] UpdateProjectRequest request, CancellationToken ct)
     {
+        var validation = await updateValidator.ValidateAsync(request, ct);
+        if (!validation.IsValid)
+            return ValidationBadRequest(validation);
+
         var p = await db.Projects.FirstOrDefaultAsync(x => x.ProjectCode == code, ct);
         if (p is null) return NotFound();
         p.ProjectName = request.ProjectName;
@@ -205,5 +219,16 @@ public class ProjectsController(WarehouseDbContext db, IInventoryDomainService i
             WmsMapper.ToClientApprovalStatus(t.ApprovalStatus),
             itemQty,
             totalValue);
+    }
+
+    private static BadRequestObjectResult ValidationBadRequest(FluentValidation.Results.ValidationResult validation)
+    {
+        var errors = validation.Errors
+            .GroupBy(e => JsonNamingPolicy.CamelCase.ConvertName(e.PropertyName))
+            .ToDictionary(
+                g => g.Key,
+                g => g.Select(e => e.ErrorMessage).ToArray());
+
+        return new BadRequestObjectResult(new { errors });
     }
 }

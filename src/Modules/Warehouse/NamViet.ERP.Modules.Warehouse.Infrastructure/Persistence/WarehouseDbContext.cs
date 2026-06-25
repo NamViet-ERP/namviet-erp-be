@@ -9,6 +9,7 @@ public class WarehouseDbContext(DbContextOptions<WarehouseDbContext> options) : 
 {
     public DbSet<Material> Materials => Set<Material>();
     public DbSet<MaterialCategory> MaterialCategories => Set<MaterialCategory>();
+    public DbSet<MaterialUnit> MaterialUnits => Set<MaterialUnit>();
     public DbSet<InventoryReservation> InventoryReservations => Set<InventoryReservation>();
     public DbSet<Supplier> Suppliers => Set<Supplier>();
     public DbSet<PriceBook> PriceBooks => Set<PriceBook>();
@@ -49,6 +50,15 @@ public class WarehouseDbContext(DbContextOptions<WarehouseDbContext> options) : 
             e.HasIndex(c => c.ParentId);
             e.HasOne(c => c.Parent).WithMany(c => c.Children)
              .HasForeignKey(c => c.ParentId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        model.Entity<MaterialUnit>(e =>
+        {
+            e.ToTable("material_units");
+            e.HasKey(u => u.Id);
+            e.Property(u => u.Name).HasMaxLength(50).IsRequired();
+            e.HasIndex(u => u.Name).IsUnique();
+            e.Property(u => u.IsActive).HasDefaultValue(true);
         });
 
         model.Entity<Material>(e =>

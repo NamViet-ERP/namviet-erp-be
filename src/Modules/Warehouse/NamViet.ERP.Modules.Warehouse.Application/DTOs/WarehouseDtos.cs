@@ -74,6 +74,12 @@ public record MaterialCategoryDto(
 public record UpsertMaterialCategoryRequest(
     string Code, string Name, int Level, int? ParentId, int SortOrder = 0, bool IsActive = true);
 
+public record MaterialUnitDto(
+    int Id, string Name, int SortOrder, bool IsActive);
+
+public record UpsertMaterialUnitRequest(
+    string Name, int SortOrder = 0, bool IsActive = true);
+
 // ── Transactions ──────────────────────────────────────────────────────────
 public record TransactionItemRequest(
     string MaterialCode, decimal Quantity, decimal UnitPrice,

@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
@@ -202,6 +203,13 @@ public class AdminUsersController(
 
         if (user is null) return NotFound();
 
+        var currentUserId = User.FindFirstValue(ClaimTypes.NameIdentifier)
+            ?? User.FindFirstValue("sub");
+        if (!request.Enabled
+            && !string.IsNullOrEmpty(currentUserId)
+            && string.Equals(user.Id.ToString(), currentUserId, StringComparison.OrdinalIgnoreCase))
+            return BadRequest("Không thể khóa tài khoản đang đăng nhập.");
+
         user.IsActive = request.Enabled;
         user.UpdatedAt = DateTime.UtcNow;
         await userManager.UpdateAsync(user);
@@ -300,9 +308,11 @@ public class AdminUsersController(
             rows.Add(ToManualRow(user, lookups));
 
         return rows
-            .OrderBy(r => r.FullName, StringComparer.OrdinalIgnoreCase)
-            .ThenBy(r => r.EmployeeCode, StringComparer.OrdinalIgnoreCase)
-            .ThenBy(r => r.Id, StringComparer.OrdinalIgnoreCase)
+            .OrderBy(r => r, Comparer<AdminUserDto>.Create((a, b) =>
+            {
+                var cmp = HrEmployeeMapper.CompareEmployeeCodeNewestFirst(a.EmployeeCode, b.EmployeeCode);
+                return cmp != 0 ? cmp : string.Compare(a.Id, b.Id, StringComparison.OrdinalIgnoreCase);
+            }))
             .ToList();
     }
 

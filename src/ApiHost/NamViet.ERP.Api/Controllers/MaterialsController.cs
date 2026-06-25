@@ -91,12 +91,18 @@ public class MaterialsController(WarehouseDbContext db) : ControllerBase
         if (leaf.Level < 3)
             return BadRequest("Phải chọn tối thiểu đến cấp Loại vật tư (cấp 3).");
 
+        var unit = MaterialUnitHelper.NormalizeDisplayName(request.Unit);
+        if (string.IsNullOrEmpty(unit))
+            return BadRequest("Vui lòng chọn đơn vị tính.");
+        if (!await db.MaterialUnits.AnyAsync(u => u.Name == unit && u.IsActive, ct))
+            return BadRequest("Đơn vị tính không tồn tại hoặc đã ngừng dùng.");
+
         var material = new Material
         {
             MaterialCode = request.MaterialCode.Trim(),
             MaterialName = request.MaterialName.Trim(),
             CategoryId = request.CategoryId,
-            Unit = request.Unit.Trim(),
+            Unit = unit,
             TechnicalSpec = request.TechnicalSpec,
             QualityStandard = request.QualityStandard,
             IsConsumable = request.IsConsumable,
@@ -123,9 +129,15 @@ public class MaterialsController(WarehouseDbContext db) : ControllerBase
         if (leaf.Level < 3)
             return BadRequest("Phải chọn tối thiểu đến cấp Loại vật tư (cấp 3).");
 
+        var unit = MaterialUnitHelper.NormalizeDisplayName(request.Unit);
+        if (string.IsNullOrEmpty(unit))
+            return BadRequest("Vui lòng chọn đơn vị tính.");
+        if (!await db.MaterialUnits.AnyAsync(u => u.Name == unit && u.IsActive, ct))
+            return BadRequest("Đơn vị tính không tồn tại hoặc đã ngừng dùng.");
+
         m.MaterialName = request.MaterialName.Trim();
         m.CategoryId = request.CategoryId;
-        m.Unit = request.Unit.Trim();
+        m.Unit = unit;
         m.TechnicalSpec = request.TechnicalSpec;
         m.QualityStandard = request.QualityStandard;
         m.IsConsumable = request.IsConsumable;

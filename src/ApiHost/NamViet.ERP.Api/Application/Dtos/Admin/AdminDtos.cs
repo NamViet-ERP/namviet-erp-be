@@ -60,4 +60,6 @@ public record AdminUserPagedResponse(
 
 public record AdminRoleDto(string Code, string Label, bool IsActive);
 
-public record CreateAdminRoleRequest(string Label, string? Code);
+public record CreateAdminRoleRequest(string Label);
+
+public record UpdateAdminRoleRequest(string Label);

@@ -49,13 +49,13 @@ public class AdminRolesController(
         if (string.IsNullOrEmpty(label))
             return BadRequest("Tên vai trò không được để trống.");
 
-        var code = (request.Code?.Trim() ?? Slugify(label)).ToLowerInvariant();
-        if (!System.Text.RegularExpressions.Regex.IsMatch(code, @"^[a-z][a-z0-9_]*$"))
-            return BadRequest("Mã vai trò chỉ gồm chữ thường, số và dấu gạch dưới.");
+        var code = Slugify(label).ToLowerInvariant();
+        if (!Regex.IsMatch(code, @"^[a-z][a-z0-9_]*$"))
+            return BadRequest("Tên vai trò không hợp lệ — vui lòng dùng chữ cái và khoảng trắng.");
 
         var identityName = WmsMapper.ToIdentityRole(code);
         if (await roleManager.RoleExistsAsync(identityName))
-            return Conflict("Mã vai trò đã tồn tại.");
+            return Conflict("Vai trò tương tự đã tồn tại — hãy đặt tên khác.");
 
         var existing = await roleManager.Roles
             .FirstOrDefaultAsync(r => r.Description != null && r.Description.ToLower() == label.ToLower(), ct);
@@ -74,6 +74,30 @@ public class AdminRolesController(
         if (!result.Succeeded)
             return BadRequest(new { errors = result.Errors.Select(e => e.Description) });
 
+        return Ok(ToAdminRoleDto(role));
+    }
+
+    [HttpPatch("{code}")]
+    public async Task<ActionResult<AdminRoleDto>> UpdateLabel(
+        string code, [FromBody] UpdateAdminRoleRequest request, CancellationToken ct)
+    {
+        var role = await FindRoleByClientCodeAsync(code, ct);
+        if (role is null) return NotFound();
+
+        var label = request.Label.Trim();
+        if (string.IsNullOrEmpty(label))
+            return BadRequest("Tên vai trò không được để trống.");
+
+        var duplicate = await roleManager.Roles
+            .FirstOrDefaultAsync(r =>
+                r.Id != role.Id
+                && r.Description != null
+                && r.Description.ToLower() == label.ToLower(), ct);
+        if (duplicate is not null)
+            return Conflict("Tên vai trò đã tồn tại.");
+
+        role.Description = label;
+        await roleManager.UpdateAsync(role);
         return Ok(ToAdminRoleDto(role));
     }
 
