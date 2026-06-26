@@ -21,10 +21,9 @@ public class ApproveTransactionHandler(
             .FirstOrDefaultAsync(t => t.TicketCode == command.TicketCode, ct)
             ?? throw new KeyNotFoundException($"Phiếu '{command.TicketCode}' không tồn tại.");
 
-        if (transaction.ApprovalStatus != ApprovalStatus.Pending
-            && transaction.ApprovalStatus != ApprovalStatus.Draft)
+        if (transaction.ApprovalStatus != ApprovalStatus.Pending)
             throw new InvalidOperationException(
-                $"Phiếu đã ở trạng thái '{transaction.ApprovalStatus}', không thể duyệt lại.");
+                "Chỉ phiếu đã chốt dự kiến (Pending) mới được duyệt kho.");
 
         transaction.ApprovalStatus = command.Approve ? ApprovalStatus.Approved : ApprovalStatus.Rejected;
         transaction.ApprovedById = currentUser.Id;

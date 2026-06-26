@@ -78,7 +78,7 @@ public sealed class ImportApplicationService(
 
         await using var tx = await db.Database.BeginTransactionAsync(ct);
 
-        if (t.ApprovalStatus == ApprovalStatus.Draft)
+        if (HasPlannedInventory(t.ApprovalStatus))
         {
             await inventory.CancelReservationsAsync(t.TicketCode, ct);
             await inventory.CancelProjectImportPlannedAsync(t, ct);
@@ -92,7 +92,10 @@ public sealed class ImportApplicationService(
         t.IsDirectProcurement = dto.IsDirectProcurement ?? false;
         t.BeneficiaryProjectCode = dto.Project;
         t.Notes = dto.Note;
-        t.ApprovalStatus = WmsMapper.FromClientApprovalStatus(dto.Status);
+        var nextStatus = WmsMapper.FromClientApprovalStatus(dto.Status);
+        if (nextStatus == ApprovalStatus.Approved)
+            throw new InvalidOperationException("Không thể duyệt phiếu qua cập nhật. Hãy dùng thao tác Duyệt kho.");
+        t.ApprovalStatus = nextStatus;
         t.UpdatedAt = DateTime.UtcNow;
 
         db.WarehouseTransactionItems.RemoveRange(t.Items);
@@ -107,7 +110,7 @@ public sealed class ImportApplicationService(
         }).ToList();
         await ValidateAndSnapshotItemsAsync(t.Items, ct);
 
-        if (t.ApprovalStatus == ApprovalStatus.Draft)
+        if (HasPlannedInventory(t.ApprovalStatus))
             await CreateDraftReservationsAsync(t, ct);
 
         await db.SaveChangesAsync(ct);
@@ -121,8 +124,8 @@ public sealed class ImportApplicationService(
         if (t is null) return null;
         if (t.ApprovalStatus is ApprovalStatus.Approved or ApprovalStatus.Rejected)
             throw new InvalidOperationException($"Phiếu đã ở trạng thái '{t.ApprovalStatus}', không thể duyệt lại.");
-        if (t.ApprovalStatus != ApprovalStatus.Pending && t.ApprovalStatus != ApprovalStatus.Draft)
-            throw new InvalidOperationException($"Phiếu ở trạng thái '{t.ApprovalStatus}', không thể duyệt.");
+        if (t.ApprovalStatus != ApprovalStatus.Pending)
+            throw new InvalidOperationException("Chỉ phiếu đã chốt dự kiến (Pending) mới được duyệt kho.");
 
         await using var tx = await db.Database.BeginTransactionAsync(ct);
         t.ApprovalStatus = ApprovalStatus.Approved;
@@ -160,7 +163,7 @@ public sealed class ImportApplicationService(
             throw new InvalidOperationException("Phiếu đã duyệt, không thể xóa.");
 
         await using var tx = await db.Database.BeginTransactionAsync(ct);
-        if (t.ApprovalStatus == ApprovalStatus.Draft)
+        if (HasPlannedInventory(t.ApprovalStatus))
         {
             await inventory.CancelReservationsAsync(t.TicketCode, ct);
             await inventory.CancelProjectImportPlannedAsync(t, ct);
@@ -176,6 +179,9 @@ public sealed class ImportApplicationService(
             .Include(t => t.Items).ThenInclude(i => i.Material)
             .Include(t => t.Supplier)
             .Where(t => t.TransactionType == TransactionType.Import);
+
+    private static bool HasPlannedInventory(ApprovalStatus status) =>
+        status is ApprovalStatus.Draft or ApprovalStatus.Pending;
 
     private async Task CreateDraftReservationsAsync(WarehouseTransaction transaction, CancellationToken ct)
     {

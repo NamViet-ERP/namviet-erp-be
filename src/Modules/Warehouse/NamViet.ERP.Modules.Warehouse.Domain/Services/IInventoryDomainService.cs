@@ -34,6 +34,10 @@ public interface IInventoryDomainService
     Task ApplyCrossProjectTransferAsync(WarehouseTransaction transaction, CancellationToken ct = default);
     Task ApplyProjectCloseTransferAsync(string projectCode, CancellationToken ct = default);
 
+    /// <summary>Điều chỉnh tồn dự án sau kiểm kê (+ diff / − |diff|).</summary>
+    Task ApplyStocktakeAdjustmentAsync(
+        string projectCode, string materialCode, decimal diffQty, CancellationToken ct = default);
+
     Task<decimal> GetAvailableQtyAsync(string warehouseId, string materialCode, CancellationToken ct = default);
     Task<string> GetGeneralWarehouseIdAsync(CancellationToken ct = default);
 }

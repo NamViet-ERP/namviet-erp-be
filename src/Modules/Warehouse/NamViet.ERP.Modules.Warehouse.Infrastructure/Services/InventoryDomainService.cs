@@ -386,6 +386,26 @@ public class InventoryDomainService(WarehouseDbContext db) : IInventoryDomainSer
         }
     }
 
+    public async Task ApplyStocktakeAdjustmentAsync(
+        string projectCode, string materialCode, decimal diffQty, CancellationToken ct = default)
+    {
+        if (diffQty == 0) return;
+
+        var projectInventory = await GetOrCreateProjectInventoryAsync(projectCode, materialCode, ct);
+        if (diffQty > 0)
+        {
+            projectInventory.ApplyActualImport(diffQty);
+            return;
+        }
+
+        var exportQty = -diffQty;
+        if (exportQty > projectInventory.ActualInventoryQty)
+            throw new InvalidOperationException(
+                $"Vật tư {materialCode} không đủ tồn để điều chỉnh kiểm kê ({projectInventory.ActualInventoryQty}).");
+
+        projectInventory.ApplyActualExport(exportQty);
+    }
+
     public async Task ApplyProjectCloseTransferAsync(string projectCode, CancellationToken ct = default)
     {
         var generalWarehouseId = await GetGeneralWarehouseIdAsync(ct);

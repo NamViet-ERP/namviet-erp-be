@@ -93,7 +93,7 @@ public sealed class ExportApplicationService(
 
         await using var tx = await db.Database.BeginTransactionAsync(ct);
 
-        if (t.ApprovalStatus == ApprovalStatus.Draft)
+        if (HasPlannedInventory(t.ApprovalStatus))
             await inventory.CancelProjectExportPlannedAsync(t, ct);
 
         t.WarehouseId = dto.WarehouseId;
@@ -102,7 +102,10 @@ public sealed class ExportApplicationService(
         t.Notes = dto.Note;
         t.ProjectCode = dto.Project;
         t.BeneficiaryProjectCode = dto.Project;
-        t.ApprovalStatus = WmsMapper.FromClientApprovalStatus(dto.Status);
+        var nextStatus = WmsMapper.FromClientApprovalStatus(dto.Status);
+        if (nextStatus == ApprovalStatus.Approved)
+            throw new InvalidOperationException("Không thể duyệt phiếu qua cập nhật. Hãy dùng thao tác Duyệt kho.");
+        t.ApprovalStatus = nextStatus;
         t.UpdatedAt = DateTime.UtcNow;
 
         db.WarehouseTransactionItems.RemoveRange(t.Items);
@@ -114,7 +117,7 @@ public sealed class ExportApplicationService(
         }).ToList();
         await ValidateAndSnapshotItemsAsync(t.Items, ct);
 
-        if (t.ApprovalStatus == ApprovalStatus.Draft)
+        if (HasPlannedInventory(t.ApprovalStatus))
             await CreateDraftPlannedAsync(t, ct);
 
         await db.SaveChangesAsync(ct);
@@ -130,8 +133,8 @@ public sealed class ExportApplicationService(
         if (t is null) return null;
         if (t.ApprovalStatus is ApprovalStatus.Approved or ApprovalStatus.Rejected)
             throw new InvalidOperationException($"Phiếu đã ở trạng thái '{t.ApprovalStatus}', không thể duyệt lại.");
-        if (t.ApprovalStatus != ApprovalStatus.Pending && t.ApprovalStatus != ApprovalStatus.Draft)
-            throw new InvalidOperationException($"Phiếu ở trạng thái '{t.ApprovalStatus}', không thể duyệt.");
+        if (t.ApprovalStatus != ApprovalStatus.Pending)
+            throw new InvalidOperationException("Chỉ phiếu đã chốt dự kiến (Pending) mới được duyệt kho.");
 
         await using var tx = await db.Database.BeginTransactionAsync(ct);
         t.ApprovalStatus = ApprovalStatus.Approved;
@@ -171,13 +174,16 @@ public sealed class ExportApplicationService(
             throw new InvalidOperationException("Phiếu đã duyệt, không thể xóa.");
 
         await using var tx = await db.Database.BeginTransactionAsync(ct);
-        if (t.ApprovalStatus == ApprovalStatus.Draft)
+        if (HasPlannedInventory(t.ApprovalStatus))
             await inventory.CancelProjectExportPlannedAsync(t, ct);
         db.WarehouseTransactions.Remove(t);
         await db.SaveChangesAsync(ct);
         await tx.CommitAsync(ct);
         return true;
     }
+
+    private static bool HasPlannedInventory(ApprovalStatus status) =>
+        status is ApprovalStatus.Draft or ApprovalStatus.Pending;
 
     private async Task CreateDraftPlannedAsync(WarehouseTransaction transaction, CancellationToken ct)
     {
