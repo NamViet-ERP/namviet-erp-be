@@ -1,9 +1,5 @@
 namespace NamViet.ERP.Api.Application.Dtos.Wms;
 
-public record ProductDto(string Id, string Sku, string Name, string Category, string Unit, decimal Price);
-public record CreateProductDto(string Sku, string Name, string Category, string Unit, decimal Price);
-public record UpdateProductDto(string? Sku, string? Name, string? Category, string? Unit, decimal? Price);
-
 public record WarehouseDto(
     string Id, string Code, string Name, string Group, string Address,
     string Branch, string Manager, int TotalStock, decimal TotalValue, string Status);
@@ -60,16 +56,6 @@ public record StocktakeDto(
     string WarehouseId, string WarehouseName, string Condition, bool IsFrozen,
     string Note, List<StocktakeItemDto> Items);
 
-public record MemberDto(
-    string Id, string Code, string Name, string Role, string RoleLabel,
-    string Email, string Phone, string Status, string JoinedDate);
-public record CreateMemberDto(
-    string Code, string Name, string Role, string RoleLabel,
-    string Email, string Phone, string Status, string JoinedDate, string Password);
-public record UpdateMemberDto(
-    string? Code, string? Name, string? Role, string? RoleLabel,
-    string? Email, string? Phone, string? Status, string? JoinedDate, string? Password);
-
 public record WmsLegacyProjectDto(string Id, string Name, string Stage, string Pm);
 public record ConsumableQuotaDto(string ProjectId, string ProductId, decimal QuotaQty, decimal IssuedQty);
 public record ProjectStockCellDto(
@@ -85,10 +71,6 @@ public record ConversionDto(
     string Id, string VoucherCode, string Date, string FromWarehouseId, string FromWarehouseName,
     string FromType, string ToWarehouseId, string ToWarehouseName, string ToType,
     List<ConversionItemDto> Items, string Status, string CreatedBy, string? ApprovedBy, string Note);
-
-public record ExpectedImportDto(string Id, string Project, string Sku, string Name, decimal Qty, decimal Surplus, string Unit, string Date);
-public record PoRecordDto(string Code, string Project, string Supplier, string Date, List<ReconciliationItemDto> Items);
-public record ReconciliationItemDto(string Sku, string Name, decimal EstPrice, decimal PoPrice, decimal Ordered, decimal Received, string Unit);
 
 public record DashboardKpiDto(int TotalStock, decimal TotalValue, int ActiveWarehouses, int TodayImports, int TodayExports, int PendingApprovals);
 public record DashboardTrendDto(string Month, decimal ImportValue, decimal ExportValue);

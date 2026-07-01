@@ -162,7 +162,8 @@ builder.Services.AddHealthChecks();
 
 var app = builder.Build();
 
-// ── Auto-migrate (no runtime seed — master data via scripts/) ───────────────
+// ── Auto-migrate (no runtime seed — optional master data via scripts/) ────
+// Material category tree: scripts/seed-material-category-tree.sql (run manually after business sign-off)
 using (var scope = app.Services.CreateScope())
 {
     var services = scope.ServiceProvider;

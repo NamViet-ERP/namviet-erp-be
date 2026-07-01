@@ -30,4 +30,19 @@ public sealed class WmsCatalogQueryService(WarehouseDbContext db) : IWmsCatalogQ
         var totalValue = items.Sum(i => i.Qty * prices.GetValueOrDefault(i.MaterialCode));
         return (totalStock, totalValue);
     }
+
+    public async Task<decimal> GetTotalInventoryValueAsync(CancellationToken ct = default)
+    {
+        var items = await db.WarehouseInventories.ToListAsync(ct);
+        if (items.Count == 0) return 0m;
+
+        var materialCodes = items.Select(i => i.MaterialCode).Distinct().ToList();
+        var prices = await db.PriceBooks
+            .Where(p => materialCodes.Contains(p.MaterialCode))
+            .GroupBy(p => p.MaterialCode)
+            .Select(g => new { MaterialCode = g.Key, Price = g.OrderByDescending(x => x.PriceDate).First().UnitPrice })
+            .ToDictionaryAsync(x => x.MaterialCode, x => x.Price, ct);
+
+        return items.Sum(i => i.Qty * prices.GetValueOrDefault(i.MaterialCode));
+    }
 }

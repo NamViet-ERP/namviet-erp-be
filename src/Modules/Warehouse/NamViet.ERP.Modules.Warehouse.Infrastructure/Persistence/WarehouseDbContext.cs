@@ -55,7 +55,6 @@ public class WarehouseDbContext(DbContextOptions<WarehouseDbContext> options) : 
     public DbSet<ProjectBom> ProjectBoms => Set<ProjectBom>();
     public DbSet<PurchaseOrder> PurchaseOrders => Set<PurchaseOrder>();
     public DbSet<PurchaseOrderItem> PurchaseOrderItems => Set<PurchaseOrderItem>();
-    public DbSet<ExpectedImport> ExpectedImports => Set<ExpectedImport>();
     public DbSet<Conversion> Conversions => Set<Conversion>();
     public DbSet<ConversionItem> ConversionItems => Set<ConversionItem>();
     public DbSet<ProductBarcode> ProductBarcodes => Set<ProductBarcode>();
@@ -348,20 +347,6 @@ public class WarehouseDbContext(DbContextOptions<WarehouseDbContext> options) : 
              .HasForeignKey(i => i.PoCode).OnDelete(DeleteBehavior.Cascade);
             e.HasOne(i => i.Material).WithMany()
              .HasForeignKey(i => i.MaterialCode).OnDelete(DeleteBehavior.Restrict);
-        });
-
-        model.Entity<ExpectedImport>(e =>
-        {
-            e.ToTable("expected_imports");
-            e.HasKey(ei => ei.Id);
-            e.Property(ei => ei.Id).HasMaxLength(50);
-            e.Property(ei => ei.ProjectCode).HasMaxLength(50);
-            e.Property(ei => ei.MaterialCode).HasMaxLength(100);
-            e.HasOne(ei => ei.Project).WithMany()
-             .HasForeignKey(ei => ei.ProjectCode).OnDelete(DeleteBehavior.Restrict);
-            e.HasOne(ei => ei.Material).WithMany()
-             .HasForeignKey(ei => ei.MaterialCode).OnDelete(DeleteBehavior.Restrict);
-            e.HasQueryFilter(ei => ei.DeletedAt == null);
         });
 
         model.Entity<Conversion>(e =>

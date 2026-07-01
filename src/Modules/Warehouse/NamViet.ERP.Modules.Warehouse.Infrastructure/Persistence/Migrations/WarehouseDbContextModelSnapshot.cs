@@ -192,57 +192,6 @@ namespace NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence.Migrations
                     b.ToTable("conversion_items", "warehouse");
                 });
 
-            modelBuilder.Entity("NamViet.ERP.Modules.Warehouse.Domain.Entities.ExpectedImport", b =>
-                {
-                    b.Property<string>("Id")
-                        .HasMaxLength(50)
-                        .HasColumnType("character varying(50)");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateTime?>("DeletedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateOnly>("ExpectedDate")
-                        .HasColumnType("date");
-
-                    b.Property<string>("MaterialCode")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("ProjectCode")
-                        .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("character varying(50)");
-
-                    b.Property<decimal>("Qty")
-                        .HasColumnType("numeric");
-
-                    b.Property<decimal>("Surplus")
-                        .HasColumnType("numeric");
-
-                    b.Property<string>("Unit")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("MaterialCode");
-
-                    b.HasIndex("ProjectCode");
-
-                    b.ToTable("expected_imports", "warehouse");
-                });
-
             modelBuilder.Entity("NamViet.ERP.Modules.Warehouse.Domain.Entities.InventoryReservation", b =>
                 {
                     b.Property<int>("Id")
@@ -1354,25 +1303,6 @@ namespace NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence.Migrations
                     b.Navigation("Conversion");
 
                     b.Navigation("Material");
-                });
-
-            modelBuilder.Entity("NamViet.ERP.Modules.Warehouse.Domain.Entities.ExpectedImport", b =>
-                {
-                    b.HasOne("NamViet.ERP.Modules.Warehouse.Domain.Entities.Material", "Material")
-                        .WithMany()
-                        .HasForeignKey("MaterialCode")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("NamViet.ERP.Modules.Warehouse.Domain.Entities.Project", "Project")
-                        .WithMany()
-                        .HasForeignKey("ProjectCode")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.Navigation("Material");
-
-                    b.Navigation("Project");
                 });
 
             modelBuilder.Entity("NamViet.ERP.Modules.Warehouse.Domain.Entities.InventoryReservation", b =>

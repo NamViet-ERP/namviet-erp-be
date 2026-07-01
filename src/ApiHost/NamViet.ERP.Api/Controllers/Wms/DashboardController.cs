@@ -2,6 +2,8 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using NamViet.ERP.Api.Application.Dtos.Wms;
+using NamViet.ERP.Api.Application.Mappers.Wms;
+using NamViet.ERP.Api.Application.Services.Wms;
 using NamViet.ERP.Modules.Warehouse.Domain.Enums;
 using NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence;
 
@@ -10,16 +12,17 @@ namespace NamViet.ERP.Api.Controllers.Wms;
 [ApiController]
 [Route("api/dashboard")]
 [Authorize]
-public class DashboardController(WarehouseDbContext db) : ControllerBase
+public class DashboardController(WarehouseDbContext db, IWmsCatalogQueryService catalog) : ControllerBase
 {
     [HttpGet("kpi")]
     public async Task<ActionResult<DashboardKpiDto>> Kpi(CancellationToken ct)
     {
         var warehouses = await db.WmsWarehouses.Where(w => w.DeletedAt == null && w.Status == "active").CountAsync(ct);
         var inv = await db.WarehouseInventories.SumAsync(i => i.Qty, ct);
+        var totalValue = await catalog.GetTotalInventoryValueAsync(ct);
         var today = DateTime.UtcNow.Date;
         var todayTx = await db.WarehouseTransactions.Where(t => t.CreatedAt >= today).ToListAsync(ct);
-        return Ok(new DashboardKpiDto((int)inv, 0, warehouses,
+        return Ok(new DashboardKpiDto((int)inv, totalValue, warehouses,
             todayTx.Count(t => t.TransactionType == TransactionType.Import),
             todayTx.Count(t => t.TransactionType == TransactionType.Export),
             await db.WarehouseTransactions.CountAsync(t => t.ApprovalStatus == ApprovalStatus.Pending, ct)));

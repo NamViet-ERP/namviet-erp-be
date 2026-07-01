@@ -1,5 +1,11 @@
--- Auto-generated from cay_vat_tu_full.json (138 nodes)
--- Do not edit by hand; regenerate via: node scripts/generate-material-category-tree-sql.mjs
+-- Optional post-deploy master data: cây vật tư 5 cấp (138 nodes) từ CÂY VẬT TƯ.xlsx
+-- Chỉ chạy khi business đã chốt taxonomy. Không chạy tự động qua EF migration.
+--
+-- Usage (PostgreSQL):
+--   psql -h <host> -U <user> -d <database> -f scripts/seed-material-category-tree.sql
+--
+-- Regenerate from source JSON:
+--   node scripts/generate-material-category-tree-sql.mjs
 
 CREATE TEMP TABLE IF NOT EXISTS _material_category_seed (
   "Code" varchar(50) NOT NULL,

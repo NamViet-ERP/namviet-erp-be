@@ -84,9 +84,6 @@ public static class WmsMapper
         : DateOnly.TryParse(value, out d) ? d
         : DateOnly.FromDateTime(DateTime.UtcNow);
 
-    public static ProductDto ToProduct(Material m, decimal price) =>
-        new(m.MaterialCode, m.MaterialCode, m.MaterialName, m.Category?.Name ?? "", m.Unit, price);
-
     public static WarehouseDto ToWarehouse(WmsWarehouse w, int totalStock, decimal totalValue) =>
         new(w.Id, w.Code, w.Name, w.Group, w.Address, w.Branch, w.Manager, totalStock, totalValue, w.Status);
 
