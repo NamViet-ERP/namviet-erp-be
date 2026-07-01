@@ -51,5 +51,6 @@ src/ApiHost/NamViet.ERP.Api/wwwroot/uploads/
 .sixth/
 .vscode/
 
-# Local task notes (keep on disk, do not push)
-docs/
+# Local scratch under docs/ — only DEPLOY.md is tracked
+docs/*
+!docs/DEPLOY.md

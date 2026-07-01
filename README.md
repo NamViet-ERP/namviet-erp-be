@@ -35,6 +35,8 @@ dotnet run --project src/ApiHost/NamViet.ERP.Api
 
 Swagger: `https://localhost:<port>/swagger`
 
+**Deploy production:** [docs/DEPLOY.md](docs/DEPLOY.md)
+
 ## Cấu trúc thư mục
 
 ```
