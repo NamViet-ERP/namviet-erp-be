@@ -30,6 +30,25 @@ public class LoginCommandValidatorTests
     }
 }
 
+public class RefreshTokenCommandValidatorTests
+{
+    private readonly RefreshTokenCommandValidator _validator = new();
+
+    [Fact]
+    public void Should_fail_when_refresh_token_empty()
+    {
+        var result = _validator.TestValidate(new RefreshTokenCommand(""));
+        result.ShouldHaveValidationErrorFor(x => x.RefreshToken);
+    }
+
+    [Fact]
+    public void Should_pass_with_non_empty_token()
+    {
+        var result = _validator.TestValidate(new RefreshTokenCommand("valid.refresh.token"));
+        result.ShouldNotHaveAnyValidationErrors();
+    }
+}
+
 public class RegisterCommandValidatorTests
 {
     private readonly RegisterCommandValidator _validator = new();

@@ -116,12 +116,13 @@ Health: `GET /health` → 200.
 
 ## 6. Tạo admin đầu tiên (không seed)
 
+**Runbook chi tiết:** [`docs/OPS_FIRST_ADMIN.md`](OPS_FIRST_ADMIN.md)
+
+Tóm tắt:
+
 1. Chạy API + migrate xong.  
-2. Tạo user:
-   - Qua **Admin API** (`POST /api/admin/users/system`) nếu đã có super-admin tạm, **hoặc**
-   - Register qua `/api/auth/register` (nếu bật trong môi trường nội bộ), **hoặc**
-   - Insert Identity thủ công (chỉ khi hiểu rủi ro — khuyến nghị dùng API).  
-3. Gán role **admin** (Admin UI hoặc `AspNetUserRoles`).  
+2. Break-glass một lần: `scripts/bootstrap-identity-roles.sql` + `scripts/BootstrapFirstAdmin/` (xem runbook).  
+3. Sau đó mọi user tạo qua Admin API / UI — không lặp SQL.  
 4. Kiểm tra login FE → menu Admin.
 
 Không có tài khoản mặc định trong repo — đây là chủ đích.
@@ -129,6 +130,8 @@ Không có tài khoản mặc định trong repo — đây là chủ đích.
 ---
 
 ## 7. Master data tùy chọn
+
+Xem [`scripts/README.md`](../scripts/README.md).
 
 ### Cây vật tư (138 node)
 
@@ -166,14 +169,9 @@ curl -X POST https://api.<domain>/api/auth/login \
 
 ## 10. Endpoint public (cần biết khi harden)
 
-Các route `[AllowAnonymous]` (form công khai, rate limit đã có):
+**Audit đầy đủ:** [`docs/SECURITY_PUBLIC_ENDPOINTS.md`](SECURITY_PUBLIC_ENDPOINTS.md)
 
-- `POST /api/auth/login`, refresh  
-- `POST /api/employees/onboard`  
-- `POST /api/candidates` (apply)  
-- Upload/file recruitment — xem `HrFilesController`  
-
-Review bảo mật định kỳ; không liên quan seed/mock.
+Tóm tắt: login/refresh (`auth`), onboard & apply (`public-write`), upload HR (`public-upload`); một số GET recruitment chưa rate limit — xem khuyến nghị trong audit.
 
 ---
 

@@ -55,3 +55,5 @@ src/ApiHost/NamViet.ERP.Api/wwwroot/uploads/
 docs/*
 !docs/DEPLOY.md
 !docs/BE_ONLY_MODULES.md
+!docs/OPS_FIRST_ADMIN.md
+!docs/SECURITY_PUBLIC_ENDPOINTS.md
