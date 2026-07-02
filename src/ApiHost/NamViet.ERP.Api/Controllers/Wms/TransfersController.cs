@@ -33,7 +33,7 @@ public class TransfersController(
         var validation = await createValidator.ValidateAsync(dto, ct);
         if (!validation.IsValid)
             return BadRequest(string.Join("; ", validation.Errors.Select(e => e.ErrorMessage)));
-        return await WmsVoucherControllerResponses.ExecuteAsync(() => transfers.CreateAsync(dto, ct), ct);
+        return await WmsVoucherControllerResponses.ExecuteRequiredAsync(() => transfers.CreateAsync(dto, ct), ct);
     }
 
     [HttpPut("{id}")]
