@@ -1,6 +1,8 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
+using NamViet.ERP.Api.Infrastructure.RateLimiting;
 using NamViet.ERP.Api.Application.Dtos.Hr;
 using NamViet.ERP.Modules.Identity.Domain.Entities;
 
@@ -12,6 +14,7 @@ public class RecruitmentHrStaffController(UserManager<ApplicationUser> userManag
 {
     [HttpGet]
     [AllowAnonymous]
+    [EnableRateLimiting(RateLimitPolicies.PublicRead)]
     public async Task<ActionResult<List<HrStaffPublicDto>>> List(CancellationToken ct)
     {
         var users = await userManager.GetUsersInRoleAsync("HR");

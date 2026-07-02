@@ -1,5 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
+using NamViet.ERP.Api.Infrastructure.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using NamViet.ERP.Api.Application.Dtos.Hr;
 using NamViet.ERP.Modules.Hr.Domain.Entities;
@@ -14,6 +16,7 @@ public class RecruitmentPositionsController(HrDbContext db) : ControllerBase
 {
     [HttpGet]
     [AllowAnonymous]
+    [EnableRateLimiting(RateLimitPolicies.PublicRead)]
     public async Task<ActionResult<List<RecruitmentPositionDto>>> List(CancellationToken ct)
     {
         var items = await db.RecruitmentPositions

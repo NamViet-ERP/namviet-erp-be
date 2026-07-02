@@ -14,6 +14,7 @@ Hằng số policy: `Infrastructure/RateLimiting/RateLimitPolicies.cs`
 | `auth` | 10 / phút / IP | Chống brute-force login & refresh |
 | `public-write` | 5 / phút / IP | Form ghi công khai (onboard, ứng tuyển) |
 | `public-upload` | 10 / giờ / IP | Upload file ẩn danh (CV, ảnh HR) |
+| `public-read` | 60 / phút / IP | Đọc công khai (danh sách tuyển dụng) |
 
 Từ chối: HTTP **429** + JSON problem (`title`: "Quá nhiều yêu cầu").
 
@@ -28,29 +29,25 @@ Từ chối: HTTP **429** + JSON problem (`title`: "Quá nhiều yêu cầu").
 | POST | `/api/employees/onboard` | `EmployeesController` | `public-write` | Spam hồ sơ | FluentValidation onboard DTO |
 | POST | `/api/candidates` | `CandidatesController` | `public-write` | Spam ứng viên | Validator create candidate |
 | POST | `/api/hr/files/upload` | `HrFilesController` | `public-upload` | Abuse storage | Max 5MB; whitelist MIME |
-| GET | `/api/recruitment/positions` | `RecruitmentPositionsController` | **Không** | Enumeration / scrape | Chỉ đọc danh sách vị trí active |
-| GET | `/api/recruitment/hr-staff` | `RecruitmentHrStaffController` | **Không** | Lộ tên HR active | Public cho form ứng tuyển |
+| GET | `/api/recruitment/positions` | `RecruitmentPositionsController` | `public-read` | Enumeration / scrape | Chỉ đọc danh sách vị trí active |
+| GET | `/api/recruitment/hr-staff` | `RecruitmentHrStaffController` | `public-read` | Lộ tên HR active | Public cho form ứng tuyển |
 
 **Không anonymous:** `POST /api/auth/register` — yêu cầu role Admin.
 
 ---
 
-## Khuyến nghị harden (chưa implement — cân nhắc khi scale)
+## Khuyến nghị harden (cân nhắc khi scale)
 
 ### Ưu tiên cao
 
-1. **Rate limit cho GET recruitment**  
-   - `GET /api/recruitment/positions` và `GET /api/recruitment/hr-staff` chưa có `[EnableRateLimiting]`.  
-   - Đề xuất: policy mới `public-read` (ví dụ 60/phút/IP) hoặc tái dùng `public-write` nếu đủ chặt.
-
-2. **WAF / reverse proxy**  
+1. **WAF / reverse proxy**  
    - Giới hạn body size, geo block nếu chỉ phục vụ VN, bot protection trên form public.
 
 ### Ưu tiên trung bình
 
-3. **Captcha** trên `POST /api/candidates` và `POST /api/employees/onboard` nếu bị spam.  
-4. **Honeypot field** trên form FE (không thay thế rate limit).  
-5. **Audit log** ghi IP + user-agent cho public write/upload.
+2. **Captcha** trên `POST /api/candidates` và `POST /api/employees/onboard` nếu bị spam.  
+3. **Honeypot field** trên form FE (không thay thế rate limit).  
+4. **Audit log** ghi IP + user-agent cho public write/upload.
 
 ### Upload (`HrFilesController`)
 

@@ -10,4 +10,7 @@ public static class RateLimitPolicies
 
     /// <summary>Anonymous file upload.</summary>
     public const string PublicUpload = "public-upload";
+
+    /// <summary>Anonymous read endpoints (recruitment lookups).</summary>
+    public const string PublicRead = "public-read";
 }

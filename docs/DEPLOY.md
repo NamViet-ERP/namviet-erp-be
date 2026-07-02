@@ -171,7 +171,7 @@ curl -X POST https://api.<domain>/api/auth/login \
 
 **Audit đầy đủ:** [`docs/SECURITY_PUBLIC_ENDPOINTS.md`](SECURITY_PUBLIC_ENDPOINTS.md)
 
-Tóm tắt: login/refresh (`auth`), onboard & apply (`public-write`), upload HR (`public-upload`); một số GET recruitment chưa rate limit — xem khuyến nghị trong audit.
+Tóm tắt: login/refresh (`auth`), onboard & apply (`public-write`), upload HR (`public-upload`), GET recruitment (`public-read`).
 
 ---
 

@@ -93,6 +93,14 @@ builder.Services.AddRateLimiter(options =>
             PermitLimit = 10,
             Window = TimeSpan.FromHours(1),
         }));
+
+    options.AddPolicy(RateLimitPolicies.PublicRead, ctx =>
+        RateLimitPartition.GetFixedWindowLimiter(ClientIp(ctx), _ => new FixedWindowRateLimiterOptions
+        {
+            AutoReplenishment = true,
+            PermitLimit = 60,
+            Window = TimeSpan.FromMinutes(1),
+        }));
 });
 
 // ── Current user ───────────────────────────────────────────────────────────
