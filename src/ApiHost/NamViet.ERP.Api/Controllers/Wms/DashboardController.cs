@@ -70,6 +70,23 @@ public class DashboardController(WarehouseDbContext db, IWmsCatalogQueryService 
         return Ok(rows);
     }
 
+    [HttpGet("stock-by-project")]
+    public async Task<ActionResult<List<DashboardCategoryDto>>> StockByProject(CancellationToken ct)
+    {
+        var rows = await (
+            from pi in db.ProjectInventories
+            join p in db.Projects on pi.ProjectCode equals p.ProjectCode
+            where p.DeletedAt == null
+            group pi by new { p.ProjectCode, p.ProjectName } into g
+            let qty = g.Sum(x => x.ActualImportQty - x.ActualExportQty)
+            where qty > 0
+            orderby qty descending
+            select new DashboardCategoryDto(g.Key.ProjectName, qty)
+        ).Take(6).ToListAsync(ct);
+
+        return Ok(rows);
+    }
+
     [HttpGet("activity-feed")]
     public async Task<ActionResult<List<DashboardActivityDto>>> Activity([FromQuery] int limit = 10, CancellationToken ct = default)
     {

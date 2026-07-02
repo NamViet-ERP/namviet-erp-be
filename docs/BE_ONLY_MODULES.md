@@ -32,6 +32,7 @@ FE `DashboardWarehousePage` gọi:
 - `GET /api/dashboard/kpi`
 - `GET /api/dashboard/trend`
 - `GET /api/dashboard/stock-by-category`
+- `GET /api/dashboard/stock-by-project`
 - `GET /api/dashboard/activity-feed`
 
 Portal dashboard: `top-products`, `top-materials`, sinh nhật: `GET /api/hr/birthdays`.
