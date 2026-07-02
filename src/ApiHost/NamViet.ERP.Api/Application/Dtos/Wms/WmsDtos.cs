@@ -56,11 +56,6 @@ public record StocktakeDto(
     string WarehouseId, string WarehouseName, string Condition, bool IsFrozen,
     string Note, List<StocktakeItemDto> Items);
 
-public record WmsLegacyProjectDto(string Id, string Name, string Stage, string Pm);
-public record ConsumableQuotaDto(string ProjectId, string ProductId, decimal QuotaQty, decimal IssuedQty);
-public record ProjectStockCellDto(
-    string ProductId, string ProjectId, decimal OpeningQty,
-    decimal ImportQty, decimal ExportQty, decimal ClosingQty);
 public record LendingLogDto(
     string Id, string VoucherCode, string Date, string BorrowingProjectId,
     string LendingProjectId, string ProductId, decimal Qty, string Status,

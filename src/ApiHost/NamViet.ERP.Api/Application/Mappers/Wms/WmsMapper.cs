@@ -163,9 +163,6 @@ public static class WmsMapper
                 i.MaterialCode, i.Sku, i.Name, i.Qty, i.Unit, i.Reason)).ToList(),
             c.Status, c.CreatedByName, c.ApprovedByName, c.Note);
 
-    public static WmsLegacyProjectDto ToLegacyProject(Project p) =>
-        new(p.ClientProjectId ?? p.ProjectCode, p.ProjectName, p.Stage ?? "Chế tạo", p.PmName);
-
     public static LendingLogDto ToLendingLog(ProjectMaterialLoan l) =>
         new(l.LoanCode, l.LoanCode, FormatDate(l.LoanDate),
             l.BorrowingProjectCode, l.LendingProjectCode, l.MaterialCode,
