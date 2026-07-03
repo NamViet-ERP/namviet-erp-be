@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
+using NamViet.ERP.Api.Infrastructure.Authorization;
 using NamViet.ERP.Api.Infrastructure.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using NamViet.ERP.Api.Application.Dtos.Hr;
@@ -11,7 +12,7 @@ namespace NamViet.ERP.Api.Controllers.Hr;
 
 [ApiController]
 [Route("api/recruitment/positions")]
-[Authorize(Roles = "Admin,HR")]
+[Authorize]
 public class RecruitmentPositionsController(HrDbContext db) : ControllerBase
 {
     [HttpGet]
@@ -27,6 +28,7 @@ public class RecruitmentPositionsController(HrDbContext db) : ControllerBase
     }
 
     [HttpPost]
+    [RequirePermission("hrm.recruitment.positions.create")]
     public async Task<ActionResult<RecruitmentPositionDto>> Create([FromBody] RecruitmentPositionDto dto, CancellationToken ct)
     {
         db.RecruitmentPositions.Add(new RecruitmentPosition { Name = dto.Name, IsActive = dto.IsActive });
@@ -35,6 +37,7 @@ public class RecruitmentPositionsController(HrDbContext db) : ControllerBase
     }
 
     [HttpPatch("{name}/toggle")]
+    [RequirePermission("hrm.recruitment.positions.update")]
     public async Task<IActionResult> Toggle(string name, CancellationToken ct)
     {
         var p = await db.RecruitmentPositions.FirstOrDefaultAsync(x => x.Name == name, ct);
@@ -45,6 +48,7 @@ public class RecruitmentPositionsController(HrDbContext db) : ControllerBase
     }
 
     [HttpDelete("{name}")]
+    [RequirePermission("hrm.recruitment.positions.delete")]
     public async Task<IActionResult> Delete(string name, CancellationToken ct)
     {
         var p = await db.RecruitmentPositions.FirstOrDefaultAsync(x => x.Name == name, ct);

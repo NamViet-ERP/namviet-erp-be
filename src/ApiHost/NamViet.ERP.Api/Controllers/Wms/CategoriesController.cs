@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using NamViet.ERP.Api.Infrastructure.Authorization;
 using NamViet.ERP.Modules.Warehouse.Application.DTOs;
 using NamViet.ERP.Modules.Warehouse.Domain;
 using NamViet.ERP.Modules.Warehouse.Domain.Entities;
@@ -14,6 +15,7 @@ namespace NamViet.ERP.Api.Controllers.Wms;
 public class CategoriesController(WarehouseDbContext db) : ControllerBase
 {
     [HttpGet("tree")]
+    [RequirePermission("wms.categories.view:all")]
     public async Task<ActionResult<List<MaterialCategoryDto>>> Tree(CancellationToken ct)
     {
         var categories = await db.MaterialCategories
@@ -26,6 +28,7 @@ public class CategoriesController(WarehouseDbContext db) : ControllerBase
     }
 
     [HttpGet]
+    [RequirePermission("wms.categories.view:all")]
     public async Task<ActionResult<List<MaterialCategoryDto>>> List(
         [FromQuery] int? parentId, [FromQuery] int? level, CancellationToken ct)
     {
@@ -44,7 +47,7 @@ public class CategoriesController(WarehouseDbContext db) : ControllerBase
     }
 
     [HttpPost]
-    [Authorize(Roles = "Admin,Procurement")]
+    [RequirePermission("wms.categories.create")]
     public async Task<ActionResult<MaterialCategoryDto>> Create(
         [FromBody] UpsertMaterialCategoryRequest request, CancellationToken ct)
     {
@@ -68,7 +71,7 @@ public class CategoriesController(WarehouseDbContext db) : ControllerBase
     }
 
     [HttpPut("{id:int}")]
-    [Authorize(Roles = "Admin,Procurement")]
+    [RequirePermission("wms.categories.update")]
     public async Task<IActionResult> Update(int id, [FromBody] UpsertMaterialCategoryRequest request, CancellationToken ct)
     {
         var entity = await db.MaterialCategories.FirstOrDefaultAsync(c => c.Id == id, ct);
@@ -85,7 +88,7 @@ public class CategoriesController(WarehouseDbContext db) : ControllerBase
     }
 
     [HttpDelete("{id:int}")]
-    [Authorize(Roles = "Admin,Procurement")]
+    [RequirePermission("wms.categories.delete")]
     public async Task<IActionResult> Delete(int id, CancellationToken ct)
     {
         var entity = await db.MaterialCategories.FirstOrDefaultAsync(c => c.Id == id, ct);

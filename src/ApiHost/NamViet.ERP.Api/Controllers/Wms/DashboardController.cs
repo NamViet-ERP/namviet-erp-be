@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using NamViet.ERP.Api.Application.Dtos.Wms;
 using NamViet.ERP.Api.Application.Mappers.Wms;
 using NamViet.ERP.Api.Application.Services.Wms;
+using NamViet.ERP.Api.Infrastructure.Authorization;
 using NamViet.ERP.Modules.Warehouse.Domain.Enums;
 using NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence;
 
@@ -12,6 +13,7 @@ namespace NamViet.ERP.Api.Controllers.Wms;
 [ApiController]
 [Route("api/dashboard")]
 [Authorize]
+[RequirePermission("wms.dashboard.view")]
 public class DashboardController(WarehouseDbContext db, IWmsCatalogQueryService catalog) : ControllerBase
 {
     [HttpGet("kpi")]

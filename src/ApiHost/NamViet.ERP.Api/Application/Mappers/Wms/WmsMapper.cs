@@ -45,6 +45,7 @@ public static class WmsMapper
         "Procurement" => "procurement",
         "PM" => "pm",
         "HR" => "hr",
+        "Staff" => "staff",
         _ => role.ToLowerInvariant()
     };
 
@@ -56,6 +57,7 @@ public static class WmsMapper
         "Procurement" => "Phòng mua hàng",
         "PM" => "Quản lý dự án (PM)",
         "HR" => "Nhân sự (HR)",
+        "Staff" => "Nhân viên",
         _ => role
     };
 
@@ -67,6 +69,7 @@ public static class WmsMapper
         "procurement" => "Procurement",
         "pm" => "PM",
         "hr" => "HR",
+        "staff" => "Staff",
         _ => clientRole
     };
 

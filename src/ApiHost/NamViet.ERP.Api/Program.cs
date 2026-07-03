@@ -32,6 +32,7 @@ builder.Host.UseSerilog((ctx, cfg) =>
 
 // ── Modules ────────────────────────────────────────────────────────────────
 builder.Services.AddIdentityModule(builder.Configuration);
+builder.Services.AddPermissionAuthorization();
 builder.Services.AddWarehouseModule(builder.Configuration);
 builder.Services.AddHrModule(builder.Configuration);
 
@@ -112,6 +113,7 @@ builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Wms.IExportAppli
 builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Wms.ITransferApplicationService, NamViet.ERP.Api.Application.Services.Wms.TransferApplicationService>();
 builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Wms.IStocktakeApplicationService, NamViet.ERP.Api.Application.Services.Wms.StocktakeApplicationService>();
 builder.Services.AddScoped<IAdminUserQueryService, AdminUserQueryService>();
+builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Hr.IEmployeeAccessService, NamViet.ERP.Api.Application.Services.Hr.EmployeeAccessService>();
 builder.Services.AddSingleton<NamViet.ERP.Api.Services.Storage.IFileStorage, NamViet.ERP.Api.Services.Storage.LocalFileStorage>();
 
 // ── CORS ───────────────────────────────────────────────────────────────────

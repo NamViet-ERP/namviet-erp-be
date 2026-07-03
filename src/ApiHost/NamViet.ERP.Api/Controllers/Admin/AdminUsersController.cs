@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using NamViet.ERP.Api.Application.Dtos.Admin;
 using NamViet.ERP.Api.Application.Mappers.Wms;
+using NamViet.ERP.Api.Infrastructure.Authorization;
 using NamViet.ERP.Api.Application.Services.Admin;
 using NamViet.ERP.Modules.Hr.Domain.Entities;
 using NamViet.ERP.Modules.Hr.Infrastructure.Persistence;
@@ -14,7 +15,7 @@ namespace NamViet.ERP.Api.Controllers.Admin;
 
 [ApiController]
 [Route("api/admin/users")]
-[Authorize(Roles = "Admin")]
+[Authorize]
 public class AdminUsersController(
     IAdminUserQueryService adminUserQueries,
     UserManager<ApplicationUser> userManager,
@@ -22,6 +23,7 @@ public class AdminUsersController(
     HrDbContext hrDb) : ControllerBase
 {
     [HttpGet]
+    [RequirePermission("admin.users.view:all")]
     public async Task<ActionResult<AdminUserPagedResponse>> List(
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 10,
@@ -36,6 +38,7 @@ public class AdminUsersController(
             ct));
 
     [HttpGet("{id}")]
+    [RequirePermission("admin.users.view:all")]
     public async Task<ActionResult<AdminUserDto>> GetById(
         string id, [FromQuery] string source = "employee", CancellationToken ct = default)
     {
@@ -44,6 +47,7 @@ public class AdminUsersController(
     }
 
     [HttpPost("provision")]
+    [RequirePermission("admin.users.create")]
     public async Task<ActionResult<AdminUserDto>> Provision(
         [FromBody] ProvisionAccountRequest request, CancellationToken ct)
     {
@@ -103,6 +107,7 @@ public class AdminUsersController(
     }
 
     [HttpPost("system")]
+    [RequirePermission("admin.users.create")]
     public async Task<ActionResult<AdminUserDto>> CreateSystem(
         [FromBody] CreateSystemAccountRequest request, CancellationToken ct)
     {
@@ -140,6 +145,7 @@ public class AdminUsersController(
     }
 
     [HttpPatch("{id}/status")]
+    [RequirePermission("admin.users.lock")]
     public async Task<IActionResult> SetStatus(
         string id, [FromQuery] string source, [FromBody] UpdateAdminUserStatusRequest request, CancellationToken ct)
     {
@@ -183,6 +189,7 @@ public class AdminUsersController(
     }
 
     [HttpPatch("{id}/role")]
+    [RequirePermission("admin.users.update")]
     public async Task<ActionResult<AdminUserDto>> SetRole(
         string id, [FromQuery] string source, [FromBody] UpdateAdminUserRoleRequest request, CancellationToken ct)
     {
@@ -213,6 +220,7 @@ public class AdminUsersController(
     }
 
     [HttpPut("{accountUserId}/password")]
+    [RequirePermission("admin.users.update")]
     public async Task<IActionResult> ResetPassword(
         string accountUserId, [FromBody] ResetAdminPasswordRequest request, CancellationToken ct)
     {

@@ -1,6 +1,7 @@
 using MediatR;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using NamViet.ERP.Modules.Identity.Application.Abstractions;
 using NamViet.ERP.Modules.Identity.Application.Commands;
 using NamViet.ERP.Modules.Identity.Application.DTOs;
 using NamViet.ERP.Modules.Identity.Domain.Entities;
@@ -13,6 +14,7 @@ namespace NamViet.ERP.Modules.Identity.Infrastructure.Handlers;
 public class LoginHandler(
     UserManager<ApplicationUser> userManager,
     ITokenService tokenService,
+    IPermissionService permissionService,
     IdentityDbContext db,
     IEmployeeInfoProvider employeeInfo) : IRequestHandler<LoginCommand, AuthResponse>
 {
@@ -31,7 +33,9 @@ public class LoginHandler(
             throw new UnauthorizedAccessException(InvalidLoginMessage);
 
         var roles = await userManager.GetRolesAsync(user);
-        var accessToken = tokenService.GenerateAccessToken(user, roles);
+        var permissions = await permissionService.GetPermissionsForUserAsync(user, ct);
+        var linked = await employeeInfo.GetByUserAsync(user.Id, user.EmployeeCode, ct);
+        var accessToken = tokenService.GenerateAccessToken(user, roles, permissions, linked?.EmployeeId);
         var refreshTokenValue = tokenService.GenerateRefreshToken();
 
         var oldTokens = await db.RefreshTokens
@@ -49,8 +53,6 @@ public class LoginHandler(
 
         user.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
-
-        var linked = await employeeInfo.GetByUserAsync(user.Id, user.EmployeeCode, ct);
 
         return new AuthResponse(
             accessToken,

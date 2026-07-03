@@ -5,12 +5,17 @@ using System.Text;
 using Microsoft.Extensions.Configuration;
 using Microsoft.IdentityModel.Tokens;
 using NamViet.ERP.Modules.Identity.Domain.Entities;
+using NamViet.ERP.SharedKernel.Authorization;
 
 namespace NamViet.ERP.Modules.Identity.Infrastructure.Services;
 
 public interface ITokenService
 {
-    string GenerateAccessToken(ApplicationUser user, IList<string> roles);
+    string GenerateAccessToken(
+        ApplicationUser user,
+        IList<string> roles,
+        IReadOnlyList<string> permissions,
+        int? employeeId = null);
     string GenerateRefreshToken();
     DateTime GetAccessTokenExpiry();
     DateTime GetRefreshTokenExpiry(bool rememberMe = true);
@@ -26,7 +31,11 @@ public class TokenService(IConfiguration configuration) : ITokenService
     private readonly int _refreshDays = int.TryParse(configuration["Jwt:RefreshTokenDays"], out var d) ? d : 30;
     private readonly int _sessionRefreshDays = int.TryParse(configuration["Jwt:SessionRefreshTokenDays"], out var s) ? s : 1;
 
-    public string GenerateAccessToken(ApplicationUser user, IList<string> roles)
+    public string GenerateAccessToken(
+        ApplicationUser user,
+        IList<string> roles,
+        IReadOnlyList<string> permissions,
+        int? employeeId = null)
     {
         var claims = new List<Claim>
         {
@@ -36,7 +45,11 @@ public class TokenService(IConfiguration configuration) : ITokenService
             new("employee_code", user.EmployeeCode),
             new("name", user.Name),
         };
+
+        if (employeeId.HasValue)
+            claims.Add(new Claim("employee_id", employeeId.Value.ToString()));
         claims.AddRange(roles.Select(r => new Claim(ClaimTypes.Role, r)));
+        claims.AddRange(permissions.Select(p => new Claim(PermissionCatalog.ClaimType, p)));
 
         var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_signingKey));
         var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);

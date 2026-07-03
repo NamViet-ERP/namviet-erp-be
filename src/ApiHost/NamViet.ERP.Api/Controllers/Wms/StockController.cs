@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using NamViet.ERP.Api.Application.Dtos.Wms;
+using NamViet.ERP.Api.Infrastructure.Authorization;
 using NamViet.ERP.Modules.Warehouse.Domain;
 using NamViet.ERP.Modules.Warehouse.Domain.Enums;
 using NamViet.ERP.Modules.Warehouse.Domain.Services;
@@ -15,6 +16,7 @@ namespace NamViet.ERP.Api.Controllers.Wms;
 public class StockController(WarehouseDbContext db, IInventoryDomainService inventory) : ControllerBase
 {
     [HttpGet("matrix")]
+    [RequirePermission("wms.stock.view:all")]
     public async Task<ActionResult<List<StockMatrixRowDto>>> Matrix(CancellationToken ct)
     {
         var generalWarehouseId = await inventory.GetGeneralWarehouseIdAsync(ct);

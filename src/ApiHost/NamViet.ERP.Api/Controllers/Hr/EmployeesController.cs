@@ -5,6 +5,8 @@ using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using NamViet.ERP.Api.Application.Dtos.Hr;
 using NamViet.ERP.Api.Application.Mappers.Hr;
+using NamViet.ERP.Api.Application.Services.Hr;
+using NamViet.ERP.Api.Infrastructure.Authorization;
 using NamViet.ERP.Api.Infrastructure.RateLimiting;
 using NamViet.ERP.Modules.Hr.Domain.Entities;
 using NamViet.ERP.Modules.Hr.Infrastructure.Persistence;
@@ -22,9 +24,12 @@ namespace NamViet.ERP.Api.Controllers.Hr;
 public class EmployeesController(
     HrDbContext db,
     IAccountStatusProvider accountStatus,
-    IValidator<EmployeeDto> onboardValidator) : ControllerBase
+    IValidator<EmployeeDto> onboardValidator,
+    ICurrentUser currentUser,
+    IEmployeeAccessService employeeAccess) : ControllerBase
 {
     [HttpGet]
+    [RequirePermission("hrm.employees.view:all")]
     public async Task<IActionResult> List(
         [FromQuery] bool activeOnly = false,
         [FromQuery] int? page = null,
@@ -73,9 +78,25 @@ public class EmployeesController(
         }).ToList();
     }
 
+    [HttpGet("me")]
+    [RequireAnyPermission("hrm.employees.view:all", "hrm.employees.view:own")]
+    public async Task<ActionResult<EmployeeDto>> GetMe(CancellationToken ct)
+    {
+        var ownId = await employeeAccess.ResolveLinkedEmployeeIdAsync(currentUser, ct);
+        if (!ownId.HasValue)
+            return NotFound("Tài khoản chưa liên kết hồ sơ nhân viên.");
+
+        return await GetById(ownId.Value.ToString(), ct);
+    }
+
     [HttpGet("{id}")]
+    [RequireAnyPermission("hrm.employees.view:all", "hrm.employees.view:own")]
     public async Task<ActionResult<EmployeeDto>> GetById(string id, CancellationToken ct)
     {
+        if (!int.TryParse(id, out var eid)) return NotFound();
+        if (!await employeeAccess.CanViewEmployeeAsync(currentUser, eid, ct))
+            return NotFound();
+
         var e = await FindAsync(id, ct);
         if (e is null) return NotFound();
         var dto = HrEmployeeMapper.ToDto(e);
@@ -91,6 +112,7 @@ public class EmployeesController(
     }
 
     [HttpGet("check-code")]
+    [RequirePermission("hrm.employees.create")]
     public async Task<ActionResult<object>> CheckCode(
         [FromQuery] string code, [FromQuery] string? excludeId, CancellationToken ct)
     {
@@ -100,6 +122,7 @@ public class EmployeesController(
     }
 
     [HttpGet("suggested-code")]
+    [RequirePermission("hrm.employees.create")]
     public async Task<ActionResult<object>> SuggestedCode(
         [FromQuery] string? excludeId, CancellationToken ct)
     {
@@ -109,6 +132,7 @@ public class EmployeesController(
     }
 
     [HttpPost]
+    [RequirePermission("hrm.employees.create")]
     public async Task<ActionResult<EmployeeDto>> Create([FromBody] EmployeeDto dto, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(dto.Code))
@@ -151,6 +175,7 @@ public class EmployeesController(
     }
 
     [HttpPut("{id}")]
+    [RequirePermission("hrm.employees.update")]
     public async Task<ActionResult<EmployeeDto>> Update(string id, [FromBody] EmployeeDto dto, CancellationToken ct)
     {
         if (!int.TryParse(id, out var eid)) return NotFound();
@@ -175,6 +200,7 @@ public class EmployeesController(
     }
 
     [HttpDelete("{id}")]
+    [RequirePermission("hrm.employees.update")]
     public async Task<IActionResult> Delete(string id, CancellationToken ct)
     {
         if (!int.TryParse(id, out var eid)) return NotFound();

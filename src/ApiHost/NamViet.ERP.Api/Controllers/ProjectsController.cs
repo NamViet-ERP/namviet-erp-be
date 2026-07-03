@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using NamViet.ERP.Api.Application.Mappers.Wms;
+using NamViet.ERP.Api.Infrastructure.Authorization;
 using NamViet.ERP.Modules.Warehouse.Application.DTOs;
 using NamViet.ERP.Modules.Warehouse.Domain.Entities;
 using NamViet.ERP.Modules.Warehouse.Domain.Enums;
@@ -23,6 +24,7 @@ public class ProjectsController(
     IValidator<UpdateProjectRequest> updateValidator) : ControllerBase
 {
     [HttpGet]
+    [RequirePermission("wms.projects.view:all")]
     public async Task<IActionResult> GetAll(
         [FromQuery] int page = 1, [FromQuery] int pageSize = 20,
         [FromQuery] string? search = null, [FromQuery] string? status = null,
@@ -46,6 +48,7 @@ public class ProjectsController(
     }
 
     [HttpGet("{code}")]
+    [RequirePermission("wms.projects.view:all")]
     public async Task<IActionResult> GetById(string code, CancellationToken ct)
     {
         var p = await db.Projects.FirstOrDefaultAsync(x => x.ProjectCode == code, ct);
@@ -55,6 +58,7 @@ public class ProjectsController(
     }
 
     [HttpGet("{code}/inventory")]
+    [RequirePermission("wms.projects.view:all")]
     public async Task<IActionResult> GetInventory(string code, CancellationToken ct)
     {
         var items = await db.ProjectInventories
@@ -74,6 +78,7 @@ public class ProjectsController(
     }
 
     [HttpGet("{code}/ledger")]
+    [RequirePermission("wms.projects.view:all")]
     public async Task<IActionResult> GetLedger(string code, CancellationToken ct)
     {
         if (!await db.Projects.AnyAsync(p => p.ProjectCode == code, ct))
@@ -95,7 +100,7 @@ public class ProjectsController(
     }
 
     [HttpPost("{code}/close")]
-    [Authorize(Roles = "Admin,Warehouse_Keeper,Storekeeper,PM")]
+    [RequirePermission("wms.projects.update")]
     public async Task<IActionResult> CloseProject(string code, CancellationToken ct)
     {
         var project = await db.Projects.FirstOrDefaultAsync(p => p.ProjectCode == code, ct);
@@ -114,7 +119,7 @@ public class ProjectsController(
     }
 
     [HttpPost]
-    [Authorize(Roles = "Admin,PM")]
+    [RequirePermission("wms.projects.create")]
     public async Task<IActionResult> Create([FromBody] CreateProjectRequest request, CancellationToken ct)
     {
         var validation = await createValidator.ValidateAsync(request, ct);
@@ -141,7 +146,7 @@ public class ProjectsController(
     }
 
     [HttpPut("{code}")]
-    [Authorize(Roles = "Admin,PM")]
+    [RequirePermission("wms.projects.update")]
     public async Task<IActionResult> Update(string code, [FromBody] UpdateProjectRequest request, CancellationToken ct)
     {
         var validation = await updateValidator.ValidateAsync(request, ct);

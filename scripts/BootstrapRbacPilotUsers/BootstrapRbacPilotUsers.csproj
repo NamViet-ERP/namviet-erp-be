@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>NamViet.ERP.BootstrapRbacPilotUsers</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Modules\Identity\NamViet.ERP.Modules.Identity.Infrastructure\NamViet.ERP.Modules.Identity.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Hr\NamViet.ERP.Modules.Hr.Infrastructure\NamViet.ERP.Modules.Hr.Infrastructure.csproj" />
+  </ItemGroup>
+
+</Project>

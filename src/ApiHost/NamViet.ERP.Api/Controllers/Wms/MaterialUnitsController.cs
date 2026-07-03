@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using NamViet.ERP.Api.Infrastructure.Authorization;
 using NamViet.ERP.Modules.Warehouse.Application.DTOs;
 using NamViet.ERP.Modules.Warehouse.Application.Helpers;
 using NamViet.ERP.Modules.Warehouse.Domain.Entities;
@@ -14,6 +15,7 @@ namespace NamViet.ERP.Api.Controllers.Wms;
 public class MaterialUnitsController(WarehouseDbContext db) : ControllerBase
 {
     [HttpGet]
+    [RequirePermission("wms.material_units.view:all")]
     public async Task<ActionResult<List<MaterialUnitDto>>> List(
         [FromQuery] bool activeOnly = false,
         CancellationToken ct = default)
@@ -30,7 +32,7 @@ public class MaterialUnitsController(WarehouseDbContext db) : ControllerBase
     }
 
     [HttpPost]
-    [Authorize(Roles = "Admin,Procurement,Warehouse_Keeper,Storekeeper")]
+    [RequirePermission("wms.material_units.create")]
     public async Task<ActionResult<MaterialUnitDto>> Create(
         [FromBody] UpsertMaterialUnitRequest request,
         CancellationToken ct)
@@ -59,7 +61,7 @@ public class MaterialUnitsController(WarehouseDbContext db) : ControllerBase
     }
 
     [HttpPut("{id:int}")]
-    [Authorize(Roles = "Admin,Procurement,Warehouse_Keeper,Storekeeper")]
+    [RequirePermission("wms.material_units.update")]
     public async Task<IActionResult> Update(int id, [FromBody] UpsertMaterialUnitRequest request, CancellationToken ct)
     {
         var entity = await db.MaterialUnits.FirstOrDefaultAsync(u => u.Id == id, ct);
@@ -93,7 +95,7 @@ public class MaterialUnitsController(WarehouseDbContext db) : ControllerBase
     }
 
     [HttpDelete("{id:int}")]
-    [Authorize(Roles = "Admin,Procurement,Warehouse_Keeper,Storekeeper")]
+    [RequirePermission("wms.material_units.delete")]
     public async Task<IActionResult> Delete(int id, CancellationToken ct)
     {
         var entity = await db.MaterialUnits.FirstOrDefaultAsync(u => u.Id == id, ct);

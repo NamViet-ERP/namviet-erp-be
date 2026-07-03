@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using NamViet.ERP.Api.Infrastructure.Authorization;
 using NamViet.ERP.Modules.Hr.Domain.Entities;
 using NamViet.ERP.Modules.Hr.Infrastructure.Persistence;
 
@@ -15,6 +16,7 @@ public record UpsertPositionRequest(string Name, int DepartmentId, string? Level
 public class DepartmentsController(HrDbContext db) : ControllerBase
 {
     [HttpGet]
+    [RequirePermission("hrm.members.settings.view")]
     public async Task<IActionResult> GetAll([FromQuery] bool activeOnly = true, CancellationToken ct = default)
     {
         var query = db.Departments
@@ -31,6 +33,7 @@ public class DepartmentsController(HrDbContext db) : ControllerBase
     }
 
     [HttpGet("{id:int}")]
+    [RequirePermission("hrm.members.settings.view")]
     public async Task<IActionResult> GetById(int id, CancellationToken ct)
     {
         var d = await db.Departments
@@ -42,7 +45,7 @@ public class DepartmentsController(HrDbContext db) : ControllerBase
     }
 
     [HttpPost]
-    [Authorize(Roles = "Admin,HR")]
+    [RequirePermission("hrm.members.settings.update")]
     public async Task<IActionResult> Create([FromBody] UpsertDepartmentRequest request, CancellationToken ct)
     {
         if (await db.Departments.AnyAsync(d => d.Code == request.Code && d.DeletedAt == null, ct))
@@ -61,7 +64,7 @@ public class DepartmentsController(HrDbContext db) : ControllerBase
     }
 
     [HttpPut("{id:int}")]
-    [Authorize(Roles = "Admin,HR")]
+    [RequirePermission("hrm.members.settings.update")]
     public async Task<IActionResult> Update(int id, [FromBody] UpsertDepartmentRequest request, CancellationToken ct)
     {
         var dept = await db.Departments.FirstOrDefaultAsync(d => d.Id == id && d.DeletedAt == null, ct);
@@ -76,7 +79,7 @@ public class DepartmentsController(HrDbContext db) : ControllerBase
     }
 
     [HttpDelete("{id:int}")]
-    [Authorize(Roles = "Admin,HR")]
+    [RequirePermission("hrm.members.settings.update")]
     public async Task<IActionResult> Delete(int id, CancellationToken ct)
     {
         var dept = await db.Departments.FirstOrDefaultAsync(d => d.Id == id && d.DeletedAt == null, ct);
@@ -101,6 +104,7 @@ public class DepartmentsController(HrDbContext db) : ControllerBase
 public class PositionsController(HrDbContext db) : ControllerBase
 {
     [HttpGet]
+    [RequirePermission("hrm.members.settings.view")]
     public async Task<IActionResult> GetAll([FromQuery] int? departmentId = null, CancellationToken ct = default)
     {
         var query = db.Positions
@@ -120,7 +124,7 @@ public class PositionsController(HrDbContext db) : ControllerBase
     }
 
     [HttpPost]
-    [Authorize(Roles = "Admin,HR")]
+    [RequirePermission("hrm.members.settings.update")]
     public async Task<IActionResult> Create([FromBody] UpsertPositionRequest request, CancellationToken ct)
     {
         var pos = new Position
@@ -135,7 +139,7 @@ public class PositionsController(HrDbContext db) : ControllerBase
     }
 
     [HttpPut("{id:int}")]
-    [Authorize(Roles = "Admin,HR")]
+    [RequirePermission("hrm.members.settings.update")]
     public async Task<IActionResult> Update(int id, [FromBody] UpsertPositionRequest request, CancellationToken ct)
     {
         var pos = await db.Positions.FirstOrDefaultAsync(p => p.Id == id && p.DeletedAt == null, ct);
@@ -149,7 +153,7 @@ public class PositionsController(HrDbContext db) : ControllerBase
     }
 
     [HttpDelete("{id:int}")]
-    [Authorize(Roles = "Admin,HR")]
+    [RequirePermission("hrm.members.settings.update")]
     public async Task<IActionResult> Delete(int id, CancellationToken ct)
     {
         var pos = await db.Positions.FirstOrDefaultAsync(p => p.Id == id && p.DeletedAt == null, ct);

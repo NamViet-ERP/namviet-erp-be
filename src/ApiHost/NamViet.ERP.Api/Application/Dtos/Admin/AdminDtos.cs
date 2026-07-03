@@ -63,3 +63,9 @@ public record AdminRoleDto(string Code, string Label, bool IsActive);
 public record CreateAdminRoleRequest(string Label);
 
 public record UpdateAdminRoleRequest(string Label);
+
+public record PermissionCatalogEntryDto(string Key, string Module, string Resource, string Label);
+
+public record RolePermissionsDto(string RoleCode, IReadOnlyList<string> Permissions);
+
+public record UpdateRolePermissionsRequest(IReadOnlyList<string> Permissions);

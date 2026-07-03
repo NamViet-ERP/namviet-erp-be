@@ -7,6 +7,7 @@ using Microsoft.EntityFrameworkCore;
 using NamViet.ERP.Api.Application.Dtos.Hr;
 using NamViet.ERP.Api.Application.Mappers.Hr;
 using NamViet.ERP.Api.Application.Services.Hr;
+using NamViet.ERP.Api.Infrastructure.Authorization;
 using NamViet.ERP.Api.Infrastructure.RateLimiting;
 using NamViet.ERP.Modules.Hr.Domain.Entities;
 using NamViet.ERP.Modules.Hr.Infrastructure.Persistence;
@@ -15,7 +16,7 @@ namespace NamViet.ERP.Api.Controllers.Hr;
 
 [ApiController]
 [Route("api/candidates")]
-[Authorize(Roles = "Admin,HR")]
+[Authorize]
 public class CandidatesController(
     HrDbContext db,
     IWebHostEnvironment env,
@@ -23,6 +24,7 @@ public class CandidatesController(
     IValidator<CandidateDto> createValidator) : ControllerBase
 {
     [HttpGet]
+    [RequirePermission("hrm.candidates.view:all")]
     public async Task<ActionResult<CandidatePagedResponse>> List(
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 20,
@@ -101,7 +103,7 @@ public class CandidatesController(
     }
 
     [HttpPost("repair-workflow")]
-    [Authorize(Roles = "Admin")]
+    [RequirePermission("admin.users.create")]
     public async Task<ActionResult<object>> RepairWorkflow(CancellationToken ct)
     {
         var count = await CandidateWorkflowRepair.RepairAllAsync(db, logger, ct);
@@ -109,6 +111,7 @@ public class CandidatesController(
     }
 
     [HttpGet("{id}")]
+    [RequirePermission("hrm.candidates.view:all")]
     public async Task<ActionResult<CandidateDto>> GetById(string id, CancellationToken ct)
     {
         if (!int.TryParse(id, out var cid)) return NotFound();
@@ -121,6 +124,7 @@ public class CandidatesController(
     }
 
     [HttpGet("{id}/cv")]
+    [RequirePermission("hrm.candidates.view:all")]
     public async Task<IActionResult> DownloadCv(string id, CancellationToken ct)
     {
         if (!int.TryParse(id, out var cid)) return NotFound();
@@ -172,6 +176,7 @@ public class CandidatesController(
     }
 
     [HttpPut("{id}")]
+    [RequirePermission("hrm.candidates.update")]
     public async Task<ActionResult<CandidateDto>> Update(string id, [FromBody] CandidateDto dto, CancellationToken ct)
     {
         if (!int.TryParse(id, out var cid)) return NotFound();
@@ -189,6 +194,7 @@ public class CandidatesController(
     }
 
     [HttpDelete("{id}")]
+    [RequirePermission("hrm.candidates.delete")]
     public async Task<IActionResult> Delete(string id, CancellationToken ct)
     {
         if (!int.TryParse(id, out var cid)) return NotFound();

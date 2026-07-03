@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using NamViet.ERP.Api.Application.Dtos.Wms;
 using NamViet.ERP.Api.Application.Mappers.Wms;
 using NamViet.ERP.Api.Application.Services.Wms;
+using NamViet.ERP.Api.Infrastructure.Authorization;
 using NamViet.ERP.Modules.Warehouse.Domain.Entities;
 using NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence;
 using NamViet.ERP.SharedKernel.Interfaces;
@@ -19,6 +20,7 @@ public class StocktakesController(
     IStocktakeApplicationService stocktakes) : ControllerBase
 {
     [HttpGet]
+    [RequirePermission("wms.stocktakes.view:all")]
     public async Task<ActionResult<List<StocktakeDto>>> List(CancellationToken ct)
     {
         var items = await db.Stocktakes
@@ -30,6 +32,7 @@ public class StocktakesController(
     }
 
     [HttpGet("{id}")]
+    [RequirePermission("wms.stocktakes.view:all")]
     public async Task<ActionResult<StocktakeDto>> GetById(string id, CancellationToken ct)
     {
         var s = await FindAsync(id, ct);
@@ -38,6 +41,7 @@ public class StocktakesController(
     }
 
     [HttpPost]
+    [RequirePermission("wms.stocktakes.create")]
     public async Task<ActionResult<StocktakeDto>> Create([FromBody] StocktakeDto dto, CancellationToken ct)
     {
         var projectCode = dto.WarehouseId?.Trim() ?? "";
@@ -85,6 +89,7 @@ public class StocktakesController(
     }
 
     [HttpPut("{id}")]
+    [RequirePermission("wms.stocktakes.create")]
     public async Task<ActionResult<StocktakeDto>> Update(string id, [FromBody] StocktakeDto dto, CancellationToken ct)
     {
         var s = await FindAsync(id, ct);
@@ -137,11 +142,12 @@ public class StocktakesController(
     }
 
     [HttpPost("{id}/approve")]
-    [Authorize(Roles = "Admin,Warehouse_Keeper,Storekeeper")]
+    [RequirePermission("wms.stocktakes.approve")]
     public Task<ActionResult<StocktakeDto>> Approve(string id, CancellationToken ct) =>
         WmsVoucherControllerResponses.ExecuteAsync(() => stocktakes.ApproveAsync(id, ct), ct);
 
     [HttpDelete("{id}")]
+    [RequirePermission("wms.stocktakes.create")]
     public async Task<IActionResult> Delete(string id, CancellationToken ct)
     {
         var s = await FindAsync(id, ct);

@@ -4,7 +4,10 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using NamViet.ERP.Api.Application.Dtos.Admin;
 using NamViet.ERP.Api.Application.Mappers.Wms;
+using NamViet.ERP.Api.Infrastructure.Authorization;
+using NamViet.ERP.Modules.Identity.Application.Abstractions;
 using NamViet.ERP.Modules.Identity.Domain.Entities;
+using NamViet.ERP.SharedKernel.Authorization;
 using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -13,12 +16,55 @@ namespace NamViet.ERP.Api.Controllers.Admin;
 
 [ApiController]
 [Route("api/admin/roles")]
-[Authorize(Roles = "Admin")]
+[Authorize]
 public class AdminRolesController(
     RoleManager<ApplicationRole> roleManager,
-    UserManager<ApplicationUser> userManager) : ControllerBase
+    UserManager<ApplicationUser> userManager,
+    IPermissionService permissionService) : ControllerBase
 {
+    [HttpGet("permissions/catalog")]
+    [RequirePermission("admin.roles.view:all")]
+    public ActionResult<List<PermissionCatalogEntryDto>> GetPermissionCatalog() =>
+        Ok(PermissionCatalog.Definitions
+            .Select(d => new PermissionCatalogEntryDto(d.Key, d.Module, d.Resource, d.Label))
+            .ToList());
+
+    [HttpGet("{code}/permissions")]
+    [RequirePermission("admin.roles.view:all")]
+    public async Task<ActionResult<RolePermissionsDto>> GetPermissions(string code, CancellationToken ct)
+    {
+        var role = await FindRoleByClientCodeAsync(code, ct);
+        if (role is null) return NotFound();
+
+        var permissions = await permissionService.GetPermissionsForRoleAsync(role, ct);
+        return Ok(new RolePermissionsDto(WmsMapper.ToClientRole(role.Name ?? ""), permissions));
+    }
+
+    [HttpPut("{code}/permissions")]
+    [RequirePermission("admin.roles.permissions.update")]
+    public async Task<ActionResult<RolePermissionsDto>> UpdatePermissions(
+        string code,
+        [FromBody] UpdateRolePermissionsRequest request,
+        CancellationToken ct)
+    {
+        var role = await FindRoleByClientCodeAsync(code, ct);
+        if (role is null) return NotFound();
+
+        try
+        {
+            await permissionService.SetRolePermissionsAsync(role, request.Permissions, ct);
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+
+        var permissions = await permissionService.GetPermissionsForRoleAsync(role, ct);
+        return Ok(new RolePermissionsDto(WmsMapper.ToClientRole(role.Name ?? ""), permissions));
+    }
+
     [HttpGet]
+    [RequirePermission("admin.roles.view:all")]
     public async Task<ActionResult<List<AdminRoleDto>>> List(
         [FromQuery] string? search = null,
         [FromQuery] bool activeOnly = false,
@@ -43,6 +89,7 @@ public class AdminRolesController(
     }
 
     [HttpPost]
+    [RequirePermission("admin.roles.create")]
     public async Task<ActionResult<AdminRoleDto>> Create([FromBody] CreateAdminRoleRequest request, CancellationToken ct)
     {
         var label = request.Label.Trim();
@@ -78,6 +125,7 @@ public class AdminRolesController(
     }
 
     [HttpPatch("{code}")]
+    [RequirePermission("admin.roles.update")]
     public async Task<ActionResult<AdminRoleDto>> UpdateLabel(
         string code, [FromBody] UpdateAdminRoleRequest request, CancellationToken ct)
     {
@@ -102,6 +150,7 @@ public class AdminRolesController(
     }
 
     [HttpPatch("{code}/toggle")]
+    [RequirePermission("admin.roles.update")]
     public async Task<ActionResult<AdminRoleDto>> Toggle(string code, CancellationToken ct)
     {
         var role = await FindRoleByClientCodeAsync(code, ct);
@@ -113,6 +162,7 @@ public class AdminRolesController(
     }
 
     [HttpDelete("{code}")]
+    [RequirePermission("admin.roles.delete")]
     public async Task<IActionResult> Delete(string code, CancellationToken ct)
     {
         var role = await FindRoleByClientCodeAsync(code, ct);

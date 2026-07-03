@@ -18,9 +18,12 @@ internal sealed class FakeCurrentUser : ICurrentUser
     public string Email => "keeper@namviet.vn";
     public string Name => "Test Keeper";
     public string EmployeeCode => "NV-TEST";
+    public int? EmployeeId => null;
     public IReadOnlyList<string> Roles => ["Warehouse_Keeper"];
+    public IReadOnlyList<string> Permissions => [];
     public bool IsAuthenticated => true;
     public bool IsInRole(string role) => Roles.Contains(role);
+    public bool HasPermission(string permission) => Permissions.Contains(permission);
 }
 
 internal sealed class WmsVoucherTestContext : IDisposable

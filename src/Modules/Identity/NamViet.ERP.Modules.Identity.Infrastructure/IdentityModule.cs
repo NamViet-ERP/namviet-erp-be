@@ -5,6 +5,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.IdentityModel.Tokens;
 using NamViet.ERP.Modules.Identity.Domain.Entities;
+using NamViet.ERP.Modules.Identity.Application.Abstractions;
 using NamViet.ERP.Modules.Identity.Infrastructure.Persistence;
 using NamViet.ERP.Modules.Identity.Infrastructure.Services;
 using System.Text;
@@ -33,6 +34,7 @@ public static class IdentityModule
         .AddDefaultTokenProviders();
 
         services.AddScoped<ITokenService, TokenService>();
+        services.AddScoped<IPermissionService, PermissionService>();
         services.AddScoped<NamViet.ERP.SharedKernel.Interfaces.IAccountStatusProvider, AccountStatusProvider>();
 
         // MediatR assembly được đăng ký tập trung ở Program.cs

@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using NamViet.ERP.Api.Infrastructure.Authorization;
 using NamViet.ERP.Modules.Warehouse.Application.DTOs;
 using NamViet.ERP.Modules.Warehouse.Domain.Entities;
 using NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence;
@@ -14,6 +15,7 @@ namespace NamViet.ERP.Api.Controllers;
 public class SuppliersController(WarehouseDbContext db) : ControllerBase
 {
     [HttpGet]
+    [RequirePermission("wms.suppliers.view:all")]
     public async Task<IActionResult> GetAll([FromQuery] int page = 1, [FromQuery] int pageSize = 20,
         [FromQuery] string? search = null, [FromQuery] string? rating = null, CancellationToken ct = default)
     {
@@ -30,6 +32,7 @@ public class SuppliersController(WarehouseDbContext db) : ControllerBase
     }
 
     [HttpGet("{id:int}")]
+    [RequirePermission("wms.suppliers.view:all")]
     public async Task<IActionResult> GetById(int id, CancellationToken ct)
     {
         var s = await db.Suppliers.FindAsync([id], ct);
@@ -38,7 +41,7 @@ public class SuppliersController(WarehouseDbContext db) : ControllerBase
     }
 
     [HttpPost]
-    [Authorize(Roles = "Admin,Procurement")]
+    [RequirePermission("wms.suppliers.create")]
     public async Task<IActionResult> Create([FromBody] UpsertSupplierRequest req, CancellationToken ct)
     {
         if (await db.Suppliers.AnyAsync(s => s.SupplierCode == req.SupplierCode, ct))
@@ -50,7 +53,7 @@ public class SuppliersController(WarehouseDbContext db) : ControllerBase
     }
 
     [HttpPut("{id:int}")]
-    [Authorize(Roles = "Admin,Procurement")]
+    [RequirePermission("wms.suppliers.update")]
     public async Task<IActionResult> Update(int id, [FromBody] UpsertSupplierRequest req, CancellationToken ct)
     {
         var s = await db.Suppliers.FindAsync([id], ct);
@@ -62,7 +65,7 @@ public class SuppliersController(WarehouseDbContext db) : ControllerBase
     }
 
     [HttpDelete("{id:int}")]
-    [Authorize(Roles = "Admin")]
+    [RequirePermission("wms.suppliers.delete")]
     public async Task<IActionResult> Delete(int id, CancellationToken ct)
     {
         var s = await db.Suppliers.FindAsync([id], ct);

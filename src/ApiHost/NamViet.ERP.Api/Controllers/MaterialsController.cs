@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using NamViet.ERP.Api.Infrastructure.Authorization;
 using NamViet.ERP.Modules.Warehouse.Application.DTOs;
 using NamViet.ERP.Modules.Warehouse.Application.Helpers;
 using NamViet.ERP.Modules.Warehouse.Infrastructure.Helpers;
@@ -16,6 +17,7 @@ namespace NamViet.ERP.Api.Controllers;
 public class MaterialsController(WarehouseDbContext db) : ControllerBase
 {
     [HttpGet]
+    [RequirePermission("wms.materials.view:all")]
     public async Task<IActionResult> GetAll(
         [FromQuery] int page = 1, [FromQuery] int pageSize = 20,
         [FromQuery] string? search = null,
@@ -74,6 +76,7 @@ public class MaterialsController(WarehouseDbContext db) : ControllerBase
     }
 
     [HttpGet("{code}")]
+    [RequirePermission("wms.materials.view:all")]
     public async Task<IActionResult> GetById(string code, CancellationToken ct)
     {
         var m = await db.Materials.AsNoTracking()
@@ -85,7 +88,7 @@ public class MaterialsController(WarehouseDbContext db) : ControllerBase
     }
 
     [HttpPost]
-    [Authorize(Roles = "Admin,Procurement,Warehouse_Keeper,Storekeeper")]
+    [RequirePermission("wms.materials.create")]
     public async Task<IActionResult> Create([FromBody] UpsertMaterialRequest request, CancellationToken ct)
     {
         if (await db.Materials.IgnoreQueryFilters()
@@ -124,7 +127,7 @@ public class MaterialsController(WarehouseDbContext db) : ControllerBase
     }
 
     [HttpPut("{code}")]
-    [Authorize(Roles = "Admin,Procurement")]
+    [RequirePermission("wms.materials.update")]
     public async Task<IActionResult> Update(string code, [FromBody] UpsertMaterialRequest request, CancellationToken ct)
     {
         var m = await db.Materials.FirstOrDefaultAsync(x => x.MaterialCode == code, ct);
@@ -154,7 +157,7 @@ public class MaterialsController(WarehouseDbContext db) : ControllerBase
     }
 
     [HttpPost("{code}/discontinue")]
-    [Authorize(Roles = "Admin")]
+    [RequirePermission("wms.materials.update")]
     public async Task<IActionResult> Discontinue(string code, CancellationToken ct)
     {
         var m = await db.Materials.FirstOrDefaultAsync(x => x.MaterialCode == code, ct);
@@ -168,7 +171,7 @@ public class MaterialsController(WarehouseDbContext db) : ControllerBase
     }
 
     [HttpPost("{code}/reactivate")]
-    [Authorize(Roles = "Admin")]
+    [RequirePermission("wms.materials.update")]
     public async Task<IActionResult> Reactivate(string code, CancellationToken ct)
     {
         var m = await db.Materials.FirstOrDefaultAsync(x => x.MaterialCode == code, ct);
@@ -182,7 +185,7 @@ public class MaterialsController(WarehouseDbContext db) : ControllerBase
     }
 
     [HttpDelete("{code}")]
-    [Authorize(Roles = "Admin")]
+    [RequirePermission("wms.materials.delete")]
     public async Task<IActionResult> Delete(string code, CancellationToken ct)
     {
         var m = await db.Materials.FirstOrDefaultAsync(x => x.MaterialCode == code, ct);

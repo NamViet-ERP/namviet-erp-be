@@ -1,6 +1,7 @@
 using MediatR;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using NamViet.ERP.Modules.Identity.Application.Abstractions;
 using NamViet.ERP.Modules.Identity.Application.Commands;
 using NamViet.ERP.Modules.Identity.Application.DTOs;
 using NamViet.ERP.Modules.Identity.Domain.Entities;
@@ -13,6 +14,7 @@ namespace NamViet.ERP.Modules.Identity.Infrastructure.Handlers;
 public class RefreshTokenHandler(
     UserManager<ApplicationUser> userManager,
     ITokenService tokenService,
+    IPermissionService permissionService,
     IdentityDbContext db,
     IEmployeeInfoProvider employeeInfo) : IRequestHandler<RefreshTokenCommand, AuthResponse>
 {
@@ -30,7 +32,9 @@ public class RefreshTokenHandler(
             throw new UnauthorizedAccessException("Tài khoản không còn hoạt động.");
 
         var roles = await userManager.GetRolesAsync(user);
-        var accessToken = tokenService.GenerateAccessToken(user, roles);
+        var permissions = await permissionService.GetPermissionsForUserAsync(user, ct);
+        var linked = await employeeInfo.GetByUserAsync(user.Id, user.EmployeeCode, ct);
+        var accessToken = tokenService.GenerateAccessToken(user, roles, permissions, linked?.EmployeeId);
         var newRefreshValue = tokenService.GenerateRefreshToken();
 
         stored.RevokedAt = DateTime.UtcNow;
@@ -47,8 +51,6 @@ public class RefreshTokenHandler(
 
         user.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
-
-        var linked = await employeeInfo.GetByUserAsync(user.Id, user.EmployeeCode, ct);
 
         return new AuthResponse(
             accessToken,

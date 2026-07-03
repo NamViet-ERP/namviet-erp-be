@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using NamViet.ERP.Api.Application.Dtos.Wms;
+using NamViet.ERP.Api.Infrastructure.Authorization;
 using NamViet.ERP.Modules.Hr.Infrastructure.Persistence;
 
 namespace NamViet.ERP.Api.Controllers.Hr;
@@ -12,6 +13,7 @@ namespace NamViet.ERP.Api.Controllers.Hr;
 public class HrBirthdaysController(HrDbContext db) : ControllerBase
 {
     [HttpGet]
+    [RequirePermission("hrm.birthdays.view")]
     public async Task<ActionResult<List<BirthdayDto>>> List([FromQuery] int month = 6, CancellationToken ct = default)
     {
         var employees = await db.Employees.Where(e => e.DeletedAt == null).Include(e => e.Department).ToListAsync(ct);

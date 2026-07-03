@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using NamViet.ERP.Api.Application.Dtos.Wms;
 using NamViet.ERP.Api.Application.Services.Wms;
+using NamViet.ERP.Api.Infrastructure.Authorization;
 
 namespace NamViet.ERP.Api.Controllers.Wms;
 
@@ -14,6 +15,7 @@ public class TransfersController(
     IValidator<CreateTransferDto> createValidator) : ControllerBase
 {
     [HttpGet]
+    [RequirePermission("wms.transfers.view:all")]
     public async Task<ActionResult<List<TransferDto>>> List(
         [FromQuery] DateOnly? dateFrom,
         [FromQuery] DateOnly? dateTo,
@@ -21,6 +23,7 @@ public class TransfersController(
         Ok(await transfers.ListAsync(dateFrom, dateTo, ct));
 
     [HttpGet("{id}")]
+    [RequirePermission("wms.transfers.view:all")]
     public async Task<ActionResult<TransferDto>> GetById(string id, CancellationToken ct)
     {
         var item = await transfers.GetByIdAsync(id, ct);
@@ -28,6 +31,7 @@ public class TransfersController(
     }
 
     [HttpPost]
+    [RequirePermission("wms.transfers.create")]
     public async Task<ActionResult<TransferDto>> Create([FromBody] CreateTransferDto dto, CancellationToken ct)
     {
         var validation = await createValidator.ValidateAsync(dto, ct);
@@ -37,6 +41,7 @@ public class TransfersController(
     }
 
     [HttpPut("{id}")]
+    [RequirePermission("wms.transfers.create")]
     public async Task<ActionResult<TransferDto>> Update(string id, [FromBody] CreateTransferDto dto, CancellationToken ct)
     {
         var validation = await createValidator.ValidateAsync(dto, ct);
@@ -46,16 +51,17 @@ public class TransfersController(
     }
 
     [HttpPost("{id}/approve")]
-    [Authorize(Roles = "Admin,Warehouse_Keeper,Storekeeper")]
+    [RequirePermission("wms.transfers.approve")]
     public Task<ActionResult<TransferDto>> Approve(string id, CancellationToken ct) =>
         WmsVoucherControllerResponses.ExecuteAsync(() => transfers.ApproveAsync(id, ct), ct);
 
     [HttpPost("{id}/submit")]
-    [Authorize(Roles = "Admin,PM,Warehouse_Keeper,Storekeeper")]
+    [RequirePermission("wms.transfers.create")]
     public Task<ActionResult<TransferDto>> Submit(string id, CancellationToken ct) =>
         WmsVoucherControllerResponses.ExecuteAsync(() => transfers.SubmitAsync(id, ct), ct);
 
     [HttpDelete("{id}")]
+    [RequirePermission("wms.transfers.create")]
     public Task<IActionResult> Delete(string id, CancellationToken ct) =>
         WmsVoucherControllerResponses.ExecuteDeleteAsync(() => transfers.DeleteAsync(id, ct), ct);
 }

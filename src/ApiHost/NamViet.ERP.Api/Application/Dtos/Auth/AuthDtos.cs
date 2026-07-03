@@ -15,6 +15,7 @@ public record AuthUserDto(
     string RoleLabel,
     string Email,
     string? EmployeeId,
-    string? EmployeeStatus);
+    string? EmployeeStatus,
+    IReadOnlyList<string> Permissions);
 
 public record LoginResponse(string Token, string RefreshToken, AuthUserDto User);
