@@ -87,6 +87,73 @@ public class InventoryDomainServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task ApplyApprovedImport_without_prior_planned_does_not_go_negative()
+    {
+        var import = new WarehouseTransaction
+        {
+            TicketCode = "NK-APPROVED-001",
+            TransactionType = TransactionType.Import,
+            BeneficiaryProjectCode = "DA-TEST",
+            ApprovalStatus = ApprovalStatus.Approved,
+            Items =
+            [
+                new WarehouseTransactionItem
+                {
+                    MaterialCode = "MAT-001",
+                    Quantity = 25m,
+                    UnitPrice = 1000m
+                }
+            ]
+        };
+        _db.WarehouseTransactions.Add(import);
+        await _db.SaveChangesAsync();
+
+        await _service.ApplyApprovedImportAsync(import);
+        await _db.SaveChangesAsync();
+
+        var projectInventory = await _db.ProjectInventories.SingleAsync();
+        Assert.Equal(25m, projectInventory.ActualImportQty);
+        Assert.Equal(0m, projectInventory.PlannedImportQty);
+    }
+
+    [Fact]
+    public async Task ApplyDirectIssueAsync_clears_pending_planned_import()
+    {
+        var import = new WarehouseTransaction
+        {
+            TicketCode = "NK-DI-001",
+            TransactionType = TransactionType.Import,
+            IsDirectProcurement = true,
+            BeneficiaryProjectCode = "DA-TEST",
+            ApprovalStatus = ApprovalStatus.Approved,
+            Items =
+            [
+                new WarehouseTransactionItem
+                {
+                    MaterialCode = "MAT-001",
+                    Quantity = 10m,
+                    UnitPrice = 1000m
+                }
+            ]
+        };
+        _db.WarehouseTransactions.Add(import);
+        await _db.SaveChangesAsync();
+
+        await _service.CreateProjectImportPlannedAsync(import);
+        await _db.SaveChangesAsync();
+
+        await _service.ApplyDirectIssueAsync(import);
+        await _db.SaveChangesAsync();
+
+        var projectInventory = await _db.ProjectInventories.SingleAsync();
+        Assert.Equal(10m, projectInventory.ActualImportQty);
+        Assert.Equal(10m, projectInventory.ActualExportQty);
+        Assert.Equal(0m, projectInventory.ActualImportQty - projectInventory.ActualExportQty);
+        Assert.Equal(0m, projectInventory.PlannedImportQty);
+        Assert.NotNull(import.LinkedTicketCode);
+    }
+
+    [Fact]
     public async Task ApplyDirectIssueAsync_keeps_project_net_inventory_at_zero()
     {
         var import = new WarehouseTransaction

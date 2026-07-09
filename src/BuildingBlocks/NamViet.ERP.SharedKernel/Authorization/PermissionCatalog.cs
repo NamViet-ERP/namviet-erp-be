@@ -59,6 +59,9 @@ public static class PermissionCatalog
         new("wms.transfers.view:all", "WMS", "Transfers", "Xem phiếu chuyển kho"),
         new("wms.transfers.create", "WMS", "Transfers", "Tạo chuyển kho"),
         new("wms.transfers.approve", "WMS", "Transfers", "Duyệt chuyển kho"),
+        new("wms.export_returns.view:all", "WMS", "ExportReturns", "Xem phiếu hoàn trả vật tư"),
+        new("wms.export_returns.create", "WMS", "ExportReturns", "Tạo phiếu hoàn trả vật tư"),
+        new("wms.export_returns.approve", "WMS", "ExportReturns", "Duyệt phiếu hoàn trả vật tư"),
         new("wms.stocktakes.view:all", "WMS", "Stocktakes", "Xem kiểm kê"),
         new("wms.stocktakes.create", "WMS", "Stocktakes", "Tạo kiểm kê"),
         new("wms.stocktakes.approve", "WMS", "Stocktakes", "Duyệt / chốt kiểm kê"),
@@ -76,6 +79,12 @@ public static class PermissionCatalog
         new("wms.material_units.create", "WMS", "MaterialUnits", "Tạo đơn vị tính"),
         new("wms.material_units.update", "WMS", "MaterialUnits", "Sửa đơn vị tính"),
         new("wms.material_units.delete", "WMS", "MaterialUnits", "Xóa đơn vị tính"),
+        new("wms.price_books.view:all", "WMS", "PriceBooks", "Xem bảng giá NCC"),
+        new("wms.price_books.create", "WMS", "PriceBooks", "Tạo bảng giá NCC"),
+        new("wms.price_books.update", "WMS", "PriceBooks", "Sửa bảng giá NCC"),
+        new("wms.price_books.delete", "WMS", "PriceBooks", "Xóa bảng giá NCC"),
+        new("wms.reports.view:all", "WMS", "Reports", "Xem báo cáo kho"),
+        new("wms.reports.export", "WMS", "Reports", "Xuất báo cáo kho"),
     ];
 
     public static IReadOnlySet<string> All { get; } =

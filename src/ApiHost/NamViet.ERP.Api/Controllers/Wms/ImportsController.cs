@@ -12,6 +12,8 @@ namespace NamViet.ERP.Api.Controllers.Wms;
 [Authorize]
 public class ImportsController(
     IImportApplicationService imports,
+    IImportExcelService importExcel,
+    IWmsVoucherExcelExportService voucherExport,
     IValidator<CreateImportDto> createValidator) : ControllerBase
 {
     [HttpGet]
@@ -50,10 +52,66 @@ public class ImportsController(
         return await WmsVoucherControllerResponses.ExecuteAsync(() => imports.UpdateAsync(id, dto, ct), ct);
     }
 
+    [HttpGet("export")]
+    [RequirePermission("wms.imports.view:all")]
+    public async Task<IActionResult> ExportExcel(
+        [FromQuery] DateOnly? dateFrom,
+        [FromQuery] DateOnly? dateTo,
+        [FromQuery] string? status = null,
+        [FromQuery] string? search = null,
+        CancellationToken ct = default)
+    {
+        var items = WmsVoucherExportFilters.FilterRows(
+            await imports.ListAsync(dateFrom, dateTo, ct),
+            status,
+            search,
+            row => row.Status,
+            row => row.VoucherCode,
+            row => row.Supplier,
+            row => row.ReferenceCode,
+            row => row.Project);
+
+        var bytes = voucherExport.BuildImportWorkbook(items);
+        var fileName = $"phieu-nhap-{DateTime.UtcNow:yyyyMMdd-HHmm}.xlsx";
+        return File(
+            bytes,
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            fileName);
+    }
+
     [HttpPost("{id}/approve")]
     [RequirePermission("wms.imports.approve")]
-    public Task<ActionResult<ImportDto>> Approve(string id, CancellationToken ct) =>
-        WmsVoucherControllerResponses.ExecuteAsync(() => imports.ApproveAsync(id, ct), ct);
+    public async Task<ActionResult<ImportDto>> Approve(
+        string id,
+        [FromBody] ApproveImportRequest? request,
+        CancellationToken ct)
+    {
+        var confirmOverBudget = request?.ConfirmOverBudget ?? false;
+        try
+        {
+            var item = await imports.ApproveAsync(id, confirmOverBudget, ct);
+            return item is null ? NotFound() : Ok(item);
+        }
+        catch (ImportBudgetExceededException ex)
+        {
+            return Conflict(new ImportBudgetExceededResponse(
+                "IMPORT_BUDGET_EXCEEDED",
+                ex.Message,
+                ex.ProjectCode,
+                ex.MaterialBudget,
+                ex.ApprovedImportValue,
+                ex.ImportValue,
+                ex.OverflowAmount));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+        catch (Exception)
+        {
+            return StatusCode(500, "Không thể duyệt phiếu nhập. Vui lòng thử lại hoặc liên hệ quản trị viên.");
+        }
+    }
 
     [HttpPost("{id}/submit")]
     [RequirePermission("wms.imports.update")]
@@ -64,4 +122,41 @@ public class ImportsController(
     [RequirePermission("wms.imports.update")]
     public Task<IActionResult> Delete(string id, CancellationToken ct) =>
         WmsVoucherControllerResponses.ExecuteDeleteAsync(() => imports.DeleteAsync(id, ct), ct);
+
+    [HttpGet("import-template")]
+    [RequirePermission("wms.imports.create")]
+    public IActionResult DownloadImportTemplate()
+    {
+        var bytes = importExcel.GenerateTemplate();
+        return File(
+            bytes,
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "phieu-nhap-vat-tu-mau.xlsx");
+    }
+
+    [HttpPost("parse-import-file")]
+    [RequirePermission("wms.imports.create")]
+    [RequestSizeLimit(2 * 1024 * 1024 + 1024)]
+    public async Task<ActionResult<ImportParseResultDto>> ParseImportFile(IFormFile file, CancellationToken ct)
+    {
+        if (file.Length == 0)
+            return BadRequest("Vui lòng chọn file import.");
+        if (file.Length > 2 * 1024 * 1024)
+            return BadRequest("File vượt quá 2MB.");
+
+        var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
+        if (ext is not (".xlsx" or ".xls" or ".csv"))
+            return BadRequest("Chỉ chấp nhận file .xlsx, .xls hoặc .csv.");
+
+        try
+        {
+            await using var stream = file.OpenReadStream();
+            var result = await importExcel.ParseImportFileAsync(stream, file.FileName, ct);
+            return Ok(result);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+    }
 }

@@ -24,6 +24,7 @@ public interface ITransferApplicationService
 public sealed class TransferApplicationService(
     WarehouseDbContext db,
     IInventoryDomainService inventory,
+    IStocktakeFreezeGuard stocktakeFreeze,
     ICurrentUser currentUser) : ITransferApplicationService
 {
     public async Task<List<TransferDto>> ListAsync(DateOnly? dateFrom = null, DateOnly? dateTo = null, CancellationToken ct = default)
@@ -52,6 +53,8 @@ public sealed class TransferApplicationService(
         if (validationError is not null)
             throw new InvalidOperationException(validationError);
 
+        await stocktakeFreeze.EnsureProjectsNotFrozenAsync([dto.Project, ResolveBeneficiaryProjectCode(dto)], ct);
+
         var count = await db.WarehouseTransactions.CountAsync(t => t.TransactionType == TransactionType.Transfer, ct);
         var ticketCode = string.IsNullOrWhiteSpace(dto.VoucherCode)
             ? WarehouseTransaction.GenerateTicketCode(TransactionType.Transfer, count + 1)
@@ -79,6 +82,8 @@ public sealed class TransferApplicationService(
         var validationError = await ValidateTransferRequestAsync(dto, ct);
         if (validationError is not null)
             throw new InvalidOperationException(validationError);
+
+        await stocktakeFreeze.EnsureProjectsNotFrozenAsync([dto.Project, ResolveBeneficiaryProjectCode(dto)], ct);
 
         var t = await FindAsync(id, ct);
         if (t is null) return null;
@@ -123,6 +128,8 @@ public sealed class TransferApplicationService(
         if (t.ApprovalStatus != ApprovalStatus.Pending)
             throw new InvalidOperationException("Chỉ phiếu đã chốt dự kiến (Pending) mới được duyệt kho.");
 
+        await stocktakeFreeze.EnsureProjectsNotFrozenAsync([t.ProjectCode, t.BeneficiaryProjectCode], ct);
+
         await using var tx = await db.Database.BeginTransactionAsync(ct);
         t.ApprovalStatus = ApprovalStatus.Approved;
         t.ApprovedById = currentUser.Id;
@@ -143,6 +150,8 @@ public sealed class TransferApplicationService(
         if (t is null) return null;
         if (t.ApprovalStatus != ApprovalStatus.Draft)
             throw new InvalidOperationException("Chỉ phiếu nháp mới được PM chốt.");
+
+        await stocktakeFreeze.EnsureProjectsNotFrozenAsync([t.ProjectCode, t.BeneficiaryProjectCode], ct);
 
         t.ApprovalStatus = ApprovalStatus.Pending;
         t.UpdatedAt = DateTime.UtcNow;

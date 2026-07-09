@@ -148,6 +148,23 @@ public static class WmsMapper
             IsCrossProjectTransferEntity(t) ? toProjectName : null,
             FormatCreatedAt(t.CreatedAt));
 
+    public static ExportReturnDto ToExportReturn(
+        WarehouseTransaction t,
+        string sourceExportId,
+        string sourceExportCode,
+        string? projectName = null) =>
+        new(t.Id.ToString(), t.TicketCode, FormatDate(t.CreatedAt),
+            sourceExportId, sourceExportCode,
+            t.ProjectCode ?? t.BeneficiaryProjectCode,
+            projectName,
+            t.Items.Select(i => new ExportReturnItemDto(
+                i.MaterialCode, i.MaterialCode,
+                TransactionItemHelper.ResolveName(i),
+                i.Quantity, TransactionItemHelper.ResolveUnit(i))).ToList(),
+            ToClientApprovalStatus(t.ApprovalStatus),
+            t.CreatedByName, t.Notes ?? "", t.ApprovedByName, FormatApprovedAt(t.ApprovedAt),
+            FormatCreatedAt(t.CreatedAt));
+
     private static bool IsCrossProjectTransferEntity(WarehouseTransaction t) =>
         !string.IsNullOrWhiteSpace(t.ProjectCode)
         && !string.IsNullOrWhiteSpace(t.BeneficiaryProjectCode)

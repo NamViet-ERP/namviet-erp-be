@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using NamViet.ERP.Api.Infrastructure.Authorization;
 using NamViet.ERP.Modules.Warehouse.Application.DTOs;
 using NamViet.ERP.Modules.Warehouse.Domain.Entities;
 using NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence;
@@ -14,9 +15,11 @@ namespace NamViet.ERP.Api.Controllers;
 public class PriceBooksController(WarehouseDbContext db) : ControllerBase
 {
     [HttpGet]
+    [RequirePermission("wms.price_books.view:all")]
     public async Task<IActionResult> GetAll(
         [FromQuery] int page = 1, [FromQuery] int pageSize = 20,
         [FromQuery] string? materialCode = null, [FromQuery] int? supplierId = null,
+        [FromQuery] string? search = null,
         CancellationToken ct = default)
     {
         var query = db.PriceBooks
@@ -28,6 +31,15 @@ public class PriceBooksController(WarehouseDbContext db) : ControllerBase
             query = query.Where(p => p.MaterialCode == materialCode);
         if (supplierId.HasValue)
             query = query.Where(p => p.SupplierId == supplierId.Value);
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var term = search.Trim();
+            query = query.Where(p =>
+                p.MaterialCode.Contains(term)
+                || p.Material.MaterialName.Contains(term)
+                || p.Supplier.SupplierName.Contains(term)
+                || p.Supplier.SupplierCode.Contains(term));
+        }
 
         var total = await query.CountAsync(ct);
         var items = await query
@@ -42,7 +54,28 @@ public class PriceBooksController(WarehouseDbContext db) : ControllerBase
         return Ok(PagedResult<PriceBookDto>.Create(items, total, page, pageSize));
     }
 
+    [HttpGet("lookup")]
+    [RequirePermission("wms.price_books.view:all")]
+    public async Task<IActionResult> Lookup(
+        [FromQuery] string materialCode, [FromQuery] int supplierId, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(materialCode))
+            return BadRequest("materialCode là bắt buộc.");
+
+        var entry = await db.PriceBooks
+            .Where(p => p.MaterialCode == materialCode && p.SupplierId == supplierId)
+            .OrderByDescending(p => p.PriceDate)
+            .Select(p => new PriceBookLookupDto(p.UnitPrice, p.PurchaseUrl, p.CatalogUrl, p.PriceDate))
+            .FirstOrDefaultAsync(ct);
+
+        if (entry is null)
+            return NotFound();
+
+        return Ok(entry);
+    }
+
     [HttpGet("{id:int}")]
+    [RequirePermission("wms.price_books.view:all")]
     public async Task<IActionResult> GetById(int id, CancellationToken ct)
     {
         var p = await db.PriceBooks
@@ -57,7 +90,7 @@ public class PriceBooksController(WarehouseDbContext db) : ControllerBase
     }
 
     [HttpPost]
-    [Authorize(Roles = "Admin,Procurement")]
+    [RequirePermission("wms.price_books.create")]
     public async Task<IActionResult> Create([FromBody] CreatePriceBookRequest request, CancellationToken ct)
     {
         if (!await db.Materials.AnyAsync(m => m.MaterialCode == request.MaterialCode, ct))
@@ -76,11 +109,20 @@ public class PriceBooksController(WarehouseDbContext db) : ControllerBase
         };
         db.PriceBooks.Add(entry);
         await db.SaveChangesAsync(ct);
-        return CreatedAtAction(nameof(GetById), new { id = entry.Id }, null);
+
+        var created = await db.PriceBooks
+            .Include(p => p.Material)
+            .Include(p => p.Supplier)
+            .FirstAsync(p => p.Id == entry.Id, ct);
+
+        return CreatedAtAction(nameof(GetById), new { id = entry.Id }, new PriceBookDto(
+            created.Id, created.MaterialCode, created.Material.MaterialName,
+            created.SupplierId, created.Supplier.SupplierName,
+            created.UnitPrice, created.PurchaseUrl, created.CatalogUrl, created.PriceDate));
     }
 
     [HttpPut("{id:int}")]
-    [Authorize(Roles = "Admin,Procurement")]
+    [RequirePermission("wms.price_books.update")]
     public async Task<IActionResult> Update(int id, [FromBody] CreatePriceBookRequest request, CancellationToken ct)
     {
         var entry = await db.PriceBooks.FindAsync([id], ct);
@@ -95,7 +137,7 @@ public class PriceBooksController(WarehouseDbContext db) : ControllerBase
     }
 
     [HttpDelete("{id:int}")]
-    [Authorize(Roles = "Admin,Procurement")]
+    [RequirePermission("wms.price_books.delete")]
     public async Task<IActionResult> Delete(int id, CancellationToken ct)
     {
         var entry = await db.PriceBooks.FindAsync([id], ct);

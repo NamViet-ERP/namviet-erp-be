@@ -27,7 +27,8 @@ public enum TransactionType
     Export,       // Xuất kho
     LoanExport,   // Xuất mượn
     LoanImport,   // Nhập trả mượn
-    Transfer      // Kết chuyển
+    Transfer,     // Kết chuyển
+    ExportReturn  // Hoàn trả vật tư theo phiếu xuất
 }
 
 public enum ApprovalStatus

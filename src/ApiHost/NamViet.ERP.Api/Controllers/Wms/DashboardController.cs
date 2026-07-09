@@ -19,12 +19,20 @@ public class DashboardController(WarehouseDbContext db, IWmsCatalogQueryService 
     [HttpGet("kpi")]
     public async Task<ActionResult<DashboardKpiDto>> Kpi(CancellationToken ct)
     {
-        var warehouses = await db.WmsWarehouses.Where(w => w.DeletedAt == null && w.Status == "active").CountAsync(ct);
-        var inv = await db.WarehouseInventories.SumAsync(i => i.Qty, ct);
+        var activeProjects = await db.Projects.CountAsync(
+            p => p.DeletedAt == null
+                 && p.Status == ProjectStatus.Active
+                 && p.ProjectType == ProjectType.Project,
+            ct);
+
+        var projectStock = await db.ProjectInventories.SumAsync(
+            pi => pi.ActualImportQty - pi.ActualExportQty, ct);
+        var warehouseStock = await db.WarehouseInventories.SumAsync(i => i.Qty, ct);
+        var totalStock = (int)Math.Round(projectStock + warehouseStock, MidpointRounding.AwayFromZero);
         var totalValue = await catalog.GetTotalInventoryValueAsync(ct);
         var today = DateTime.UtcNow.Date;
         var todayTx = await db.WarehouseTransactions.Where(t => t.CreatedAt >= today).ToListAsync(ct);
-        return Ok(new DashboardKpiDto((int)inv, totalValue, warehouses,
+        return Ok(new DashboardKpiDto(totalStock, totalValue, activeProjects,
             todayTx.Count(t => t.TransactionType == TransactionType.Import),
             todayTx.Count(t => t.TransactionType == TransactionType.Export),
             await db.WarehouseTransactions.CountAsync(t => t.ApprovalStatus == ApprovalStatus.Pending, ct)));
@@ -75,18 +83,21 @@ public class DashboardController(WarehouseDbContext db, IWmsCatalogQueryService 
     [HttpGet("stock-by-project")]
     public async Task<ActionResult<List<DashboardCategoryDto>>> StockByProject(CancellationToken ct)
     {
-        var rows = await (
-            from pi in db.ProjectInventories
-            join p in db.Projects on pi.ProjectCode equals p.ProjectCode
-            where p.DeletedAt == null
-            group pi by new { p.ProjectCode, p.ProjectName } into g
-            let qty = g.Sum(x => x.ActualImportQty - x.ActualExportQty)
-            where qty > 0
-            orderby qty descending
-            select new DashboardCategoryDto(g.Key.ProjectName, qty)
-        ).Take(6).ToListAsync(ct);
+        var rows = await db.ProjectInventories
+            .AsNoTracking()
+            .Where(pi => pi.Project.DeletedAt == null)
+            .GroupBy(pi => new { pi.Project.ProjectCode, pi.Project.ProjectName })
+            .Select(g => new
+            {
+                g.Key.ProjectName,
+                Qty = g.Sum(x => x.ActualImportQty) - g.Sum(x => x.ActualExportQty),
+            })
+            .Where(x => x.Qty > 0)
+            .OrderByDescending(x => x.Qty)
+            .Take(6)
+            .ToListAsync(ct);
 
-        return Ok(rows);
+        return Ok(rows.Select(r => new DashboardCategoryDto(r.ProjectName, r.Qty)).ToList());
     }
 
     [HttpGet("activity-feed")]

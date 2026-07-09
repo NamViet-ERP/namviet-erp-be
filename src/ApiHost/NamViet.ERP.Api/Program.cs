@@ -108,9 +108,17 @@ builder.Services.AddRateLimiter(options =>
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ICurrentUser, CurrentUserService>();
 builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Wms.IWmsCatalogQueryService, NamViet.ERP.Api.Application.Services.Wms.WmsCatalogQueryService>();
+builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Wms.IWmsVoucherExcelExportService, NamViet.ERP.Api.Application.Services.Wms.WmsVoucherExcelExportService>();
+builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Wms.IWmsReportService, NamViet.ERP.Api.Application.Services.Wms.WmsReportService>();
+builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Wms.IWmsNotificationService, NamViet.ERP.Api.Application.Services.Wms.WmsNotificationService>();
+builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Wms.IWmsLowStockAlertService, NamViet.ERP.Api.Application.Services.Wms.WmsLowStockAlertService>();
+builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Wms.IProjectBudgetService, NamViet.ERP.Api.Application.Services.Wms.ProjectBudgetService>();
+builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Wms.IStocktakeFreezeGuard, NamViet.ERP.Api.Application.Services.Wms.StocktakeFreezeGuard>();
 builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Wms.IImportApplicationService, NamViet.ERP.Api.Application.Services.Wms.ImportApplicationService>();
+builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Wms.IImportExcelService, NamViet.ERP.Api.Application.Services.Wms.ImportExcelService>();
 builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Wms.IExportApplicationService, NamViet.ERP.Api.Application.Services.Wms.ExportApplicationService>();
 builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Wms.ITransferApplicationService, NamViet.ERP.Api.Application.Services.Wms.TransferApplicationService>();
+builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Wms.IExportReturnApplicationService, NamViet.ERP.Api.Application.Services.Wms.ExportReturnApplicationService>();
 builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Wms.IStocktakeApplicationService, NamViet.ERP.Api.Application.Services.Wms.StocktakeApplicationService>();
 builder.Services.AddScoped<IAdminUserQueryService, AdminUserQueryService>();
 builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Hr.IEmployeeAccessService, NamViet.ERP.Api.Application.Services.Hr.EmployeeAccessService>();

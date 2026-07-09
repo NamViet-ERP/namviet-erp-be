@@ -16,6 +16,8 @@ public class Stocktake : BaseEntity
     public bool IsFrozen { get; set; }
     public string Note { get; set; } = string.Empty;
 
+    public static string GenerateVoucherCode(int sequence) => $"KK-{sequence:D4}";
+
     public WmsWarehouse? Warehouse { get; set; }
     public ICollection<StocktakeItem> Items { get; set; } = [];
 }

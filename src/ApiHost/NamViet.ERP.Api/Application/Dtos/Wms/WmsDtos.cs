@@ -22,8 +22,37 @@ public record ImportDto(
 public record CreateImportDto(
     string VoucherCode, string Date, string Supplier, string ReferenceCode,
     decimal TotalValue, string Status, string WarehouseApproval, string ApprovedBy,
-    string WarehouseKeeper, List<ImportItemDto> Items, string CreatedBy, string Note,
+    string WarehouseKeeper, List<ImportItemDto> Items, string? CreatedBy, string Note,
     string WarehouseId, bool? IsDirectProcurement, string? Project);
+
+public record ApproveImportRequest(bool ConfirmOverBudget = false);
+
+public record ImportBudgetExceededResponse(
+    string Code,
+    string Message,
+    string ProjectCode,
+    decimal MaterialBudget,
+    decimal ApprovedImportValue,
+    decimal ImportValue,
+    decimal OverflowAmount);
+
+public record ImportParsedLineDto(
+    int RowNumber,
+    string MaterialCode,
+    string MaterialName,
+    string Unit,
+    decimal Qty,
+    decimal UnitPrice,
+    bool IsValid);
+
+public record ImportParseErrorDto(int RowNumber, string Field, string Message);
+
+public record ImportParseResultDto(
+    int TotalRows,
+    int ValidRowCount,
+    int ErrorRowCount,
+    List<ImportParsedLineDto> Lines,
+    List<ImportParseErrorDto> Errors);
 
 public record ExportItemDto(string ProductId, string Sku, string Name, decimal Qty, string Unit);
 public record ExportDto(
@@ -35,7 +64,7 @@ public record ExportDto(
 public record CreateExportDto(
     string VoucherCode, string Date, string SoCode, string Customer,
     string WarehouseId, List<ExportItemDto> Items,
-    string Status, string CreatedBy, string Note, string? Project);
+    string Status, string? CreatedBy, string Note, string? Project);
 
 public record TransferItemDto(
     string ProductId, string Sku, string Name, decimal Qty, string Unit, string? ConstructionPhase = null);
@@ -47,10 +76,31 @@ public record TransferDto(
     string CreatedAt);
 public record CreateTransferDto(
     string VoucherCode, string Date, string FromWarehouseId, string ToWarehouseId,
-    List<TransferItemDto> Items, string Status, string CreatedBy, string Note,
+    List<TransferItemDto> Items, string Status, string? CreatedBy, string Note,
     string? Project, string? ToProject);
 
+public record ExportReturnItemDto(
+    string ProductId, string Sku, string Name, decimal Qty, string Unit);
+public record ExportReturnableLineDto(
+    string ProductId, string Sku, string Name, string Unit,
+    decimal ExportedQty, decimal ReturnedQty, decimal RemainingQty);
+public record ExportReturnableExportDto(
+    string Id, string VoucherCode, string Date, string? SoCode, string? Customer,
+    string Status, string? ApprovedAt, int ReturnableLineCount, decimal TotalRemainingQty);
+public record ExportReturnDto(
+    string Id, string VoucherCode, string Date, string SourceExportId, string SourceExportCode,
+    string? Project, string? ProjectName, List<ExportReturnItemDto> Items,
+    string Status, string CreatedBy, string Note, string? ApprovedBy, string? ApprovedAt,
+    string CreatedAt);
+public record CreateExportReturnDto(
+    string VoucherCode, string Date, string SourceExportId,
+    List<ExportReturnItemDto> Items, string Status, string? CreatedBy, string Note, string? Project);
+
 public record StocktakeItemDto(string ProductId, string Sku, string Name, decimal SystemQty, decimal ActualQty, decimal Diff);
+public record CreateStocktakeDto(
+    string? VoucherCode, string Date, string? CreatedBy, string Status,
+    string WarehouseId, string WarehouseName, string Condition, bool IsFrozen,
+    string? Note, List<StocktakeItemDto> Items);
 public record StocktakeDto(
     string Id, string VoucherCode, string Date, string CreatedBy, string Status,
     string WarehouseId, string WarehouseName, string Condition, bool IsFrozen,

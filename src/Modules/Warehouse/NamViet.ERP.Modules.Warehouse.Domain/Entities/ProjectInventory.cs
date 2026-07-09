@@ -15,6 +15,8 @@ public class ProjectInventory : BaseEntity
     public decimal ActualExportQty { get; set; }
     /// <summary>Cache denormalized — nguồn sự thật: inventory_reservations (Holding).</summary>
     public decimal ReservedQty { get; set; }
+    /// <summary>Ngưỡng tồn tối thiểu theo dự án × vật tư (0 = không cảnh báo).</summary>
+    public decimal MinStockQty { get; set; }
 
     /// <summary>Optimistic concurrency token (PostgreSQL xmin).</summary>
     public uint RowVersion { get; set; }
@@ -36,7 +38,7 @@ public class ProjectInventory : BaseEntity
     public void RemovePlannedImport(decimal qty)
     {
         if (qty < 0) throw new ArgumentOutOfRangeException(nameof(qty));
-        PlannedImportQty -= qty;
+        PlannedImportQty = Math.Max(0m, PlannedImportQty - qty);
         UpdatedAt = DateTime.UtcNow;
     }
 
@@ -78,7 +80,18 @@ public class ProjectInventory : BaseEntity
     public void RemovePlannedExport(decimal qty)
     {
         if (qty < 0) throw new ArgumentOutOfRangeException(nameof(qty));
-        PlannedExportQty -= qty;
+        PlannedExportQty = Math.Max(0m, PlannedExportQty - qty);
+        UpdatedAt = DateTime.UtcNow;
+    }
+
+    /// <summary>Hoàn trả vật tư chưa dùng hết về kho dự án — giảm xuất thực tế.</summary>
+    public void ApplyExportReturn(decimal qty)
+    {
+        if (qty < 0) throw new ArgumentOutOfRangeException(nameof(qty));
+        if (qty > ActualExportQty)
+            throw new InvalidOperationException(
+                $"Không thể hoàn trả {qty} — xuất thực tế hiện tại {ActualExportQty}.");
+        ActualExportQty -= qty;
         UpdatedAt = DateTime.UtcNow;
     }
 }

@@ -9,7 +9,8 @@ public class PermissionAuthorizationHandler : AuthorizationHandler<PermissionReq
         AuthorizationHandlerContext context,
         PermissionRequirement requirement)
     {
-        if (context.User.HasClaim(PermissionCatalog.ClaimType, requirement.Permission))
+        if (AuthorizationRoleBypass.IsAdmin(context.User)
+            || context.User.HasClaim(PermissionCatalog.ClaimType, requirement.Permission))
             context.Succeed(requirement);
 
         return Task.CompletedTask;

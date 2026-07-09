@@ -26,6 +26,22 @@ internal sealed class FakeCurrentUser : ICurrentUser
     public bool HasPermission(string permission) => Permissions.Contains(permission);
 }
 
+internal sealed class FakeProjectBudgetService : IProjectBudgetService
+{
+    public Task<decimal> GetApprovedImportValueAsync(string projectCode, CancellationToken ct = default) =>
+        Task.FromResult(0m);
+
+    public Task<IReadOnlyDictionary<string, decimal>> GetApprovedImportValuesAsync(
+        IReadOnlyList<string> projectCodes, CancellationToken ct = default) =>
+        Task.FromResult<IReadOnlyDictionary<string, decimal>>(new Dictionary<string, decimal>());
+
+    public decimal SumImportValue(WarehouseTransaction transaction) => 0m;
+
+    public Task EnsureImportApprovalWithinBudgetAsync(
+        WarehouseTransaction transaction, bool confirmOverBudget, CancellationToken ct = default) =>
+        Task.CompletedTask;
+}
+
 internal sealed class WmsVoucherTestContext : IDisposable
 {
     public WarehouseDbContext Db { get; }
@@ -34,6 +50,7 @@ internal sealed class WmsVoucherTestContext : IDisposable
     public ImportApplicationService Imports { get; }
     public ExportApplicationService Exports { get; }
     public TransferApplicationService Transfers { get; }
+    public ExportReturnApplicationService ExportReturns { get; }
 
     public WmsVoucherTestContext()
     {
@@ -43,9 +60,11 @@ internal sealed class WmsVoucherTestContext : IDisposable
             .Options;
         Db = new WarehouseDbContext(options);
         Inventory = new InventoryDomainService(Db);
-        Imports = new ImportApplicationService(Db, Inventory, CurrentUser);
-        Exports = new ExportApplicationService(Db, Inventory, CurrentUser);
-        Transfers = new TransferApplicationService(Db, Inventory, CurrentUser);
+        var stocktakeFreeze = new StocktakeFreezeGuard(Db);
+        Imports = new ImportApplicationService(Db, Inventory, new FakeProjectBudgetService(), stocktakeFreeze, CurrentUser);
+        Exports = new ExportApplicationService(Db, Inventory, stocktakeFreeze, CurrentUser);
+        Transfers = new TransferApplicationService(Db, Inventory, stocktakeFreeze, CurrentUser);
+        ExportReturns = new ExportReturnApplicationService(Db, Inventory, stocktakeFreeze, CurrentUser);
         SeedBaseline();
     }
 
@@ -66,6 +85,25 @@ internal sealed class WmsVoucherTestContext : IDisposable
         {
             existing.ActualImportQty = actualQty;
         }
+        Db.SaveChanges();
+    }
+
+    public void SeedFrozenStocktake(string projectCode = "DA-TEST", string voucherCode = "KK-TEST-FROZEN")
+    {
+        Db.Stocktakes.Add(new Stocktake
+        {
+            Id = Guid.NewGuid().ToString("N")[..12],
+            VoucherCode = voucherCode,
+            VoucherDate = DateOnly.FromDateTime(DateTime.UtcNow),
+            CreatedById = CurrentUser.Id,
+            CreatedByName = CurrentUser.Name,
+            Status = "pending",
+            WarehouseId = projectCode,
+            WarehouseName = "Dự án test",
+            Condition = "counting",
+            IsFrozen = true,
+            Note = "Test freeze",
+        });
         Db.SaveChanges();
     }
 
@@ -118,6 +156,9 @@ internal sealed class WmsVoucherTestContext : IDisposable
         new("MAT-001", "MAT-001", "Vật tư test", qty, "Cái");
 
     public static TransferItemDto TransferLine(decimal qty) =>
+        new("MAT-001", "MAT-001", "Vật tư test", qty, "Cái");
+
+    public static ExportReturnItemDto ExportReturnLine(decimal qty) =>
         new("MAT-001", "MAT-001", "Vật tư test", qty, "Cái");
 
     public void Dispose() => Db.Dispose();

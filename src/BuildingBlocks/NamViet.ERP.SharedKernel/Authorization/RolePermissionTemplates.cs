@@ -48,10 +48,15 @@ public static class RolePermissionTemplates
         "wms.exports.approve",
         "wms.transfers.view:all",
         "wms.transfers.approve",
+        "wms.export_returns.view:all",
+        "wms.export_returns.approve",
         "wms.stocktakes.view:all",
         "wms.suppliers.view:all",
         "wms.categories.view:all",
         "wms.material_units.view:all",
+        "wms.price_books.view:all",
+        "wms.reports.view:all",
+        "wms.reports.export",
     ];
 
     private static readonly string[] WarehousePermissions =
@@ -74,6 +79,9 @@ public static class RolePermissionTemplates
         "wms.transfers.view:all",
         "wms.transfers.create",
         "wms.transfers.approve",
+        "wms.export_returns.view:all",
+        "wms.export_returns.create",
+        "wms.export_returns.approve",
         "wms.stocktakes.view:all",
         "wms.stocktakes.create",
         "wms.stocktakes.approve",
@@ -91,6 +99,12 @@ public static class RolePermissionTemplates
         "wms.material_units.create",
         "wms.material_units.update",
         "wms.material_units.delete",
+        "wms.price_books.view:all",
+        "wms.price_books.create",
+        "wms.price_books.update",
+        "wms.price_books.delete",
+        "wms.reports.view:all",
+        "wms.reports.export",
     ];
 
     private static readonly string[] StaffPermissions =

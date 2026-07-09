@@ -85,6 +85,7 @@ public static class ApiValidationResponses
                 "projectName" => "Vui lòng nhập tên công trình",
                 "startDate" => "Vui lòng chọn ngày bắt đầu",
                 "materialBudget" => "Vui lòng nhập ngân sách vật tư",
+                "createdBy" => "Không xác định được người lập phiếu.",
                 "_form" => "Vui lòng kiểm tra lại thông tin.",
                 _ => "Trường này là bắt buộc"
             };

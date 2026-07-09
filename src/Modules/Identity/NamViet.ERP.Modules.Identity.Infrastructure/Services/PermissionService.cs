@@ -33,6 +33,11 @@ public class PermissionService(
         ApplicationRole role,
         CancellationToken ct = default)
     {
+        if (string.Equals(role.Name, RolePermissionTemplates.AdminRole, StringComparison.OrdinalIgnoreCase))
+        {
+            return PermissionCatalog.All.OrderBy(p => p, StringComparer.Ordinal).ToList();
+        }
+
         var claims = await roleManager.GetClaimsAsync(role);
         var fromClaims = claims
             .Where(c => c.Type == PermissionCatalog.ClaimType)

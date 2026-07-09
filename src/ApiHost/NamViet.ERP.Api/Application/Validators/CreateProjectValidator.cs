@@ -19,6 +19,8 @@ public sealed class CreateProjectValidator : AbstractValidator<CreateProjectRequ
             .Must(d => d != default).WithMessage("Vui lòng chọn ngày bắt đầu");
 
         RuleFor(x => x.MaterialBudget)
-            .GreaterThan(0).WithMessage("Vui lòng nhập ngân sách vật tư");
+            .GreaterThan(0).WithMessage("Vui lòng nhập ngân sách vật tư")
+            .LessThanOrEqualTo(WmsValueLimits.MaxMaterialBudget)
+            .WithMessage("Ngân sách vật tư vượt quá giới hạn cho phép (tối đa 9.999.999.999.999.999 đ).");
     }
 }

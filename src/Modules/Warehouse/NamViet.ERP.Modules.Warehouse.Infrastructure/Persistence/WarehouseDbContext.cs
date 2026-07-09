@@ -174,6 +174,7 @@ public class WarehouseDbContext(DbContextOptions<WarehouseDbContext> options) : 
             e.Property(pi => pi.ActualImportQty).HasColumnType("numeric(18,4)").HasDefaultValue(0m);
             e.Property(pi => pi.ActualExportQty).HasColumnType("numeric(18,4)").HasDefaultValue(0m);
             e.Property(pi => pi.ReservedQty).HasColumnType("numeric(18,4)").HasDefaultValue(0m);
+            e.Property(pi => pi.MinStockQty).HasColumnType("numeric(18,4)").HasDefaultValue(0m);
             e.Ignore(pi => pi.ActualInventoryQty);
             e.Ignore(pi => pi.PlannedInventoryQty);
             e.Ignore(pi => pi.ExpectedInventoryQty);

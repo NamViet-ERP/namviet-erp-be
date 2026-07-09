@@ -12,6 +12,8 @@ public sealed class UpdateProjectValidator : AbstractValidator<UpdateProjectRequ
             .MaximumLength(255).WithMessage("Tên công trình không được vượt quá 255 ký tự");
 
         RuleFor(x => x.MaterialBudget)
-            .GreaterThan(0).WithMessage("Vui lòng nhập ngân sách vật tư");
+            .GreaterThan(0).WithMessage("Vui lòng nhập ngân sách vật tư")
+            .LessThanOrEqualTo(WmsValueLimits.MaxMaterialBudget)
+            .WithMessage("Ngân sách vật tư vượt quá giới hạn cho phép (tối đa 9.999.999.999.999.999 đ).");
     }
 }

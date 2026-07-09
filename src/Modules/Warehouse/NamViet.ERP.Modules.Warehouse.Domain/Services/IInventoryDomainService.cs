@@ -27,6 +27,12 @@ public interface IInventoryDomainService
 
     Task ApplyApprovedImportAsync(WarehouseTransaction transaction, CancellationToken ct = default);
     Task ApplyApprovedExportAsync(WarehouseTransaction transaction, CancellationToken ct = default);
+
+    /// <summary>Ghi dự kiến hoàn trả về kho dự án (phiếu nháp/chờ duyệt).</summary>
+    Task CreateProjectExportReturnPlannedAsync(WarehouseTransaction transaction, CancellationToken ct = default);
+    Task CancelProjectExportReturnPlannedAsync(WarehouseTransaction transaction, CancellationToken ct = default);
+    /// <summary>Hoàn trả vật tư về kho dự án khi duyệt phiếu hoàn trả theo phiếu xuất.</summary>
+    Task ApplyApprovedExportReturnAsync(WarehouseTransaction transaction, CancellationToken ct = default);
     Task ApplyDirectIssueAsync(WarehouseTransaction importTransaction, CancellationToken ct = default);
     Task ApplyTransferAsync(WarehouseTransaction transaction, CancellationToken ct = default);
     /// <summary>Hoàn trả từ kho dự án về kho tổng khi duyệt phiếu chuyển.</summary>

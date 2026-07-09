@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using NamViet.ERP.Api.Application.Mappers.Wms;
+using NamViet.ERP.Api.Application.Services.Wms;
 using NamViet.ERP.Api.Infrastructure.Authorization;
 using NamViet.ERP.Modules.Warehouse.Application.DTOs;
 using NamViet.ERP.Modules.Warehouse.Domain.Entities;
@@ -20,6 +21,7 @@ namespace NamViet.ERP.Api.Controllers;
 public class ProjectsController(
     WarehouseDbContext db,
     IInventoryDomainService inventory,
+    IProjectBudgetService projectBudget,
     IValidator<CreateProjectRequest> createValidator,
     IValidator<UpdateProjectRequest> updateValidator) : ControllerBase
 {
@@ -72,9 +74,30 @@ public class ProjectsController(
                 pi.ActualImportQty, pi.ActualExportQty,
                 pi.ActualImportQty - pi.ActualExportQty,
                 pi.PlannedImportQty - pi.PlannedExportQty,
-                pi.ReservedQty))
+                pi.ReservedQty,
+                pi.MinStockQty))
             .ToListAsync(ct);
         return Ok(items);
+    }
+
+    [HttpPatch("{code}/inventory/{materialCode}/min-stock")]
+    [RequirePermission("wms.projects.update")]
+    public async Task<IActionResult> UpdateInventoryMinStock(
+        string code, string materialCode,
+        [FromBody] UpdateProjectInventoryMinStockRequest request,
+        CancellationToken ct)
+    {
+        if (request.MinStockQty < 0)
+            return BadRequest("Tồn tối thiểu không được âm.");
+
+        var row = await db.ProjectInventories
+            .FirstOrDefaultAsync(pi => pi.ProjectCode == code && pi.MaterialCode == materialCode, ct);
+        if (row is null) return NotFound();
+
+        row.MinStockQty = request.MinStockQty;
+        row.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
+        return NoContent();
     }
 
     [HttpGet("{code}/ledger")]
@@ -142,7 +165,8 @@ public class ProjectsController(
         };
         db.Projects.Add(project);
         await db.SaveChangesAsync(ct);
-        return CreatedAtAction(nameof(GetById), new { code = project.ProjectCode }, null);
+        var items = await MapProjectsWithStockAsync([project], ct);
+        return CreatedAtAction(nameof(GetById), new { code = project.ProjectCode }, items[0]);
     }
 
     [HttpPut("{code}")]
@@ -189,17 +213,22 @@ public class ProjectsController(
             .ToListAsync(ct);
 
         var stockByCode = stockRows.ToDictionary(x => x.ProjectCode);
+        var approvedByCode = await projectBudget.GetApprovedImportValuesAsync(codes, ct);
 
         return projects.Select(p =>
         {
             stockByCode.TryGetValue(p.ProjectCode, out var stock);
+            approvedByCode.TryGetValue(p.ProjectCode, out var approvedImportValue);
+            var remaining = p.MaterialBudget - approvedImportValue;
             return new ProjectDto(
                 p.ProjectCode, p.ProjectName, p.ProjectType.ToString(),
                 p.PmId, p.PmName, p.StartDate, p.EndDate, p.MaterialBudget, p.Status.ToString(),
                 stock?.StockActualQty ?? 0,
                 stock?.StockPlannedQty ?? 0,
                 stock?.StockReservedQty ?? 0,
-                stock?.StockMaterialCount ?? 0);
+                stock?.StockMaterialCount ?? 0,
+                approvedImportValue,
+                remaining);
         }).ToList();
     }
 

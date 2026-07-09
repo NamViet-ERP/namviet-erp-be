@@ -42,7 +42,7 @@ public class StocktakesController(
 
     [HttpPost]
     [RequirePermission("wms.stocktakes.create")]
-    public async Task<ActionResult<StocktakeDto>> Create([FromBody] StocktakeDto dto, CancellationToken ct)
+    public async Task<ActionResult<StocktakeDto>> Create([FromBody] CreateStocktakeDto dto, CancellationToken ct)
     {
         var projectCode = dto.WarehouseId?.Trim() ?? "";
         if (string.IsNullOrWhiteSpace(projectCode))
@@ -56,8 +56,8 @@ public class StocktakesController(
 
         var count = await db.Stocktakes.CountAsync(ct);
         var voucherCode = string.IsNullOrWhiteSpace(dto.VoucherCode)
-            ? $"KK-{DateTime.UtcNow:yyyyMMdd}-{count + 1:D4}"
-            : dto.VoucherCode;
+            ? Stocktake.GenerateVoucherCode(count + 1)
+            : dto.VoucherCode.Trim();
 
         var s = new Stocktake
         {
@@ -96,6 +96,8 @@ public class StocktakesController(
         if (s is null) return NotFound();
         if (s.Status == "approved")
             throw new InvalidOperationException("Phiếu kiểm kê đã duyệt, không thể chỉnh sửa.");
+        if (s.Status == "cancelled")
+            throw new InvalidOperationException("Phiếu kiểm kê đã hủy, không thể chỉnh sửa.");
 
         if (!string.IsNullOrWhiteSpace(dto.WarehouseId))
         {

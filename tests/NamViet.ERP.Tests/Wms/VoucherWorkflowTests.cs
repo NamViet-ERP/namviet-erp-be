@@ -43,6 +43,62 @@ public class VoucherWorkflowTests : IDisposable
     }
 
     [Fact]
+    public async Task ExportReturn_pending_then_approve_restores_project_stock()
+    {
+        _ctx.SeedProjectStock("MAT-001", 40m);
+
+        var export = await _ctx.Exports.CreateAsync(NewPendingExport(15m));
+        await _ctx.Exports.ApproveAsync(export.Id);
+
+        var created = await _ctx.ExportReturns.CreateAsync(NewPendingExportReturn(export.Id, 15m));
+        Assert.Equal("pending", created.Status);
+
+        var approved = await _ctx.ExportReturns.ApproveAsync(created.Id);
+        Assert.NotNull(approved);
+        Assert.Equal("approved", approved.Status);
+
+        var projectInventory = await _ctx.Db.ProjectInventories
+            .SingleAsync(p => p.ProjectCode == "DA-TEST" && p.MaterialCode == "MAT-001");
+        Assert.Equal(40m, projectInventory.ActualImportQty);
+        Assert.Equal(0m, projectInventory.ActualExportQty);
+    }
+
+    [Fact]
+    public async Task ExportReturn_allows_partial_return_qty()
+    {
+        _ctx.SeedProjectStock("MAT-001", 20m);
+        var export = await _ctx.Exports.CreateAsync(NewPendingExport(10m));
+        await _ctx.Exports.ApproveAsync(export.Id);
+
+        var created = await _ctx.ExportReturns.CreateAsync(NewPendingExportReturn(export.Id, 7m));
+        Assert.Equal("pending", created.Status);
+        Assert.Single(created.Items);
+        Assert.Equal(7m, created.Items[0].Qty);
+    }
+
+    [Fact]
+    public async Task ExportReturn_rejects_when_qty_exceeds_remaining()
+    {
+        _ctx.SeedProjectStock("MAT-001", 20m);
+        var export = await _ctx.Exports.CreateAsync(NewPendingExport(10m));
+        await _ctx.Exports.ApproveAsync(export.Id);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            _ctx.ExportReturns.CreateAsync(NewPendingExportReturn(export.Id, 11m)));
+    }
+
+    private static CreateExportReturnDto NewPendingExportReturn(string sourceExportId, decimal qty) =>
+        new(
+            VoucherCode: "",
+            Date: "01/07/2026",
+            SourceExportId: sourceExportId,
+            Items: [WmsVoucherTestContext.ExportReturnLine(qty)],
+            Status: "pending",
+            CreatedBy: "PM Test",
+            Note: "",
+            Project: "DA-TEST");
+
+    [Fact]
     public async Task Transfer_project_return_pending_then_approve_moves_to_general()
     {
         _ctx.SeedProjectStock("MAT-001", 30m);
@@ -70,6 +126,29 @@ public class VoucherWorkflowTests : IDisposable
     {
         var created = await _ctx.Imports.CreateAsync(NewPendingImport(5m) with { Status = "draft" });
         await Assert.ThrowsAsync<InvalidOperationException>(() => _ctx.Imports.ApproveAsync(created.Id));
+    }
+
+    [Fact]
+    public async Task Export_create_blocked_when_project_stocktake_frozen()
+    {
+        _ctx.SeedFrozenStocktake();
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            _ctx.Exports.CreateAsync(NewPendingExport(5m)));
+
+        Assert.Contains("đóng băng kiểm kê", ex.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("KK-TEST-FROZEN", ex.Message);
+    }
+
+    [Fact]
+    public async Task Import_create_blocked_when_project_stocktake_frozen()
+    {
+        _ctx.SeedFrozenStocktake();
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            _ctx.Imports.CreateAsync(NewPendingImport(5m)));
+
+        Assert.Contains("đóng băng kiểm kê", ex.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     private static CreateImportDto NewPendingImport(decimal qty) =>

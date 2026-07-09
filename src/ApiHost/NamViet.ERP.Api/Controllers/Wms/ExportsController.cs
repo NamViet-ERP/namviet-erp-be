@@ -12,6 +12,7 @@ namespace NamViet.ERP.Api.Controllers.Wms;
 [Authorize]
 public class ExportsController(
     IExportApplicationService exports,
+    IWmsVoucherExcelExportService voucherExport,
     IValidator<CreateExportDto> createValidator) : ControllerBase
 {
     [HttpGet]
@@ -21,6 +22,32 @@ public class ExportsController(
         [FromQuery] DateOnly? dateTo,
         CancellationToken ct) =>
         Ok(await exports.ListAsync(dateFrom, dateTo, ct));
+
+    [HttpGet("export")]
+    [RequirePermission("wms.exports.view:all")]
+    public async Task<IActionResult> ExportExcel(
+        [FromQuery] DateOnly? dateFrom,
+        [FromQuery] DateOnly? dateTo,
+        [FromQuery] string? status = null,
+        [FromQuery] string? search = null,
+        CancellationToken ct = default)
+    {
+        var items = WmsVoucherExportFilters.FilterRows(
+            await exports.ListAsync(dateFrom, dateTo, ct),
+            status,
+            search,
+            row => row.Status,
+            row => row.VoucherCode,
+            row => row.Customer,
+            row => row.SoCode,
+            row => row.Project);
+
+        var bytes = voucherExport.BuildExportWorkbook(items);
+        return File(
+            bytes,
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            $"phieu-xuat-{DateTime.UtcNow:yyyyMMdd-HHmm}.xlsx");
+    }
 
     [HttpGet("{id}")]
     [RequirePermission("wms.exports.view:all")]

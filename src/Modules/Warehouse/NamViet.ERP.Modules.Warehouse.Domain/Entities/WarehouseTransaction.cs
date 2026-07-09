@@ -58,6 +58,7 @@ public class WarehouseTransaction : BaseEntity
             TransactionType.LoanExport => "MT",
             TransactionType.LoanImport => "TT",
             TransactionType.Transfer => "KC",
+            TransactionType.ExportReturn => "HT",
             _ => "PK"
         };
         return $"{prefix}-{sequence:D4}";

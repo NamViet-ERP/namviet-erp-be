@@ -16,6 +16,11 @@ artifacts/
 _build_out/
 _build_verify/
 .build-check/
+.tmp-build-out*/
+.tmp-p*/
+.tmp-*/
+..tmp-test-out/
+.tmp-verify-build/
 
 # Rider / VS
 .idea/

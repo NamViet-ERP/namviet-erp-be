@@ -16,7 +16,7 @@ public interface IImportApplicationService
     Task<ImportDto?> GetByIdAsync(string id, CancellationToken ct = default);
     Task<ImportDto> CreateAsync(CreateImportDto dto, CancellationToken ct = default);
     Task<ImportDto?> UpdateAsync(string id, CreateImportDto dto, CancellationToken ct = default);
-    Task<ImportDto?> ApproveAsync(string id, CancellationToken ct = default);
+    Task<ImportDto?> ApproveAsync(string id, bool confirmOverBudget = false, CancellationToken ct = default);
     Task<ImportDto?> SubmitAsync(string id, CancellationToken ct = default);
     Task<bool> DeleteAsync(string id, CancellationToken ct = default);
 }
@@ -24,6 +24,8 @@ public interface IImportApplicationService
 public sealed class ImportApplicationService(
     WarehouseDbContext db,
     IInventoryDomainService inventory,
+    IProjectBudgetService projectBudget,
+    IStocktakeFreezeGuard stocktakeFreeze,
     ICurrentUser currentUser) : IImportApplicationService
 {
     public async Task<List<ImportDto>> ListAsync(DateOnly? dateFrom = null, DateOnly? dateTo = null, CancellationToken ct = default)
@@ -43,6 +45,8 @@ public sealed class ImportApplicationService(
 
     public async Task<ImportDto> CreateAsync(CreateImportDto dto, CancellationToken ct = default)
     {
+        await stocktakeFreeze.EnsureProjectsNotFrozenAsync([dto.Project], ct);
+
         var count = await db.WarehouseTransactions.CountAsync(t => t.TransactionType == TransactionType.Import, ct);
         var ticketCode = string.IsNullOrWhiteSpace(dto.VoucherCode)
             ? WarehouseTransaction.GenerateTicketCode(TransactionType.Import, count + 1)
@@ -75,6 +79,8 @@ public sealed class ImportApplicationService(
         if (t is null) return null;
         if (t.ApprovalStatus == ApprovalStatus.Approved)
             throw new InvalidOperationException("Phiếu đã duyệt, không thể chỉnh sửa.");
+
+        await stocktakeFreeze.EnsureProjectsNotFrozenAsync([dto.Project], ct);
 
         await using var tx = await db.Database.BeginTransactionAsync(ct);
 
@@ -118,7 +124,7 @@ public sealed class ImportApplicationService(
         return WmsMapper.ToImport(t);
     }
 
-    public async Task<ImportDto?> ApproveAsync(string id, CancellationToken ct = default)
+    public async Task<ImportDto?> ApproveAsync(string id, bool confirmOverBudget = false, CancellationToken ct = default)
     {
         var t = await FindImportAsync(id, ct);
         if (t is null) return null;
@@ -126,6 +132,10 @@ public sealed class ImportApplicationService(
             throw new InvalidOperationException($"Phiếu đã ở trạng thái '{t.ApprovalStatus}', không thể duyệt lại.");
         if (t.ApprovalStatus != ApprovalStatus.Pending)
             throw new InvalidOperationException("Chỉ phiếu đã chốt dự kiến (Pending) mới được duyệt kho.");
+
+        await stocktakeFreeze.EnsureProjectsNotFrozenAsync([t.BeneficiaryProjectCode], ct);
+
+        await projectBudget.EnsureImportApprovalWithinBudgetAsync(t, confirmOverBudget, ct);
 
         await using var tx = await db.Database.BeginTransactionAsync(ct);
         t.ApprovalStatus = ApprovalStatus.Approved;
@@ -148,6 +158,8 @@ public sealed class ImportApplicationService(
         if (t is null) return null;
         if (t.ApprovalStatus != ApprovalStatus.Draft)
             throw new InvalidOperationException("Chỉ phiếu nháp mới được PM chốt.");
+
+        await stocktakeFreeze.EnsureProjectsNotFrozenAsync([t.BeneficiaryProjectCode], ct);
 
         t.ApprovalStatus = ApprovalStatus.Pending;
         t.UpdatedAt = DateTime.UtcNow;

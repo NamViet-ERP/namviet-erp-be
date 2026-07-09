@@ -32,6 +32,9 @@ public record CreatePriceBookRequest(
     string MaterialCode, int SupplierId,
     decimal UnitPrice, string? PurchaseUrl, string? CatalogUrl);
 
+public record PriceBookLookupDto(
+    decimal UnitPrice, string? PurchaseUrl, string? CatalogUrl, DateTime? PriceDate);
+
 // ── Projects ──────────────────────────────────────────────────────────────
 public record ProjectDto(
     string ProjectCode, string ProjectName, string ProjectType,
@@ -40,7 +43,9 @@ public record ProjectDto(
     decimal StockActualQty = 0,
     decimal StockPlannedQty = 0,
     decimal StockReservedQty = 0,
-    int StockMaterialCount = 0);
+    int StockMaterialCount = 0,
+    decimal ApprovedImportValue = 0,
+    decimal MaterialBudgetRemaining = 0);
 
 public record CreateProjectRequest(
     string ProjectCode, string ProjectName, ProjectType ProjectType,
@@ -57,7 +62,9 @@ public record ProjectInventoryDto(
     decimal PlannedImportQty, decimal PlannedExportQty,
     decimal ActualImportQty, decimal ActualExportQty,
     decimal ActualInventoryQty, decimal PlannedInventoryQty,
-    decimal ReservedQty);
+    decimal ReservedQty, decimal MinStockQty);
+
+public record UpdateProjectInventoryMinStockRequest(decimal MinStockQty);
 
 public record ProjectLedgerEntryDto(
     string Id,

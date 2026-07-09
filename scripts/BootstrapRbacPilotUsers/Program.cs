@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -13,15 +14,30 @@ using NamViet.ERP.SharedKernel.Authorization;
 
 // Identity: min 8 chars, digit, uppercase.
 const string DefaultPassword = "Test@123";
+const string EmployeeCodePrefix = "NV-";
+const int EmployeeCodeDigits = 4;
 
 var pilotUsers = new[]
 {
-    new PilotUser("admin@namviet.vn", "Admin Test", "Admin", "NV-ADMIN"),
-    new PilotUser("hr@namviet.vn", "HR Test", "HR", "NV-HR"),
-    new PilotUser("staff@namviet.vn", "Staff Test", RolePermissionTemplates.StaffRole, "NV-STAFF"),
+    new PilotUser(
+        "admin@namviet.vn", "Admin Test", "Admin", "NV-0001",
+        "Vận hành", "Hà Nội", "Quản trị hệ thống", Gender.Male),
+    new PilotUser(
+        "hr@namviet.vn", "HR Test", "HR", "NV-0002",
+        "HCNS", "Hà Nội", "Chuyên viên nhân sự", Gender.Male),
+    new PilotUser(
+        "staff@namviet.vn", "Staff Test", RolePermissionTemplates.StaffRole, "NV-0003",
+        "Xây dựng", "Hải Phòng", "Nhân viên kho", Gender.Male),
 };
 
+var apiConfigDir = Path.GetFullPath(Path.Combine(
+    AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "ApiHost", "NamViet.ERP.Api"));
+
 var configuration = new ConfigurationBuilder()
+    .SetBasePath(apiConfigDir)
+    .AddJsonFile("appsettings.json", optional: true)
+    .AddJsonFile("appsettings.Development.json", optional: true)
+    .AddUserSecrets("namviet-erp-api")
     .AddEnvironmentVariables()
     .Build();
 
@@ -52,13 +68,16 @@ foreach (var roleName in pilotUsers.Select(u => u.Role).Distinct(StringComparer.
     await EnsureRoleAsync(roleManager, roleName);
 
 var departmentId = await EnsurePilotDepartmentAsync(hrDb);
+var positionIds = await EnsurePilotPositionsAsync(hrDb, departmentId, pilotUsers);
 
 Console.WriteLine("RBAC pilot test users (dev only):");
 Console.WriteLine($"Password for all: {DefaultPassword}");
+Console.WriteLine($"Mã NV chuẩn: {EmployeeCodePrefix}XXXX (VD: NV-0001)");
 Console.WriteLine();
 
 foreach (var spec in pilotUsers)
 {
+    var positionId = positionIds[spec.PositionName];
     var user = await userManager.FindByEmailAsync(spec.Email);
     if (user is null)
     {
@@ -99,15 +118,10 @@ foreach (var spec in pilotUsers)
         Console.WriteLine($"  → assigned role {spec.Role}");
     }
 
-    if (user.EmployeeCode != spec.EmployeeCode)
-    {
-        user.EmployeeCode = spec.EmployeeCode;
-        user.UpdatedAt = DateTime.UtcNow;
-        await userManager.UpdateAsync(user);
-    }
+    await FreeEmployeeCodeAsync(hrDb, identityDb, userManager, spec.EmployeeCode, spec.Email);
 
     var employee = await hrDb.Employees
-        .FirstOrDefaultAsync(e => e.DeletedAt == null && (e.Code == spec.EmployeeCode || e.Email == spec.Email));
+        .FirstOrDefaultAsync(e => e.DeletedAt == null && (e.Email == spec.Email || e.Code == spec.EmployeeCode));
 
     if (employee is null)
     {
@@ -116,9 +130,12 @@ foreach (var spec in pilotUsers)
             Code = spec.EmployeeCode,
             FullName = spec.Name,
             Email = spec.Email,
-            Gender = Gender.Other,
+            Gender = spec.Gender,
             BirthDate = new DateOnly(1995, 1, 1),
             DepartmentId = departmentId,
+            PositionId = positionId,
+            Segment = spec.Segment,
+            Branch = spec.Branch,
             JoinDate = DateOnly.FromDateTime(DateTime.UtcNow),
             Status = EmployeeStatus.Active,
             Education = Education.University,
@@ -130,25 +147,249 @@ foreach (var spec in pilotUsers)
         await hrDb.SaveChangesAsync();
         Console.WriteLine($"  → created & linked employee {spec.EmployeeCode} (id={employee.Id})");
     }
-    else if (employee.UserId != user.Id)
-    {
-        employee.UserId = user.Id;
-        employee.Email ??= spec.Email;
-        employee.Code = spec.EmployeeCode;
-        employee.UpdatedAt = DateTime.UtcNow;
-        await hrDb.SaveChangesAsync();
-        Console.WriteLine($"  → linked employee {employee.Code} (id={employee.Id})");
-    }
     else
     {
-        Console.WriteLine($"  → employee {employee.Code} already linked");
+        var changed = false;
+        if (!string.Equals(employee.Code, spec.EmployeeCode, StringComparison.Ordinal))
+        {
+            employee.Code = spec.EmployeeCode;
+            changed = true;
+        }
+        if (employee.UserId != user.Id)
+        {
+            employee.UserId = user.Id;
+            changed = true;
+        }
+        if (employee.Email != spec.Email)
+        {
+            employee.Email = spec.Email;
+            changed = true;
+        }
+        if (employee.DepartmentId != departmentId)
+        {
+            employee.DepartmentId = departmentId;
+            changed = true;
+        }
+        if (employee.PositionId != positionId)
+        {
+            employee.PositionId = positionId;
+            changed = true;
+        }
+        if (employee.Segment != spec.Segment)
+        {
+            employee.Segment = spec.Segment;
+            changed = true;
+        }
+        if (employee.Branch != spec.Branch)
+        {
+            employee.Branch = spec.Branch;
+            changed = true;
+        }
+        if (employee.Gender != spec.Gender)
+        {
+            employee.Gender = spec.Gender;
+            changed = true;
+        }
+        if (changed)
+        {
+            employee.UpdatedAt = DateTime.UtcNow;
+            await hrDb.SaveChangesAsync();
+            Console.WriteLine($"  → updated employee {employee.Code} (id={employee.Id})");
+        }
+        else
+        {
+            Console.WriteLine($"  → employee {employee.Code} already up to date");
+        }
+    }
+
+    if (!string.Equals(user.EmployeeCode, spec.EmployeeCode, StringComparison.Ordinal))
+    {
+        user.EmployeeCode = spec.EmployeeCode;
+        user.UpdatedAt = DateTime.UtcNow;
+        await userManager.UpdateAsync(user);
+        Console.WriteLine($"  → updated identity code → {spec.EmployeeCode}");
     }
 
     Console.WriteLine($"  Login: {spec.Email} / {DefaultPassword} / role={spec.Role}");
     Console.WriteLine();
 }
 
+await RepairLegacyPilotEmployeesAsync(hrDb, userManager, departmentId);
+
 return 0;
+
+static async Task FreeEmployeeCodeAsync(
+    HrDbContext hrDb,
+    IdentityDbContext identityDb,
+    UserManager<ApplicationUser> userManager,
+    string targetCode,
+    string keepEmail)
+{
+    var hrConflicts = await hrDb.Employees
+        .Where(e => e.DeletedAt == null && e.Code == targetCode && e.Email != keepEmail)
+        .ToListAsync();
+    foreach (var emp in hrConflicts)
+    {
+        var temp = $"LEGACY-HR-{emp.Id}";
+        Console.WriteLine($"  → free HR code {targetCode}: employee id={emp.Id} → {temp}");
+        emp.Code = temp;
+        emp.UpdatedAt = DateTime.UtcNow;
+    }
+    if (hrConflicts.Count > 0)
+        await hrDb.SaveChangesAsync();
+
+    var keepUser = await userManager.FindByEmailAsync(keepEmail);
+    var keepUserId = keepUser?.Id;
+
+    var identityConflicts = await identityDb.Users
+        .Where(u => u.DeletedAt == null && u.EmployeeCode == targetCode && (keepUserId == null || u.Id != keepUserId))
+        .ToListAsync();
+    foreach (var u in identityConflicts)
+    {
+        var temp = $"LEGACY-U-{u.Id.ToString()[..8]}";
+        Console.WriteLine($"  → free identity code {targetCode}: {u.Email} → {temp}");
+        u.EmployeeCode = temp;
+        u.UpdatedAt = DateTime.UtcNow;
+        await userManager.UpdateAsync(u);
+    }
+}
+
+static async Task RepairLegacyPilotEmployeesAsync(
+    HrDbContext hrDb,
+    UserManager<ApplicationUser> userManager,
+    int departmentId)
+{
+    var pilotEmails = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+    {
+        "admin@namviet.vn",
+        "hr@namviet.vn",
+        "staff@namviet.vn",
+    };
+
+    var legacy = await hrDb.Employees
+        .Where(e => e.DeletedAt == null && e.DepartmentId == departmentId)
+        .Where(e => !pilotEmails.Contains(e.Email ?? string.Empty))
+        .OrderBy(e => e.Id)
+        .ToListAsync();
+
+    if (legacy.Count == 0)
+        return;
+
+    var usedCodes = new HashSet<string>(
+        (await hrDb.Employees
+            .Where(e => e.DeletedAt == null)
+            .Select(e => e.Code)
+            .ToListAsync())
+            .Where(IsValidEmployeeCode),
+        StringComparer.OrdinalIgnoreCase);
+
+    Console.WriteLine($"Repairing {legacy.Count} legacy pilot employee(s) with non-standard codes…");
+
+    foreach (var employee in legacy)
+    {
+        if (IsValidEmployeeCode(employee.Code))
+            continue;
+
+        var newCode = AllocateNextCode(usedCodes);
+        var oldCode = employee.Code;
+        employee.Code = newCode;
+        employee.Segment ??= "Xây dựng";
+        employee.Branch ??= "Hà Nội";
+        employee.PositionId ??= await EnsureDefaultPositionAsync(hrDb, departmentId);
+        employee.UpdatedAt = DateTime.UtcNow;
+
+        if (employee.UserId is Guid userId)
+        {
+            var user = await userManager.FindByIdAsync(userId.ToString());
+            if (user is not null && !string.Equals(user.EmployeeCode, newCode, StringComparison.Ordinal))
+            {
+                user.EmployeeCode = newCode;
+                user.UpdatedAt = DateTime.UtcNow;
+                await userManager.UpdateAsync(user);
+            }
+        }
+
+        await hrDb.SaveChangesAsync();
+        Console.WriteLine($"  → {oldCode} → {newCode} ({employee.FullName})");
+    }
+}
+
+static async Task<int> EnsureDefaultPositionAsync(HrDbContext hrDb, int departmentId)
+{
+    const string name = "Nhân viên";
+    var existing = await hrDb.Positions
+        .FirstOrDefaultAsync(p => p.DeletedAt == null && p.DepartmentId == departmentId && p.Name == name);
+    if (existing is not null)
+        return existing.Id;
+
+    var position = new Position
+    {
+        Name = name,
+        DepartmentId = departmentId,
+        Level = "Nhân viên",
+        CreatedAt = DateTime.UtcNow,
+        UpdatedAt = DateTime.UtcNow,
+    };
+    hrDb.Positions.Add(position);
+    await hrDb.SaveChangesAsync();
+    return position.Id;
+}
+
+static async Task<Dictionary<string, int>> EnsurePilotPositionsAsync(
+    HrDbContext hrDb,
+    int departmentId,
+    IReadOnlyList<PilotUser> users)
+{
+    var map = new Dictionary<string, int>(StringComparer.Ordinal);
+    foreach (var name in users.Select(u => u.PositionName).Distinct(StringComparer.Ordinal))
+    {
+        var existing = await hrDb.Positions
+            .FirstOrDefaultAsync(p => p.DeletedAt == null && p.DepartmentId == departmentId && p.Name == name);
+        if (existing is not null)
+        {
+            map[name] = existing.Id;
+            continue;
+        }
+
+        var position = new Position
+        {
+            Name = name,
+            DepartmentId = departmentId,
+            Level = name.Contains("Quản trị", StringComparison.Ordinal) ? "Quản lý" : "Nhân viên",
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow,
+        };
+        hrDb.Positions.Add(position);
+        await hrDb.SaveChangesAsync();
+        map[name] = position.Id;
+        Console.WriteLine($"Created position \"{name}\" (id={position.Id}).");
+    }
+
+    return map;
+}
+
+static bool IsValidEmployeeCode(string? code) =>
+    !string.IsNullOrWhiteSpace(code)
+    && Regex.IsMatch(code.Trim(), @"^NV-\d{4}$", RegexOptions.CultureInvariant);
+
+static string AllocateNextCode(HashSet<string> usedCodes)
+{
+    var max = 0;
+    foreach (var code in usedCodes)
+    {
+        var match = Regex.Match(code, @"(\d+)$");
+        if (match.Success && int.TryParse(match.Groups[1].Value, out var n) && n > max)
+            max = n;
+    }
+
+    while (true)
+    {
+        max++;
+        var candidate = $"{EmployeeCodePrefix}{max.ToString().PadLeft(EmployeeCodeDigits, '0')}";
+        if (usedCodes.Add(candidate))
+            return candidate;
+    }
+}
 
 static async Task EnsureRoleAsync(RoleManager<ApplicationRole> roleManager, string roleName)
 {
@@ -200,4 +441,8 @@ internal sealed record PilotUser(
     string Email,
     string Name,
     string Role,
-    string EmployeeCode);
+    string EmployeeCode,
+    string Segment,
+    string Branch,
+    string PositionName,
+    Gender Gender);

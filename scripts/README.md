@@ -57,6 +57,35 @@ node scripts/generate-material-category-tree-sql.mjs
 
 ---
 
+## Dữ liệu demo WMS (kho, vật tư, phiếu mẫu)
+
+| File | Mục đích |
+|------|----------|
+| `SeedWmsDemoData/` | CLI seed idempotent: kho tổng, 2 dự án demo, 5 vật tư, NCC, phiếu NK/XK để dashboard có số liệu |
+
+**Chỉ chạy khi đã có DB + migration.** Không chạy tự động lúc API startup.
+
+```powershell
+cd scripts/SeedWmsDemoData
+# Dùng connection string giống API (user-secrets hoặc env)
+$env:ConnectionStrings__Default = "Host=localhost;Port=5432;Database=namviet_erp;Username=...;Password=..."
+dotnet run
+```
+
+Lần chạy sau sẽ bỏ qua theo marker (`demo_data_seed_v1`, `demo_data_seed_v2_bulk10`). Dùng `--force` để bỏ qua marker (vẫn skip theo mã đã tồn tại).
+
+**Batch v3** thêm 3 nháp + 3 chờ duyệt cho NK/XK/KC (`NK-STATUS-*`, `XK-STATUS-*`, `KC-STATUS-*`).
+
+**Batch v4** thêm 3 từ chối mỗi loại (`*-STATUS-REJ-01`…`03`) — đã hủy dự kiến, có ghi chú lý do.
+
+**Batch v5** gán cây danh mục 5 cấp + quy cách/tiêu chuẩn cho `VT-DEMO-*` (cột Nhóm/Loại/Phân loại/Kiểu không còn trống).
+
+**Batch v6** thêm 3 phiếu kiểm kê (`KK-DEMO-PENDING-01`, `KK-DEMO-PENDING-02`, `KK-DEMO-APPROVED-01`) + bản ghi `warehouses` cho kho dự án demo (FK kiểm kê).
+
+**Batch v7** bổ sung phiếu KK để test UI: khôi phục `KK-DEMO-PENDING-01` nếu đã xóa mềm, thêm `KK-DEMO-PENDING-03`, `KK-DEMO-PENDING-04`, `KK-DEMO-CANCELLED-01`.
+
+---
+
 ## Liên quan repo
 
 - Deploy checklist: `docs/DEPLOY.md`  
