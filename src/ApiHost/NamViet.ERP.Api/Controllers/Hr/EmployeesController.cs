@@ -26,7 +26,8 @@ public class EmployeesController(
     IAccountStatusProvider accountStatus,
     IValidator<EmployeeDto> onboardValidator,
     ICurrentUser currentUser,
-    IEmployeeAccessService employeeAccess) : ControllerBase
+    IEmployeeAccessService employeeAccess,
+    IEmployeeOnboardingInviteService onboardingInvites) : ControllerBase
 {
     [HttpGet]
     [RequirePermission("hrm.employees.view:all")]
@@ -154,21 +155,56 @@ public class EmployeesController(
     [HttpPost("onboard")]
     [AllowAnonymous]
     [EnableRateLimiting(RateLimitPolicies.PublicWrite)]
-    public async Task<ActionResult<EmployeeDto>> Onboard([FromBody] EmployeeDto dto, CancellationToken ct)
+    public async Task<ActionResult<EmployeeDto>> Onboard(
+        [FromQuery] string token,
+        [FromBody] EmployeeDto dto,
+        CancellationToken ct)
     {
+        var invite = await onboardingInvites.FindValidAsync(token, ct);
+        if (invite is null)
+            return Unauthorized("Lời mời onboarding không hợp lệ, đã hết hạn hoặc đã được sử dụng.");
+        if (!HrStorageKeyPolicy.AreOnboardingAttachmentsOwnedByInvite(dto, invite.Id))
+            return BadRequest("Tệp onboarding không thuộc lời mời hiện tại.");
+
         await onboardValidator.ValidateAndThrowAsync(dto, ct);
 
         var onboardDto = dto with
         {
-            Status = string.IsNullOrWhiteSpace(dto.Status) ? "Đang làm" : dto.Status,
-            Code = null
+            Code = null,
+            Status = "Đang làm",
+            OfficialDate = null,
+            ResignDate = null,
+            Segment = null,
+            Branch = null,
+            Department = null,
+            Position = null,
+            LinkedAccountStatus = null,
         };
 
+        await using var transaction = await db.Database.BeginTransactionAsync(ct);
         var e = new Employee { Code = HrEmployeeMapper.NewPendingCode() };
         await HrEmployeeMapper.ApplyFromDtoAsync(e, onboardDto, db, ct);
         await HrEmployeeMapper.EnsureDefaultDepartmentAsync(e, db, ct);
         db.Employees.Add(e);
         await db.SaveChangesAsync(ct);
+
+        var consumedAt = DateTime.UtcNow;
+        var consumed = await db.EmployeeOnboardingInvites
+            .Where(i => i.Id == invite.Id
+                && i.ConsumedAt == null
+                && i.RevokedAt == null
+                && i.ExpiresAt > consumedAt)
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(i => i.ConsumedAt, consumedAt)
+                .SetProperty(i => i.ConsumedEmployeeId, e.Id)
+                .SetProperty(i => i.UpdatedAt, consumedAt), ct);
+        if (consumed != 1)
+        {
+            await transaction.RollbackAsync(ct);
+            return Conflict("Lời mời onboarding vừa được sử dụng hoặc thu hồi.");
+        }
+        await transaction.CommitAsync(ct);
+
         await db.Entry(e).Reference(x => x.Department).LoadAsync(ct);
         await db.Entry(e).Reference(x => x.Position).LoadAsync(ct);
         return Ok(HrEmployeeMapper.ToDto(e));

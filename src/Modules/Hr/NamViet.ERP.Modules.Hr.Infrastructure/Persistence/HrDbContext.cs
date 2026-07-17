@@ -18,6 +18,7 @@ public class HrDbContext(DbContextOptions<HrDbContext> options) : DbContext(opti
     public DbSet<Onboard> Onboards => Set<Onboard>();
     public DbSet<RecruitmentCost> RecruitmentCosts => Set<RecruitmentCost>();
     public DbSet<RecruitmentBudget> RecruitmentBudgets => Set<RecruitmentBudget>();
+    public DbSet<EmployeeOnboardingInvite> EmployeeOnboardingInvites => Set<EmployeeOnboardingInvite>();
     public DbSet<LeaveType> LeaveTypes => Set<LeaveType>();
     public DbSet<LeaveRequest> LeaveRequests => Set<LeaveRequest>();
     public DbSet<LeaveBalance> LeaveBalances => Set<LeaveBalance>();
@@ -140,6 +141,20 @@ public class HrDbContext(DbContextOptions<HrDbContext> options) : DbContext(opti
 
         model.Entity<CandidateStage>(e => { e.ToTable("candidate_stages"); e.HasOne(s => s.Candidate).WithMany(c => c.Stages).HasForeignKey(s => s.CandidateId); });
         model.Entity<Onboard>(e => { e.ToTable("onboards"); e.HasOne(o => o.Employee).WithMany().HasForeignKey(o => o.EmployeeId); });
+        model.Entity<EmployeeOnboardingInvite>(e =>
+        {
+            e.ToTable("employee_onboarding_invites");
+            e.HasKey(i => i.Id);
+            e.Property(i => i.TokenHash).HasMaxLength(64).IsFixedLength().IsRequired();
+            e.HasIndex(i => i.TokenHash).IsUnique();
+            e.Property(i => i.ExpiresAt).HasColumnType("timestamp with time zone");
+            e.Property(i => i.ConsumedAt).HasColumnType("timestamp with time zone");
+            e.Property(i => i.RevokedAt).HasColumnType("timestamp with time zone");
+            e.HasOne(i => i.ConsumedEmployee).WithMany()
+                .HasForeignKey(i => i.ConsumedEmployeeId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
         model.Entity<LeaveType>(e => { e.ToTable("leave_types"); });
         model.Entity<LeaveRequest>(e =>
         {

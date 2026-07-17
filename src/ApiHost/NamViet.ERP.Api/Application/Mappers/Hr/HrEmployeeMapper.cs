@@ -220,8 +220,16 @@ public static class HrEmployeeMapper
         HrDbContext db, string? code, int? excludeId, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(code)) return false;
-        var normalized = code.Trim().ToUpperInvariant();
+        var pattern = EscapeLikePattern(code.Trim());
         return await db.Employees.AnyAsync(
-            x => x.DeletedAt == null && x.Code.ToUpper() == normalized && x.Id != excludeId, ct);
+            x => x.DeletedAt == null
+                && EF.Functions.ILike(x.Code, pattern, "\\")
+                && x.Id != excludeId,
+            ct);
     }
+
+    private static string EscapeLikePattern(string value) =>
+        value.Replace("\\", "\\\\", StringComparison.Ordinal)
+            .Replace("%", "\\%", StringComparison.Ordinal)
+            .Replace("_", "\\_", StringComparison.Ordinal);
 }

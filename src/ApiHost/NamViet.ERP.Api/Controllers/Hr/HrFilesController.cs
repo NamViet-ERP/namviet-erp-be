@@ -1,28 +1,29 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.EntityFrameworkCore;
 using NamViet.ERP.Api.Application.Dtos.Hr;
+using NamViet.ERP.Api.Application.Services.Hr;
+using NamViet.ERP.Api.Infrastructure.Authorization;
 using NamViet.ERP.Api.Infrastructure.RateLimiting;
 using NamViet.ERP.Api.Services.Storage;
+using NamViet.ERP.Modules.Hr.Infrastructure.Persistence;
+using NamViet.ERP.SharedKernel.Interfaces;
 
 namespace NamViet.ERP.Api.Controllers.Hr;
 
 [ApiController]
 [Route("api/hr/files")]
 [Authorize]
-public class HrFilesController(IFileStorage storage) : ControllerBase
+public class HrFilesController(
+    IFileStorage storage,
+    IEmployeeOnboardingInviteService onboardingInvites,
+    HrDbContext db,
+    ICurrentUser currentUser,
+    IEmployeeAccessService employeeAccess,
+    IAuthorizationService authorization) : ControllerBase
 {
     private const long MaxBytes = 5 * 1024 * 1024;
-    private static readonly HashSet<string> ImageContentTypes =
-    [
-        "image/jpeg", "image/png", "image/jpg", "application/pdf"
-    ];
-    private static readonly HashSet<string> CvContentTypes =
-    [
-        "application/pdf",
-        "application/msword",
-        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    ];
 
     [HttpPost("upload")]
     [AllowAnonymous]
@@ -33,89 +34,109 @@ public class HrFilesController(IFileStorage storage) : ControllerBase
         [FromForm] string category,
         [FromForm] string? sessionId,
         [FromForm] string? employeeId,
+        [FromForm] string? inviteToken,
         CancellationToken ct)
     {
         if (file.Length == 0 || file.Length > MaxBytes)
             return BadRequest("File không hợp lệ hoặc vượt quá 5MB.");
 
-        var contentType = file.ContentType?.ToLowerInvariant() ?? "";
-        var safeCategory = SanitizeSegment(category);
+        var contentType = file.ContentType?.Trim().ToLowerInvariant() ?? "";
+        var safeCategory = HrStorageKeyPolicy.SanitizeSegment(category);
         var isCv = safeCategory.Equals("cv", StringComparison.OrdinalIgnoreCase);
 
-        if (isCv)
+        await using var input = file.OpenReadStream();
+        using var buffer = new MemoryStream((int)file.Length);
+        await input.CopyToAsync(buffer, ct);
+        var bytes = buffer.ToArray();
+        if (!HrUploadValidator.IsValid(file.FileName, contentType, bytes, isCv))
         {
-            if (!CvContentTypes.Contains(contentType) && !HasCvExtension(file.FileName))
-                return BadRequest("Chỉ chấp nhận file CV (.pdf, .doc, .docx).");
-        }
-        else if (!ImageContentTypes.Contains(contentType))
-        {
-            return BadRequest("Chỉ chấp nhận file ảnh (JPEG/PNG) hoặc PDF.");
+            return BadRequest(isCv
+                ? "CV phải là PDF, DOC hoặc DOCX hợp lệ và khớp định dạng khai báo."
+                : "File phải là PDF, JPEG hoặc PNG hợp lệ và khớp định dạng khai báo.");
         }
 
-        var ext = ResolveExtension(file.FileName, contentType, isCv);
+        var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
+        if (ext == ".jpeg") ext = ".jpg";
         string relativePath;
 
         if (!string.IsNullOrWhiteSpace(employeeId))
         {
             if (User.Identity?.IsAuthenticated != true)
                 return Unauthorized();
-            relativePath = $"hr/employees/{SanitizeSegment(employeeId)}/{safeCategory}{ext}";
+            var canUpdate = await authorization.AuthorizeAsync(
+                User, null, PermissionPolicies.Name("hrm.employees.update"));
+            if (!canUpdate.Succeeded)
+                return Forbid();
+            relativePath = $"hr/employees/{HrStorageKeyPolicy.SanitizeSegment(employeeId)}/{Guid.NewGuid():N}{ext}";
         }
         else if (isCv)
         {
-            var sid = string.IsNullOrWhiteSpace(sessionId) ? Guid.NewGuid().ToString("N") : SanitizeSegment(sessionId);
-            if (string.IsNullOrEmpty(sid)) sid = Guid.NewGuid().ToString("N");
-            var safeName = SanitizeFileName(file.FileName);
-            relativePath = $"hr/candidates/{sid}/{safeName}";
+            var sid = HrStorageKeyPolicy.SanitizeSegment(sessionId);
+            relativePath = $"hr/candidates/{sid}/{Guid.NewGuid():N}{ext}";
+        }
+        else if (currentUser.IsAuthenticated)
+        {
+            var canCreate = await authorization.AuthorizeAsync(
+                User, null, PermissionPolicies.Name("hrm.employees.create"));
+            if (!canCreate.Succeeded)
+                return Forbid();
+            var sid = HrStorageKeyPolicy.SanitizeSegment(sessionId);
+            relativePath = $"hr/employees/pending/{sid}/{Guid.NewGuid():N}{ext}";
         }
         else
         {
-            var sid = string.IsNullOrWhiteSpace(sessionId) ? Guid.NewGuid().ToString("N") : SanitizeSegment(sessionId);
-            if (string.IsNullOrEmpty(sid)) sid = Guid.NewGuid().ToString("N");
-            relativePath = $"hr/onboard/{sid}/{safeCategory}{ext}";
+            var invite = await onboardingInvites.FindValidAsync(inviteToken ?? "", ct);
+            if (invite is null)
+                return Unauthorized("Lời mời onboarding không hợp lệ hoặc đã hết hạn.");
+            var sid = HrStorageKeyPolicy.SanitizeSegment(sessionId);
+            relativePath = $"hr/onboard/{invite.Id}/{sid}/{Guid.NewGuid():N}{ext}";
         }
 
-        await using var stream = file.OpenReadStream();
-        var stored = await storage.SaveAsync(stream, relativePath, contentType, ct);
-        return Ok(new FileUploadResponse(stored.Url, stored.FileName, stored.Size));
+        buffer.Position = 0;
+        var stored = await storage.SaveAsync(buffer, relativePath, contentType, ct);
+        return Ok(new FileUploadResponse(stored.StorageKey, file.FileName, stored.Size));
     }
 
-    private static bool HasCvExtension(string fileName)
+    [HttpGet("download")]
+    public async Task<IActionResult> Download(
+        [FromQuery] string key,
+        [FromQuery] string? fileName,
+        CancellationToken ct)
     {
-        var ext = Path.GetExtension(fileName).ToLowerInvariant();
-        return ext is ".pdf" or ".doc" or ".docx";
-    }
+        if (!HrStorageKeyPolicy.IsSafeStorageKey(key))
+            return NotFound();
+        var normalized = HrStorageKeyPolicy.Normalize(key);
+        if (!normalized.StartsWith("hr/employees/", StringComparison.Ordinal)
+            && !normalized.StartsWith("hr/onboard/", StringComparison.Ordinal))
+            return NotFound();
 
-    private static string ResolveExtension(string fileName, string contentType, bool isCv)
-    {
-        if (isCv && !string.IsNullOrWhiteSpace(fileName))
-        {
-            var ext = Path.GetExtension(fileName);
-            if (!string.IsNullOrEmpty(ext)) return ext.ToLowerInvariant();
-        }
+        var legacyKey = $"/uploads/{normalized}";
+        var employeeId = await db.Employees.AsNoTracking()
+            .Where(e => e.DeletedAt == null
+                && (e.PhotoUrl == normalized || e.PhotoUrl == legacyKey
+                    || e.CccdFrontUrl == normalized || e.CccdFrontUrl == legacyKey
+                    || e.CccdBackUrl == normalized || e.CccdBackUrl == legacyKey
+                    || e.DegreePhotoUrl == normalized || e.DegreePhotoUrl == legacyKey))
+            .Select(e => (int?)e.Id)
+            .FirstOrDefaultAsync(ct);
+        if (!employeeId.HasValue
+            || !await employeeAccess.CanViewEmployeeAsync(currentUser, employeeId.Value, ct))
+            return NotFound();
 
-        return contentType switch
+        var stored = storage.Get(normalized);
+        if (stored is null) return NotFound();
+        var downloadName = string.IsNullOrWhiteSpace(fileName)
+            ? Path.GetFileName(stored.FullPath)
+            : Path.GetFileName(fileName);
+        var contentType = Path.GetExtension(downloadName).ToLowerInvariant() switch
         {
-            "image/png" => ".png",
-            "application/pdf" => ".pdf",
-            "application/msword" => ".doc",
-            "application/vnd.openxmlformats-officedocument.wordprocessingml.document" => ".docx",
-            _ => ".jpg",
+            ".pdf" => "application/pdf",
+            ".png" => "image/png",
+            ".jpg" or ".jpeg" => "image/jpeg",
+            ".doc" => "application/msword",
+            ".docx" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            _ => "application/octet-stream",
         };
-    }
-
-    private static string SanitizeSegment(string value) =>
-        new string(value.Where(c => char.IsLetterOrDigit(c) || c is '-' or '_').ToArray());
-
-    private static string SanitizeFileName(string value)
-    {
-        var name = Path.GetFileName(value);
-        var ext = Path.GetExtension(name);
-        var stem = Path.GetFileNameWithoutExtension(name);
-        var safeStem = new string(stem.Where(c => char.IsLetterOrDigit(c) || c is '-' or '_' or '.').ToArray());
-        if (string.IsNullOrWhiteSpace(safeStem)) safeStem = "cv";
-        var safeExt = ext.ToLowerInvariant();
-        if (safeExt is not (".pdf" or ".doc" or ".docx")) safeExt = ".pdf";
-        return $"{safeStem}{safeExt}";
+        return PhysicalFile(stored.FullPath, contentType, downloadName);
     }
 }
