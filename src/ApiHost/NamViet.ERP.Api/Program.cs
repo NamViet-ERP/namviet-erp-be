@@ -1,6 +1,5 @@
 using FluentValidation;
 using Microsoft.AspNetCore.RateLimiting;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi.Models;
 using NamViet.ERP.Api.Application.Services.Admin;
 using NamViet.ERP.Api.Application.Services.Hr;
@@ -16,11 +15,6 @@ using NamViet.ERP.SharedKernel.Interfaces;
 using Serilog;
 using System.Text.Json.Serialization;
 using System.Threading.RateLimiting;
-
-// Alias để tránh nhầm với base class IdentityDbContext
-using AppIdentityDbContext = NamViet.ERP.Modules.Identity.Infrastructure.Persistence.IdentityDbContext;
-using AppWarehouseDbContext = NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence.WarehouseDbContext;
-using AppHrDbContext = NamViet.ERP.Modules.Hr.Infrastructure.Persistence.HrDbContext;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -182,26 +176,6 @@ builder.Services.AddSwaggerGen(opt =>
 builder.Services.AddHealthChecks();
 
 var app = builder.Build();
-
-// ── Auto-migrate (no runtime seed — optional master data via scripts/) ────
-// Material category tree: scripts/seed-material-category-tree.sql (run manually after business sign-off)
-using (var scope = app.Services.CreateScope())
-{
-    var services = scope.ServiceProvider;
-    var logger = services.GetRequiredService<ILogger<Program>>();
-
-    try
-    {
-        await services.GetRequiredService<AppIdentityDbContext>().Database.MigrateAsync();
-        await services.GetRequiredService<AppWarehouseDbContext>().Database.MigrateAsync();
-        await services.GetRequiredService<AppHrDbContext>().Database.MigrateAsync();
-    }
-    catch (Exception ex)
-    {
-        logger.LogError(ex, "Lỗi khi khởi tạo database.");
-        throw;
-    }
-}
 
 // ── Middleware pipeline ────────────────────────────────────────────────────
 app.UseMiddleware<ExceptionMiddleware>();

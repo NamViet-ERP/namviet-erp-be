@@ -17,20 +17,26 @@ Backend cho hệ thống NamViet ERP, xây dựng theo kiến trúc **Modular Mo
 # 1. Tạo file môi trường
 cp .env.example .env   # Windows: copy .env.example .env
 
-# 2. Khởi động PostgreSQL bằng Docker
+# 2. Khởi động PostgreSQL và đợi healthy
 docker compose up -d postgres
 
 # 3. Khôi phục & build
 dotnet restore
 dotnet build
 
-# 4. Tạo / cập nhật database (chạy migration)
-dotnet ef database update -c IdentityDbContext  -p src/Modules/Identity/NamViet.ERP.Modules.Identity.Infrastructure  -s src/ApiHost/NamViet.ERP.Api
-dotnet ef database update -c WarehouseDbContext -p src/Modules/Warehouse/NamViet.ERP.Modules.Warehouse.Infrastructure -s src/ApiHost/NamViet.ERP.Api
-dotnet ef database update -c HrDbContext        -p src/Modules/Hr/NamViet.ERP.Modules.Hr.Infrastructure                -s src/ApiHost/NamViet.ERP.Api
+# 4. Chạy migration một lần (Identity -> Warehouse -> HR)
+docker compose run --rm migrator
+# Hoặc khi ConnectionStrings__Default / user-secret đã được set:
+./scripts/Invoke-DatabaseMigration.ps1
 
 # 5. Chạy API
 dotnet run --project src/ApiHost/NamViet.ERP.Api
+```
+
+API không tự thay đổi schema khi khởi động. Tạo SQL idempotent để review/deploy:
+
+```powershell
+./scripts/Invoke-DatabaseMigration.ps1 -Command script -OutputPath artifacts/database-migrations.sql
 ```
 
 Swagger: `https://localhost:<port>/swagger`

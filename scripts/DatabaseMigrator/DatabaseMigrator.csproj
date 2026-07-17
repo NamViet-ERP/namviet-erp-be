@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>NamViet.ERP.DatabaseMigrator</RootNamespace>
+    <UserSecretsId>NamViet.ERP.DatabaseMigrator</UserSecretsId>
+    <AnalysisLevel>8.0-recommended</AnalysisLevel>
+    <CodeAnalysisTreatWarningsAsErrors>true</CodeAnalysisTreatWarningsAsErrors>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Modules\Identity\NamViet.ERP.Modules.Identity.Infrastructure\NamViet.ERP.Modules.Identity.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Warehouse\NamViet.ERP.Modules.Warehouse.Infrastructure\NamViet.ERP.Modules.Warehouse.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Hr\NamViet.ERP.Modules.Hr.Infrastructure\NamViet.ERP.Modules.Hr.Infrastructure.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="8.0.29" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.EnvironmentVariables" Version="8.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.UserSecrets" Version="8.0.1" />
+    <PackageReference Include="Npgsql" Version="8.0.6" />
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="8.0.11" />
+  </ItemGroup>
+</Project>

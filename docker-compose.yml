@@ -17,6 +17,26 @@ services:
       timeout: 5s
       retries: 5
 
+  migrator:
+    image: mcr.microsoft.com/dotnet/sdk:8.0.412
+    working_dir: /workspace
+    volumes:
+      - .:/workspace
+    environment:
+      ConnectionStrings__Default: "Host=postgres;Port=5432;Database=${POSTGRES_DB:-namviet_erp};Username=${POSTGRES_USER:-erp_admin};Password=${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command:
+      - dotnet
+      - run
+      - --project
+      - scripts/DatabaseMigrator/DatabaseMigrator.csproj
+      - --configuration
+      - Release
+      - --
+      - migrate
+
   pgadmin:
     image: dpage/pgadmin4:latest
     container_name: namviet-erp-pgadmin

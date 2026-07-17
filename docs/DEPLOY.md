@@ -9,7 +9,7 @@ Frontend: file `docs/DEPLOY.md` trong repo **`WareHouse_Management`**.
 
 | Được | Không được |
 |------|------------|
-| Auto-migrate schema khi startup (`Program.cs`) | Insert seed user / role / dữ liệu nghiệp vụ trong code startup |
+| Chạy migrator một lần trước khi rollout API | Cho web replica tự migrate schema khi startup |
 | Master data qua script SQL **thủ công** sau khi business chốt | Chạy seed cây vật tư tự động trong migration |
 | Secrets qua env / user-secrets / vault | JWT key hoặc password DB placeholder trên production |
 
@@ -74,14 +74,25 @@ docker compose up -d postgres
 
 ### Migrate
 
-API tự migrate 3 DbContext khi khởi động: Identity, Warehouse, HR.
+API không migrate khi khởi động. Chạy migrator riêng trước khi rollout API; migrator lấy duy nhất
+`ConnectionStrings:Default`, giữ PostgreSQL advisory lock và chạy lần lượt Identity, Warehouse, HR.
 
-Hoặc tay (khi cần):
+Local Docker (đợi PostgreSQL healthy rồi migrate):
 
 ```bash
-dotnet ef database update -c IdentityDbContext  -p src/Modules/Identity/NamViet.ERP.Modules.Identity.Infrastructure  -s src/ApiHost/NamViet.ERP.Api
-dotnet ef database update -c WarehouseDbContext -p src/Modules/Warehouse/NamViet.ERP.Modules.Warehouse.Infrastructure -s src/ApiHost/NamViet.ERP.Api
-dotnet ef database update -c HrDbContext        -p src/Modules/Hr/NamViet.ERP.Modules.Hr.Infrastructure                -s src/ApiHost/NamViet.ERP.Api
+docker compose up -d postgres
+docker compose run --rm migrator
+dotnet run --project src/ApiHost/NamViet.ERP.Api
+```
+
+PowerShell / CI runner:
+
+```powershell
+$env:ConnectionStrings__Default = "<secret connection string>"
+./scripts/Invoke-DatabaseMigration.ps1
+
+# Tạo SQL idempotent để review hoặc lưu artifact; lệnh này không kết nối/apply DB.
+./scripts/Invoke-DatabaseMigration.ps1 -Command script -OutputPath artifacts/database-migrations.sql
 ```
 
 ---
@@ -149,7 +160,9 @@ Tạo lại SQL từ JSON: `node scripts/generate-material-category-tree-sql.mjs
 
 Workflow: `.github/workflows/ci.yml` — `dotnet build` + `dotnet test` trên branch **`production`** (push và PR).
 
-Chi tiết deploy: các mục trên. CI không chạy API startup (không cần PostgreSQL cho build/test unit hiện tại).
+Migration production chỉ chạy thủ công qua `.github/workflows/database-migrate.yml` (`workflow_dispatch`).
+Tạo protected environment (ví dụ `production`), bật required reviewers và thêm environment secret
+`DATABASE_CONNECTION_STRING`. Workflow migration có concurrency lock; PR CI không migrate.
 
 ---
 
@@ -181,5 +194,5 @@ Tóm tắt: login/refresh (`auth`), onboard & apply (`public-write`), upload HR 
 |-------------|-------------------------|
 | Jwt:SigningKey required | Chưa set env |
 | ConnectionStrings:Default required | Chưa set env |
-| Lỗi migrate | DB không reachable, quyền user DB |
+| Lỗi migrator | DB không reachable, thiếu quyền DDL, hoặc thiếu `ConnectionStrings:Default` |
 | CORS từ FE | Thiếu origin trong `Cors:AllowedOrigins` |

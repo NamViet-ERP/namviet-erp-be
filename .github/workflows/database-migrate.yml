@@ -1,0 +1,40 @@
+name: Database migration
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Protected GitHub environment containing DATABASE_CONNECTION_STRING
+        required: true
+        default: production
+        type: environment
+
+permissions:
+  contents: read
+
+concurrency:
+  group: database-migration-${{ inputs.environment }}
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    name: Migrate ${{ inputs.environment }}
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore migrator
+        run: dotnet restore scripts/DatabaseMigrator/DatabaseMigrator.csproj
+
+      - name: Build migrator
+        run: dotnet build scripts/DatabaseMigrator/DatabaseMigrator.csproj --no-restore -c Release
+
+      - name: Apply database migrations
+        env:
+          ConnectionStrings__Default: ${{ secrets.DATABASE_CONNECTION_STRING }}
+        run: dotnet run --project scripts/DatabaseMigrator/DatabaseMigrator.csproj --no-build -c Release -- migrate
