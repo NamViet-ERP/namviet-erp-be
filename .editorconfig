@@ -1,0 +1,5 @@
+root = true
+
+# EF Core migrations are generated artifacts. Keep analyzers focused on authored code.
+[**/Persistence/Migrations/*.cs]
+generated_code = true

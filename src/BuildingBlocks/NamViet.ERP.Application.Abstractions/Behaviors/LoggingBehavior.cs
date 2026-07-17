@@ -12,7 +12,7 @@ public sealed class LoggingBehavior<TRequest, TResponse>(
     {
         var requestName = typeof(TRequest).Name;
         logger.LogInformation("Handling {Request}", requestName);
-        var response = await next();
+        var response = await next(ct);
         logger.LogInformation("Handled {Request}", requestName);
         return response;
     }

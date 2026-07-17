@@ -13,7 +13,7 @@ public sealed class ValidationBehavior<TRequest, TResponse>(
     public async Task<TResponse> Handle(TRequest request, RequestHandlerDelegate<TResponse> next, CancellationToken ct)
     {
         if (!validators.Any())
-            return await next();
+            return await next(ct);
 
         var context = new ValidationContext<TRequest>(request);
         var failures = validators
@@ -29,6 +29,6 @@ public sealed class ValidationBehavior<TRequest, TResponse>(
             throw new ValidationException(failures);
         }
 
-        return await next();
+        return await next(ct);
     }
 }

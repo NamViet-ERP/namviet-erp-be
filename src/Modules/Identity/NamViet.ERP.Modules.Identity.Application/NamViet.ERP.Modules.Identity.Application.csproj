@@ -7,8 +7,8 @@
     <ProjectReference Include="..\..\..\BuildingBlocks\NamViet.ERP.Application.Abstractions\NamViet.ERP.Application.Abstractions.csproj" />
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="FluentValidation" Version="11.*" />
-    <PackageReference Include="FluentValidation.DependencyInjectionExtensions" Version="11.*" />
-    <PackageReference Include="Mapster" Version="7.*" />
+    <PackageReference Include="FluentValidation" Version="11.12.0" />
+    <PackageReference Include="FluentValidation.DependencyInjectionExtensions" Version="11.12.0" />
+    <PackageReference Include="Mapster" Version="7.4.0" />
   </ItemGroup>
 </Project>
