@@ -291,7 +291,7 @@ public sealed class TransferApplicationService(
         return WmsMapper.ToTransfer(t, toName: generalName, projectName: projectName);
     }
 
-    private TransferDto MapTransfer(
+    private static TransferDto MapTransfer(
         WarehouseTransaction t,
         Dictionary<string, string> warehouseNames,
         Dictionary<string, string> projectNames)

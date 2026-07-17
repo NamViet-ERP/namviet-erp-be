@@ -14,7 +14,7 @@ public class WmsReportsController(IWmsReportService reports) : ControllerBase
     [HttpGet("movement-summary")]
     [RequirePermission("wms.reports.view:all")]
     public async Task<ActionResult<WmsMovementSummaryDto>> MovementSummary(
-        [FromQuery] DateTime? dateFrom, [FromQuery] DateTime? dateTo, CancellationToken ct)
+        [FromQuery] DateOnly? dateFrom, [FromQuery] DateOnly? dateTo, CancellationToken ct)
         => Ok(await reports.GetMovementSummaryAsync(dateFrom, dateTo, ct));
 
     [HttpGet("stock")]
@@ -31,7 +31,7 @@ public class WmsReportsController(IWmsReportService reports) : ControllerBase
     [HttpGet("export/movement-summary")]
     [RequirePermission("wms.reports.export")]
     public async Task<IActionResult> ExportMovementSummary(
-        [FromQuery] DateTime? dateFrom, [FromQuery] DateTime? dateTo, CancellationToken ct)
+        [FromQuery] DateOnly? dateFrom, [FromQuery] DateOnly? dateTo, CancellationToken ct)
     {
         var summary = await reports.GetMovementSummaryAsync(dateFrom, dateTo, ct);
         var bytes = reports.BuildMovementSummaryWorkbook(summary);

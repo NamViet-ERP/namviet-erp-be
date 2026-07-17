@@ -176,8 +176,8 @@ public class WarehouseDbContext(DbContextOptions<WarehouseDbContext> options) : 
             e.Property(pi => pi.ReservedQty).HasColumnType("numeric(18,4)").HasDefaultValue(0m);
             e.Property(pi => pi.MinStockQty).HasColumnType("numeric(18,4)").HasDefaultValue(0m);
             e.Ignore(pi => pi.ActualInventoryQty);
+            e.Ignore(pi => pi.AvailableQty);
             e.Ignore(pi => pi.PlannedInventoryQty);
-            e.Ignore(pi => pi.ExpectedInventoryQty);
             e.HasOne(pi => pi.Project).WithMany(p => p.Inventories)
              .HasForeignKey(pi => pi.ProjectCode).OnDelete(DeleteBehavior.Cascade);
             e.HasOne(pi => pi.Material).WithMany(m => m.ProjectInventories)

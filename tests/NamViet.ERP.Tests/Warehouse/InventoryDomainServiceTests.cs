@@ -227,5 +227,9 @@ public class InventoryDomainServiceTests : IDisposable
         _db.SaveChanges();
     }
 
-    public void Dispose() => _db.Dispose();
+    public void Dispose()
+    {
+        _db.Dispose();
+        GC.SuppressFinalize(this);
+    }
 }

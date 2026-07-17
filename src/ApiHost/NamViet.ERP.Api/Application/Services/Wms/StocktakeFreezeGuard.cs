@@ -35,7 +35,7 @@ public sealed class StocktakeFreezeGuard(WarehouseDbContext db) : IStocktakeFree
             ? frozen.WarehouseId
             : frozen.WarehouseName;
 
-        throw new InvalidOperationException(
+        throw new StocktakeFreezeConflictException(
             $"Kho dự án {warehouseLabel} đang đóng băng kiểm kê (phiếu {frozen.VoucherCode}). " +
             "Hãy mở băng hoặc duyệt/hủy phiếu kiểm kê trước khi nhập, xuất, chuyển hoặc hoàn trả vật tư.");
     }

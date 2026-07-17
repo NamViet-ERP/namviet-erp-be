@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using NamViet.ERP.Api.Application.Dtos.Wms;
+using NamViet.ERP.Api.Application.Services.Wms;
 using NamViet.ERP.Modules.Warehouse.Domain;
 
 namespace NamViet.ERP.Tests.Wms;
@@ -133,7 +134,7 @@ public class VoucherWorkflowTests : IDisposable
     {
         _ctx.SeedFrozenStocktake();
 
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+        var ex = await Assert.ThrowsAsync<StocktakeFreezeConflictException>(() =>
             _ctx.Exports.CreateAsync(NewPendingExport(5m)));
 
         Assert.Contains("đóng băng kiểm kê", ex.Message, StringComparison.OrdinalIgnoreCase);
@@ -145,7 +146,7 @@ public class VoucherWorkflowTests : IDisposable
     {
         _ctx.SeedFrozenStocktake();
 
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+        var ex = await Assert.ThrowsAsync<StocktakeFreezeConflictException>(() =>
             _ctx.Imports.CreateAsync(NewPendingImport(5m)));
 
         Assert.Contains("đóng băng kiểm kê", ex.Message, StringComparison.OrdinalIgnoreCase);
@@ -195,5 +196,9 @@ public class VoucherWorkflowTests : IDisposable
             Project: "DA-TEST",
             ToProject: null);
 
-    public void Dispose() => _ctx.Dispose();
+    public void Dispose()
+    {
+        _ctx.Dispose();
+        GC.SuppressFinalize(this);
+    }
 }

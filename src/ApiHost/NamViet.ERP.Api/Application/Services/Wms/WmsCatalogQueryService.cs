@@ -85,12 +85,16 @@ public sealed class WmsCatalogQueryService(WarehouseDbContext db) : IWmsCatalogQ
         return qtyByMaterial;
     }
 
-    private async Task<Dictionary<string, decimal>> GetWeightedAverageCostByMaterialAsync(CancellationToken ct) =>
-        await db.WarehouseTransactionItems
+    private async Task<Dictionary<string, decimal>> GetWeightedAverageCostByMaterialAsync(CancellationToken ct)
+    {
+        var wacFrom = DateTime.UtcNow.AddYears(-1);
+        return await db.WarehouseTransactionItems
             .AsNoTracking()
             .Where(i =>
                 i.Transaction!.TransactionType == TransactionType.Import
                 && i.Transaction.ApprovalStatus == ApprovalStatus.Approved
+                && i.Transaction.ApprovedAt != null
+                && i.Transaction.ApprovedAt >= wacFrom
                 && i.UnitPrice > 0
                 && i.Quantity > 0)
             .GroupBy(i => i.MaterialCode)
@@ -104,4 +108,5 @@ public sealed class WmsCatalogQueryService(WarehouseDbContext db) : IWmsCatalogQ
                 x => x.MaterialCode,
                 x => x.TotalQty > 0 ? x.TotalCost / x.TotalQty : 0m,
                 ct);
+    }
 }

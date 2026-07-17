@@ -116,5 +116,9 @@ public class ImportExcelServiceTests : IDisposable
         return ms.ToArray();
     }
 
-    public void Dispose() => _db.Dispose();
+    public void Dispose()
+    {
+        _db.Dispose();
+        GC.SuppressFinalize(this);
+    }
 }

@@ -32,6 +32,8 @@ public class ProjectsController(
         [FromQuery] string? search = null, [FromQuery] string? status = null,
         CancellationToken ct = default)
     {
+        page = Math.Max(1, page);
+        pageSize = Math.Clamp(pageSize, 1, 200);
         var query = db.Projects.AsQueryable();
         if (!string.IsNullOrWhiteSpace(search))
             query = query.Where(p => p.ProjectName.Contains(search) || p.ProjectCode.Contains(search));
@@ -73,7 +75,7 @@ public class ProjectsController(
                 pi.PlannedImportQty, pi.PlannedExportQty,
                 pi.ActualImportQty, pi.ActualExportQty,
                 pi.ActualImportQty - pi.ActualExportQty,
-                pi.PlannedImportQty - pi.PlannedExportQty,
+                (pi.ActualImportQty - pi.ActualExportQty) + pi.PlannedImportQty,
                 pi.ReservedQty,
                 pi.MinStockQty))
             .ToListAsync(ct);
@@ -191,7 +193,7 @@ public class ProjectsController(
     }
 
     private async Task<List<ProjectDto>> MapProjectsWithStockAsync(
-        IReadOnlyList<Project> projects, CancellationToken ct)
+        List<Project> projects, CancellationToken ct)
     {
         if (projects.Count == 0) return [];
 
@@ -203,11 +205,13 @@ public class ProjectsController(
             {
                 ProjectCode = g.Key,
                 StockActualQty = g.Sum(pi => pi.ActualImportQty - pi.ActualExportQty),
-                StockPlannedQty = g.Sum(pi => pi.PlannedImportQty - pi.PlannedExportQty),
+                StockPlannedQty = g.Sum(pi =>
+                    (pi.ActualImportQty - pi.ActualExportQty) + pi.PlannedImportQty),
                 StockReservedQty = g.Sum(pi => pi.ReservedQty),
                 StockMaterialCount = g.Count(pi =>
                     pi.ActualImportQty - pi.ActualExportQty != 0
-                    || pi.PlannedImportQty - pi.PlannedExportQty != 0
+                    || pi.PlannedImportQty != 0
+                    || pi.PlannedExportQty != 0
                     || pi.ReservedQty != 0),
             })
             .ToListAsync(ct);

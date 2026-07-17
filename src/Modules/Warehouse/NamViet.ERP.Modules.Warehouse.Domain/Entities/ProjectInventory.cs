@@ -21,65 +21,70 @@ public class ProjectInventory : BaseEntity
     /// <summary>Optimistic concurrency token (PostgreSQL xmin).</summary>
     public uint RowVersion { get; set; }
 
+    /// <summary>Tồn thực tế = nhập đã duyệt − xuất đã duyệt (gồm hoàn trả / chuyển kho đã duyệt).</summary>
     public decimal ActualInventoryQty => ActualImportQty - ActualExportQty;
-    public decimal PlannedInventoryQty => PlannedImportQty - PlannedExportQty;
-    public decimal ExpectedInventoryQty => ActualInventoryQty + PlannedInventoryQty;
+
+    /// <summary>Khả dụng = tồn thực tế − xuất/chuyển kho dự kiến.</summary>
+    public decimal AvailableQty => ActualInventoryQty - PlannedExportQty;
+
+    /// <summary>Tồn dự kiến = tồn thực tế + nhập/hoàn trả/chuyển kho dự kiến (không trừ xuất dự kiến).</summary>
+    public decimal PlannedInventoryQty => ActualInventoryQty + PlannedImportQty;
 
     public Project Project { get; set; } = null!;
     public Material Material { get; set; } = null!;
 
     public void AddPlannedImport(decimal qty)
     {
-        if (qty < 0) throw new ArgumentOutOfRangeException(nameof(qty));
+        ArgumentOutOfRangeException.ThrowIfNegative(qty);
         PlannedImportQty += qty;
         UpdatedAt = DateTime.UtcNow;
     }
 
     public void RemovePlannedImport(decimal qty)
     {
-        if (qty < 0) throw new ArgumentOutOfRangeException(nameof(qty));
+        ArgumentOutOfRangeException.ThrowIfNegative(qty);
         PlannedImportQty = Math.Max(0m, PlannedImportQty - qty);
         UpdatedAt = DateTime.UtcNow;
     }
 
     public void AddReserved(decimal qty)
     {
-        if (qty < 0) throw new ArgumentOutOfRangeException(nameof(qty));
+        ArgumentOutOfRangeException.ThrowIfNegative(qty);
         ReservedQty += qty;
         UpdatedAt = DateTime.UtcNow;
     }
 
     public void RemoveReserved(decimal qty)
     {
-        if (qty < 0) throw new ArgumentOutOfRangeException(nameof(qty));
+        ArgumentOutOfRangeException.ThrowIfNegative(qty);
         ReservedQty -= qty;
         UpdatedAt = DateTime.UtcNow;
     }
 
     public void ApplyActualImport(decimal qty)
     {
-        if (qty < 0) throw new ArgumentOutOfRangeException(nameof(qty));
+        ArgumentOutOfRangeException.ThrowIfNegative(qty);
         ActualImportQty += qty;
         UpdatedAt = DateTime.UtcNow;
     }
 
     public void ApplyActualExport(decimal qty)
     {
-        if (qty < 0) throw new ArgumentOutOfRangeException(nameof(qty));
+        ArgumentOutOfRangeException.ThrowIfNegative(qty);
         ActualExportQty += qty;
         UpdatedAt = DateTime.UtcNow;
     }
 
     public void AddPlannedExport(decimal qty)
     {
-        if (qty < 0) throw new ArgumentOutOfRangeException(nameof(qty));
+        ArgumentOutOfRangeException.ThrowIfNegative(qty);
         PlannedExportQty += qty;
         UpdatedAt = DateTime.UtcNow;
     }
 
     public void RemovePlannedExport(decimal qty)
     {
-        if (qty < 0) throw new ArgumentOutOfRangeException(nameof(qty));
+        ArgumentOutOfRangeException.ThrowIfNegative(qty);
         PlannedExportQty = Math.Max(0m, PlannedExportQty - qty);
         UpdatedAt = DateTime.UtcNow;
     }
@@ -87,7 +92,7 @@ public class ProjectInventory : BaseEntity
     /// <summary>Hoàn trả vật tư chưa dùng hết về kho dự án — giảm xuất thực tế.</summary>
     public void ApplyExportReturn(decimal qty)
     {
-        if (qty < 0) throw new ArgumentOutOfRangeException(nameof(qty));
+        ArgumentOutOfRangeException.ThrowIfNegative(qty);
         if (qty > ActualExportQty)
             throw new InvalidOperationException(
                 $"Không thể hoàn trả {qty} — xuất thực tế hiện tại {ActualExportQty}.");

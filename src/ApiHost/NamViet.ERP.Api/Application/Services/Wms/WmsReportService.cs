@@ -1,6 +1,7 @@
 using ClosedXML.Excel;
 using Microsoft.EntityFrameworkCore;
 using NamViet.ERP.Api.Application.Dtos.Wms;
+using NamViet.ERP.Api.Application;
 using NamViet.ERP.Modules.Warehouse.Domain.Enums;
 using NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence;
 
@@ -9,7 +10,7 @@ namespace NamViet.ERP.Api.Application.Services.Wms;
 public interface IWmsReportService
 {
     Task<WmsMovementSummaryDto> GetMovementSummaryAsync(
-        DateTime? dateFrom, DateTime? dateTo, CancellationToken ct = default);
+        DateOnly? dateFrom, DateOnly? dateTo, CancellationToken ct = default);
 
     Task<IReadOnlyList<WmsStockReportRowDto>> GetStockReportAsync(
         string? projectCode, CancellationToken ct = default);
@@ -23,8 +24,15 @@ public interface IWmsReportService
 
 public sealed class WmsReportService(WarehouseDbContext db) : IWmsReportService
 {
+    private static readonly string[] MovementHeaders = ["Chỉ tiêu", "Giá trị"];
+    private static readonly string[] StockHeaders =
+        ["Mã dự án", "Tên dự án", "Mã vật tư", "Tên vật tư", "ĐVT", "SL tồn"];
+    private static readonly string[] PendingSummaryHeaders = ["Chỉ tiêu", "Số lượng"];
+    private static readonly string[] PendingDetailHeaders =
+        ["Loại", "Mã phiếu", "Ngày", "Người tạo", "Dự án"];
+
     public async Task<WmsMovementSummaryDto> GetMovementSummaryAsync(
-        DateTime? dateFrom, DateTime? dateTo, CancellationToken ct = default)
+        DateOnly? dateFrom, DateOnly? dateTo, CancellationToken ct = default)
     {
         var importQuery = db.WarehouseTransactions
             .AsNoTracking()
@@ -36,19 +44,20 @@ public sealed class WmsReportService(WarehouseDbContext db) : IWmsReportService
             .AsNoTracking()
             .Where(t => t.TransactionType == TransactionType.Transfer);
 
-        if (dateFrom.HasValue)
+        var fromUtc = UtcDateRange.Start(dateFrom);
+        if (fromUtc.HasValue)
         {
-            importQuery = importQuery.Where(t => t.CreatedAt >= dateFrom.Value);
-            exportQuery = exportQuery.Where(t => t.CreatedAt >= dateFrom.Value);
-            transferQuery = transferQuery.Where(t => t.CreatedAt >= dateFrom.Value);
+            importQuery = importQuery.Where(t => t.CreatedAt >= fromUtc.Value);
+            exportQuery = exportQuery.Where(t => t.CreatedAt >= fromUtc.Value);
+            transferQuery = transferQuery.Where(t => t.CreatedAt >= fromUtc.Value);
         }
 
-        if (dateTo.HasValue)
+        var toUtc = UtcDateRange.ExclusiveEnd(dateTo);
+        if (toUtc.HasValue)
         {
-            var end = dateTo.Value.Date.AddDays(1);
-            importQuery = importQuery.Where(t => t.CreatedAt < end);
-            exportQuery = exportQuery.Where(t => t.CreatedAt < end);
-            transferQuery = transferQuery.Where(t => t.CreatedAt < end);
+            importQuery = importQuery.Where(t => t.CreatedAt < toUtc.Value);
+            exportQuery = exportQuery.Where(t => t.CreatedAt < toUtc.Value);
+            transferQuery = transferQuery.Where(t => t.CreatedAt < toUtc.Value);
         }
 
         var importCount = await importQuery.CountAsync(ct);
@@ -58,15 +67,15 @@ public sealed class WmsReportService(WarehouseDbContext db) : IWmsReportService
         var importValue = await db.WarehouseTransactionItems
             .AsNoTracking()
             .Where(i => i.Transaction!.TransactionType == TransactionType.Import)
-            .Where(i => !dateFrom.HasValue || i.Transaction.CreatedAt >= dateFrom.Value)
-            .Where(i => !dateTo.HasValue || i.Transaction.CreatedAt < dateTo!.Value.Date.AddDays(1))
+            .Where(i => !fromUtc.HasValue || i.Transaction.CreatedAt >= fromUtc.Value)
+            .Where(i => !toUtc.HasValue || i.Transaction.CreatedAt < toUtc.Value)
             .SumAsync(i => (decimal?)(i.Quantity * i.UnitPrice), ct) ?? 0m;
 
         var exportValue = await db.WarehouseTransactionItems
             .AsNoTracking()
             .Where(i => i.Transaction!.TransactionType == TransactionType.Export)
-            .Where(i => !dateFrom.HasValue || i.Transaction.CreatedAt >= dateFrom.Value)
-            .Where(i => !dateTo.HasValue || i.Transaction.CreatedAt < dateTo!.Value.Date.AddDays(1))
+            .Where(i => !fromUtc.HasValue || i.Transaction.CreatedAt >= fromUtc.Value)
+            .Where(i => !toUtc.HasValue || i.Transaction.CreatedAt < toUtc.Value)
             .SumAsync(i => (decimal?)(i.Quantity * i.UnitPrice), ct) ?? 0m;
 
         return new WmsMovementSummaryDto(importCount, importValue, exportCount, exportValue, transferCount);
@@ -183,7 +192,7 @@ public sealed class WmsReportService(WarehouseDbContext db) : IWmsReportService
     public byte[] BuildMovementSummaryWorkbook(WmsMovementSummaryDto summary) =>
         BuildWorkbook(
             "Nhap xuat",
-            new[] { "Chỉ tiêu", "Giá trị" },
+            MovementHeaders,
             new[]
             {
                 new object?[] { "Số phiếu nhập", summary.ImportCount },
@@ -196,7 +205,7 @@ public sealed class WmsReportService(WarehouseDbContext db) : IWmsReportService
     public byte[] BuildStockReportWorkbook(IReadOnlyList<WmsStockReportRowDto> rows) =>
         BuildWorkbook(
             "Ton kho",
-            new[] { "Mã dự án", "Tên dự án", "Mã vật tư", "Tên vật tư", "ĐVT", "SL tồn" },
+            StockHeaders,
             rows.Select(r => new object?[]
             {
                 r.ProjectCode,
@@ -219,11 +228,11 @@ public sealed class WmsReportService(WarehouseDbContext db) : IWmsReportService
 
         using var workbook = new XLWorkbook();
         var summarySheet = workbook.Worksheets.Add("Tong hop");
-        WriteHeaders(summarySheet, new[] { "Chỉ tiêu", "Số lượng" });
+        WriteHeaders(summarySheet, PendingSummaryHeaders);
         WriteDataRows(summarySheet, summaryRows);
 
         var detailSheet = workbook.Worksheets.Add("Chi tiet");
-        WriteHeaders(detailSheet, new[] { "Loại", "Mã phiếu", "Ngày", "Người tạo", "Dự án" });
+        WriteHeaders(detailSheet, PendingDetailHeaders);
         WriteDataRows(detailSheet, report.Items.Select(i => new object?[]
         {
             i.Kind, i.VoucherCode, i.Date, i.CreatedBy, i.Project ?? "",

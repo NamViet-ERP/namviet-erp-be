@@ -49,8 +49,7 @@ public class InventoryDomainService(WarehouseDbContext db) : IInventoryDomainSer
         string sourceTicketCode,
         CancellationToken ct = default)
     {
-        if (requestedQty <= 0)
-            throw new ArgumentOutOfRangeException(nameof(requestedQty));
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(requestedQty);
 
         var available = await GetAvailableQtyAsync(warehouseId, materialCode, ct);
         var reservedFromStock = Math.Min(requestedQty, Math.Max(0, available));

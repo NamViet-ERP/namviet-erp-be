@@ -30,7 +30,8 @@ public class StockController(WarehouseDbContext db, IInventoryDomainService inve
         var codesWithStock = projectInventories
             .Where(pi =>
                 pi.ActualImportQty - pi.ActualExportQty != 0 ||
-                pi.PlannedImportQty - pi.PlannedExportQty != 0 ||
+                pi.PlannedImportQty != 0 ||
+                pi.PlannedExportQty != 0 ||
                 pi.ReservedQty != 0)
             .Select(pi => pi.MaterialCode)
             .Concat(warehouseInventories.Where(wi => wi.Qty != 0).Select(wi => wi.MaterialCode))
@@ -55,12 +56,15 @@ public class StockController(WarehouseDbContext db, IInventoryDomainService inve
             .Select(g => new { MaterialCode = g.Key, Qty = g.Sum(x => x.ReservedQty) })
             .ToDictionaryAsync(x => x.MaterialCode, x => x.Qty, ct);
 
-        // WAC (Weighted Average Cost) — IAS 2: chỉ phiếu nhập đã duyệt, có đơn giá > 0
+        // WAC (Weighted Average Cost) — IAS 2: phiếu nhập đã duyệt trong 12 tháng theo ngày duyệt
+        var wacFrom = DateTime.UtcNow.AddYears(-1);
         var wacByMaterial = await db.WarehouseTransactionItems
             .AsNoTracking()
             .Where(i =>
                 i.Transaction!.TransactionType == TransactionType.Import
                 && i.Transaction.ApprovalStatus == ApprovalStatus.Approved
+                && i.Transaction.ApprovedAt != null
+                && i.Transaction.ApprovedAt >= wacFrom
                 && i.UnitPrice > 0
                 && i.Quantity > 0)
             .GroupBy(i => i.MaterialCode)
