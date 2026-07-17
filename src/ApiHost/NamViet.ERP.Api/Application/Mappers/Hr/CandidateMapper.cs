@@ -18,6 +18,14 @@ public static class CandidateMapper
 
     private static readonly TimeZoneInfo VietnamTimeZone = ResolveVietnamTimeZone();
 
+    public static CandidateDto FromPublicApplication(PublicCandidateApplicationRequest request) =>
+        new(
+            "", request.FullName, request.Phone, request.Email, request.Gender, request.Address,
+            request.BirthDate, request.Education, request.School, request.Major, request.Position,
+            request.Experience, request.Source, "", request.CvFileName ?? "", request.CvFileSize ?? "",
+            "", null, null, null, null, null, null, null, null, null, null, null, null, null, null,
+            Status: "New", CvFileUrl: request.CvFileUrl);
+
     public static async Task ApplyFromDtoAsync(
         Candidate entity, CandidateDto dto, HrDbContext db, CancellationToken ct)
     {
@@ -44,6 +52,72 @@ public static class CandidateMapper
 
         if (!string.IsNullOrWhiteSpace(dto.CvFileName)) entity.CvFileName = dto.CvFileName;
         if (!string.IsNullOrWhiteSpace(dto.CvFileUrl)) entity.CvFileUrl = dto.CvFileUrl;
+
+        if (!string.IsNullOrWhiteSpace(dto.Status) &&
+            Enum.TryParse<CandidateStatus>(dto.Status, true, out var parsedStatus))
+        {
+            entity.Status = parsedStatus;
+        }
+    }
+
+    public static string ToClientStatus(CandidateStatus status) => status.ToString();
+
+    public static CandidateStatus ParseClientStatus(string? value) =>
+        Enum.TryParse<CandidateStatus>(value, true, out var parsed) ? parsed : CandidateStatus.New;
+
+    public static CandidateDto ApplyStatusTransition(CandidateDto current, UpdateCandidateStatusRequest request)
+    {
+        var next = current with
+        {
+            Status = request.Status,
+            RecruitmentPlanId = request.RecruitmentPlanId,
+        };
+
+        return request.Status switch
+        {
+            "InterviewScheduled" or "Interview1" or "Interview2" => next with
+            {
+                InterviewDate = request.InterviewDate ?? next.InterviewDate,
+                InterviewTime = request.InterviewTime ?? next.InterviewTime,
+                Evaluator = request.Evaluator ?? next.Evaluator,
+                EvaluationResult = "",
+            },
+            "InterviewPassed" => next with
+            {
+                EvaluationResult = "Đạt",
+                InterviewDate = request.InterviewDate ?? next.InterviewDate,
+                InterviewTime = request.InterviewTime ?? next.InterviewTime,
+                Evaluator = request.Evaluator ?? next.Evaluator,
+            },
+            "Offered" => next with
+            {
+                OfferStatus = "Đồng ý",
+                OfferSalary = request.OfferSalary ?? next.OfferSalary,
+                OfferRejectReason = request.OfferNote ?? next.OfferRejectReason,
+                StartDate = request.StartDate ?? next.StartDate,
+            },
+            "Accepted" or "Probation" or "Official" => next with
+            {
+                OfferStatus = "Đồng ý",
+                StartDate = request.StartDate ?? next.StartDate,
+                OnboardingAttended = request.Status == "Accepted" ? "Đến" : next.OnboardingAttended,
+            },
+            "Rejected" => next with
+            {
+                EvaluationResult = "Không đạt",
+                OfferRejectReason = request.RejectReason ?? next.OfferRejectReason,
+            },
+            "OfferDeclined" => next with
+            {
+                OfferStatus = "Từ chối",
+                OfferRejectReason = request.RejectReason ?? next.OfferRejectReason,
+            },
+            "Screening" => next with
+            {
+                ScreeningType = string.IsNullOrWhiteSpace(next.ScreeningType) ? "Lọc" : next.ScreeningType,
+            },
+            _ => next,
+        };
     }
 
     public static CandidateDto LockAppliedAt(CandidateDto dto, Candidate entity) =>
@@ -51,17 +125,23 @@ public static class CandidateMapper
         {
             Id = entity.Id.ToString(),
             AppliedAt = ResolveAppliedAtText(entity),
+            Status = ToClientStatus(entity.Status),
             CvFileUrl = dto.CvFileUrl ?? entity.CvFileUrl,
+            RecruitmentPlanId = entity.RecruitmentPlanId?.ToString(),
+            RecruitmentPlanLabel = BuildRecruitmentPlanLabel(entity.RecruitmentPlan),
         };
 
     public static CandidateDto BuildFallbackDto(Candidate entity) =>
         new(entity.Id.ToString(), entity.FullName, entity.Phone, entity.Email,
             entity.Gender == Gender.Female ? "Nữ" : "Nam", entity.Address ?? "",
             entity.BirthDate.ToString("dd/MM/yyyy"), entity.Education.ToString(), "", "",
-            entity.Position?.Name ?? "", entity.Experience ?? "", entity.Source.ToString(), "",
+            entity.Position?.Name ?? "", entity.Experience ?? "", ToClientSource(entity.Source), "",
             entity.CvFileName ?? "", "", ResolveAppliedAtText(entity),
-            null, null, null, null, null, null, null, null, null, null, null, null, null, null,
-            entity.CvFileUrl);
+            null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null,
+            ToClientStatus(entity.Status),
+            entity.CvFileUrl,
+            entity.RecruitmentPlanId?.ToString(),
+            BuildRecruitmentPlanLabel(entity.RecruitmentPlan));
 
     public static CandidateDto ToDto(Candidate entity, ILogger logger)
     {
@@ -76,7 +156,10 @@ public static class CandidateMapper
                 {
                     Id = entity.Id.ToString(),
                     AppliedAt = appliedAt,
+                    Status = ToClientStatus(entity.Status),
                     CvFileUrl = dto.CvFileUrl ?? entity.CvFileUrl,
+                    RecruitmentPlanId = entity.RecruitmentPlanId?.ToString(),
+                    RecruitmentPlanLabel = BuildRecruitmentPlanLabel(entity.RecruitmentPlan),
                 };
             }
             catch (JsonException ex)
@@ -86,6 +169,21 @@ public static class CandidateMapper
         }
 
         return BuildFallbackDto(entity);
+    }
+
+    public static string? BuildRecruitmentPlanLabel(RecruitmentPlan? plan)
+    {
+        if (plan is null) return null;
+
+        var position = plan.Position?.Name?.Trim();
+        var period = plan.Period?.Trim();
+        if (!string.IsNullOrEmpty(position) && !string.IsNullOrEmpty(period))
+            return $"{position} - {period}";
+        if (!string.IsNullOrEmpty(position))
+            return position;
+        if (!string.IsNullOrEmpty(period))
+            return period;
+        return $"Kế hoạch #{plan.Id}";
     }
 
     public static string ResolveCvContentType(string fileName)
@@ -115,7 +213,18 @@ public static class CandidateMapper
         "24h - lọc" or "24h - ứng tuyển" or "JobPortal24h" => RecruitmentSource.JobPortal24h,
         "TopCV" => RecruitmentSource.TopCV,
         "Glints" => RecruitmentSource.Glints,
+        "Nội bộ" or "Internal" => RecruitmentSource.Internal,
+        "Giới thiệu" or "Referral" => RecruitmentSource.Referral,
         _ => RecruitmentSource.Other,
+    };
+
+    public static string ToClientSource(RecruitmentSource source) => source switch
+    {
+        RecruitmentSource.JobPortal24h => "24h - ứng tuyển",
+        RecruitmentSource.Internal => "Nội bộ",
+        RecruitmentSource.Referral => "Giới thiệu",
+        RecruitmentSource.Other => "Khác",
+        _ => source.ToString(),
     };
 
     private static DateOnly ParseBirthDate(string value)

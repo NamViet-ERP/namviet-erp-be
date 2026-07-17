@@ -16,6 +16,8 @@ public class HrDbContext(DbContextOptions<HrDbContext> options) : DbContext(opti
     public DbSet<Candidate> Candidates => Set<Candidate>();
     public DbSet<CandidateStage> CandidateStages => Set<CandidateStage>();
     public DbSet<Onboard> Onboards => Set<Onboard>();
+    public DbSet<RecruitmentCost> RecruitmentCosts => Set<RecruitmentCost>();
+    public DbSet<RecruitmentBudget> RecruitmentBudgets => Set<RecruitmentBudget>();
     public DbSet<LeaveType> LeaveTypes => Set<LeaveType>();
     public DbSet<LeaveRequest> LeaveRequests => Set<LeaveRequest>();
     public DbSet<LeaveBalance> LeaveBalances => Set<LeaveBalance>();
@@ -96,7 +98,29 @@ public class HrDbContext(DbContextOptions<HrDbContext> options) : DbContext(opti
             e.HasQueryFilter(r => r.DeletedAt == null);
         });
 
-        model.Entity<RecruitmentPlan>(e => { e.ToTable("recruitment_plans"); });
+        model.Entity<RecruitmentPlan>(e =>
+        {
+            e.ToTable("recruitment_plans");
+            e.HasQueryFilter(p => p.DeletedAt == null);
+        });
+
+        model.Entity<RecruitmentCost>(e =>
+        {
+            e.ToTable("recruitment_costs");
+            e.Property(c => c.Source).HasMaxLength(100).IsRequired();
+            e.Property(c => c.PositionName).HasMaxLength(255);
+            e.Property(c => c.Period).HasMaxLength(50).IsRequired();
+            e.Property(c => c.Amount).HasColumnType("numeric(18,2)");
+            e.HasQueryFilter(c => c.DeletedAt == null);
+        });
+
+        model.Entity<RecruitmentBudget>(e =>
+        {
+            e.ToTable("recruitment_budgets");
+            e.Property(b => b.TotalAllocated).HasColumnType("numeric(18,2)");
+            e.HasIndex(b => b.Year).IsUnique();
+            e.HasQueryFilter(b => b.DeletedAt == null);
+        });
 
         model.Entity<Candidate>(e =>
         {
@@ -104,14 +128,18 @@ public class HrDbContext(DbContextOptions<HrDbContext> options) : DbContext(opti
             e.Property(c => c.Gender).HasConversion<string>().HasMaxLength(10);
             e.Property(c => c.Education).HasConversion<string>().HasMaxLength(20);
             e.Property(c => c.Source).HasConversion<string>().HasMaxLength(30);
-            e.Property(c => c.Status).HasConversion<string>().HasMaxLength(20);
+            e.Property(c => c.Status).HasConversion<string>().HasMaxLength(30);
             e.Property(c => c.WorkflowData).HasColumnType("jsonb");
+            e.HasOne(c => c.RecruitmentPlan)
+                .WithMany(p => p.Candidates)
+                .HasForeignKey(c => c.RecruitmentPlanId)
+                .OnDelete(DeleteBehavior.Restrict)
+                .IsRequired(false);
             e.HasQueryFilter(c => c.DeletedAt == null);
         });
 
         model.Entity<CandidateStage>(e => { e.ToTable("candidate_stages"); e.HasOne(s => s.Candidate).WithMany(c => c.Stages).HasForeignKey(s => s.CandidateId); });
         model.Entity<Onboard>(e => { e.ToTable("onboards"); e.HasOne(o => o.Employee).WithMany().HasForeignKey(o => o.EmployeeId); });
-
         model.Entity<LeaveType>(e => { e.ToTable("leave_types"); });
         model.Entity<LeaveRequest>(e =>
         {
