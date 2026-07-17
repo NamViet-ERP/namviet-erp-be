@@ -104,8 +104,12 @@ public class AdminRolesController(
         if (await roleManager.RoleExistsAsync(identityName))
             return Conflict("Vai trò tương tự đã tồn tại — hãy đặt tên khác.");
 
+        var labelPattern = EscapeLikePattern(label);
         var existing = await roleManager.Roles
-            .FirstOrDefaultAsync(r => r.Description != null && r.Description.ToLower() == label.ToLower(), ct);
+            .FirstOrDefaultAsync(r =>
+                r.Description != null
+                && EF.Functions.ILike(r.Description, labelPattern, "\\"),
+                ct);
         if (existing is not null)
             return Conflict("Tên vai trò đã tồn tại.");
 
@@ -136,11 +140,13 @@ public class AdminRolesController(
         if (string.IsNullOrEmpty(label))
             return BadRequest("Tên vai trò không được để trống.");
 
+        var labelPattern = EscapeLikePattern(label);
         var duplicate = await roleManager.Roles
             .FirstOrDefaultAsync(r =>
                 r.Id != role.Id
                 && r.Description != null
-                && r.Description.ToLower() == label.ToLower(), ct);
+                && EF.Functions.ILike(r.Description, labelPattern, "\\"),
+                ct);
         if (duplicate is not null)
             return Conflict("Tên vai trò đã tồn tại.");
 
@@ -182,6 +188,11 @@ public class AdminRolesController(
     private static bool ContainsIgnoreCase(string? value, string query)
         => !string.IsNullOrEmpty(value) &&
            value.Contains(query, StringComparison.OrdinalIgnoreCase);
+
+    private static string EscapeLikePattern(string value) =>
+        value.Replace("\\", "\\\\", StringComparison.Ordinal)
+            .Replace("%", "\\%", StringComparison.Ordinal)
+            .Replace("_", "\\_", StringComparison.Ordinal);
 
     private async Task<ApplicationRole?> FindRoleByClientCodeAsync(string code, CancellationToken ct)
     {

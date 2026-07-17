@@ -7,6 +7,9 @@ public static class RolePermissionTemplates
     public const string HrRole = "HR";
     public const string WarehouseRole = "Warehouse_Keeper";
     public const string StaffRole = "Staff";
+    public const string BodRole = "BOD";
+    public const string AccountantRole = "Accountant";
+    public const string ProcurementRole = "Procurement";
 
     private static readonly string[] CorePermissions =
     [
@@ -30,7 +33,23 @@ public static class RolePermissionTemplates
         "hrm.recruitment.positions.create",
         "hrm.recruitment.positions.update",
         "hrm.recruitment.positions.delete",
+        "hrm.recruitment.plans.view",
+        "hrm.recruitment.plans.create",
+        "hrm.recruitment.plans.update",
+        "hrm.recruitment.plans.delete",
+        "hrm.recruitment.costs.view",
+        "hrm.recruitment.costs.create",
+        "hrm.recruitment.costs.update",
+        "hrm.recruitment.costs.delete",
+        "hrm.recruitment.reports.view",
+        "hrm.recruitment.reports.export",
         "hrm.birthdays.view",
+        "hrm.insurance.view",
+        "hrm.insurance.manage",
+        "hrm.leaves.view",
+        "hrm.leaves.create",
+        "hrm.leaves.manage",
+        "hrm.leaves.approve",
     ];
 
     private static readonly string[] PmPermissions =
@@ -57,6 +76,10 @@ public static class RolePermissionTemplates
         "wms.price_books.view:all",
         "wms.reports.view:all",
         "wms.reports.export",
+        "wms.transactions.view:all",
+        "wms.transactions.approve",
+        "hrm.leaves.view",
+        "hrm.leaves.create",
     ];
 
     private static readonly string[] WarehousePermissions =
@@ -105,6 +128,10 @@ public static class RolePermissionTemplates
         "wms.price_books.delete",
         "wms.reports.view:all",
         "wms.reports.export",
+        "wms.transactions.view:all",
+        "wms.transactions.create",
+        "hrm.leaves.view",
+        "hrm.leaves.create",
     ];
 
     private static readonly string[] StaffPermissions =
@@ -114,6 +141,36 @@ public static class RolePermissionTemplates
         "hrm.employees.view:own",
         "wms.dashboard.view",
         "wms.stock.view:all",
+        "wms.transactions.view:all",
+        "hrm.leaves.view",
+        "hrm.leaves.create",
+    ];
+
+    private static readonly string[] BodPermissions =
+    [
+        ..CorePermissions,
+        "hrm.leaves.view",
+        "hrm.leaves.approve",
+        "wms.transactions.view:all",
+        "wms.transactions.approve",
+    ];
+
+    private static readonly string[] AccountantPermissions =
+    [
+        ..CorePermissions,
+        "hrm.leaves.view",
+        "hrm.leaves.create",
+        "wms.transactions.view:all",
+        "wms.transactions.approve",
+    ];
+
+    private static readonly string[] ProcurementPermissions =
+    [
+        ..CorePermissions,
+        "hrm.leaves.view",
+        "hrm.leaves.create",
+        "wms.transactions.view:all",
+        "wms.transactions.create",
     ];
 
     public static IReadOnlyDictionary<string, IReadOnlyList<string>> ByIdentityRoleName { get; } =
@@ -124,6 +181,9 @@ public static class RolePermissionTemplates
             [HrRole] = CorePermissions.Concat(HrmPermissions).ToList(),
             [WarehouseRole] = WarehousePermissions,
             [StaffRole] = StaffPermissions,
+            [BodRole] = BodPermissions,
+            [AccountantRole] = AccountantPermissions,
+            [ProcurementRole] = ProcurementPermissions,
         };
 
     public static IReadOnlyList<string> ForIdentityRole(string? roleName) =>

@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using NamViet.ERP.Api.Infrastructure.Authorization;
 using NamViet.ERP.Modules.Hr.Domain.Entities;
 using NamViet.ERP.Modules.Hr.Infrastructure.Persistence;
 using NamViet.ERP.SharedKernel.Common;
@@ -16,7 +17,8 @@ public record CreateInsuranceTaskRequest(
 
 [ApiController]
 [Route("api/hr/insurance")]
-[Authorize(Roles = "Admin,HR")]
+[Authorize]
+[RequirePermission("hrm.insurance.view")]
 public class InsuranceController(HrDbContext db) : ControllerBase
 {
     // ── Bản ghi đóng BHXH theo tháng ──────────────────────────────────────────
@@ -55,6 +57,7 @@ public class InsuranceController(HrDbContext db) : ControllerBase
     }
 
     [HttpPost("records")]
+    [RequirePermission("hrm.insurance.manage")]
     public async Task<IActionResult> CreateRecord([FromBody] CreateInsuranceRecordRequest request, CancellationToken ct)
     {
         var existing = await db.SocialInsuranceRecords
@@ -81,6 +84,7 @@ public class InsuranceController(HrDbContext db) : ControllerBase
     }
 
     [HttpPatch("records/{id:int}/status")]
+    [RequirePermission("hrm.insurance.manage")]
     public async Task<IActionResult> UpdateRecordStatus(int id, [FromBody] string status, CancellationToken ct)
     {
         var record = await db.SocialInsuranceRecords.FindAsync([id], ct);
@@ -125,6 +129,7 @@ public class InsuranceController(HrDbContext db) : ControllerBase
     }
 
     [HttpPost("tasks")]
+    [RequirePermission("hrm.insurance.manage")]
     public async Task<IActionResult> CreateTask([FromBody] CreateInsuranceTaskRequest request, CancellationToken ct)
     {
         if (!await db.Employees.AnyAsync(e => e.Id == request.EmployeeId, ct))
@@ -144,6 +149,7 @@ public class InsuranceController(HrDbContext db) : ControllerBase
     }
 
     [HttpPatch("tasks/{id:int}/status")]
+    [RequirePermission("hrm.insurance.manage")]
     public async Task<IActionResult> UpdateTaskStatus(int id, [FromBody] string status, CancellationToken ct)
     {
         var task = await db.SocialInsuranceTasks.FindAsync([id], ct);

@@ -36,7 +36,23 @@ public static class PermissionCatalog
         new("hrm.recruitment.positions.create", "HRM", "Recruitment", "Tạo vị trí tuyển dụng"),
         new("hrm.recruitment.positions.update", "HRM", "Recruitment", "Sửa vị trí tuyển dụng"),
         new("hrm.recruitment.positions.delete", "HRM", "Recruitment", "Xóa vị trí tuyển dụng"),
+        new("hrm.recruitment.plans.view", "HRM", "Recruitment", "Xem kế hoạch tuyển dụng"),
+        new("hrm.recruitment.plans.create", "HRM", "Recruitment", "Tạo kế hoạch tuyển dụng"),
+        new("hrm.recruitment.plans.update", "HRM", "Recruitment", "Sửa kế hoạch tuyển dụng"),
+        new("hrm.recruitment.plans.delete", "HRM", "Recruitment", "Xóa kế hoạch tuyển dụng"),
+        new("hrm.recruitment.costs.view", "HRM", "Recruitment", "Xem chi phí tuyển dụng"),
+        new("hrm.recruitment.costs.create", "HRM", "Recruitment", "Tạo chi phí tuyển dụng"),
+        new("hrm.recruitment.costs.update", "HRM", "Recruitment", "Sửa chi phí tuyển dụng"),
+        new("hrm.recruitment.costs.delete", "HRM", "Recruitment", "Xóa chi phí tuyển dụng"),
+        new("hrm.recruitment.reports.view", "HRM", "Recruitment", "Xem báo cáo tuyển dụng"),
+        new("hrm.recruitment.reports.export", "HRM", "Recruitment", "Xuất báo cáo tuyển dụng"),
         new("hrm.birthdays.view", "HRM", "Birthdays", "Xem sinh nhật (dashboard)"),
+        new("hrm.insurance.view", "HRM", "Insurance", "Xem bảo hiểm"),
+        new("hrm.insurance.manage", "HRM", "Insurance", "Quản lý bảo hiểm"),
+        new("hrm.leaves.view", "HRM", "Leaves", "Xem nghỉ phép"),
+        new("hrm.leaves.create", "HRM", "Leaves", "Tạo đơn nghỉ phép"),
+        new("hrm.leaves.manage", "HRM", "Leaves", "Quản lý cấu hình nghỉ phép"),
+        new("hrm.leaves.approve", "HRM", "Leaves", "Duyệt nghỉ phép"),
 
         // WMS
         new("wms.dashboard.view", "WMS", "Dashboard", "Xem dashboard kho"),
@@ -85,6 +101,20 @@ public static class PermissionCatalog
         new("wms.price_books.delete", "WMS", "PriceBooks", "Xóa bảng giá NCC"),
         new("wms.reports.view:all", "WMS", "Reports", "Xem báo cáo kho"),
         new("wms.reports.export", "WMS", "Reports", "Xuất báo cáo kho"),
+        new("wms.transactions.view:all", "WMS", "Transactions", "Xem giao dịch kho"),
+        new("wms.transactions.create", "WMS", "Transactions", "Tạo giao dịch kho"),
+        new("wms.transactions.approve", "WMS", "Transactions", "Duyệt giao dịch kho"),
+
+        // Purchasing (UI module — cung ứng)
+        new("purchasing.dashboard.view", "Purchasing", "Dashboard", "Xem dashboard mua hàng"),
+        new("purchasing.suppliers.view", "Purchasing", "Suppliers", "Xem phân hệ nhà cung cấp"),
+        new("purchasing.plans.view", "Purchasing", "Plans", "Xem kế hoạch mua"),
+        new("purchasing.requests.view", "Purchasing", "Requests", "Xem yêu cầu mua hàng"),
+        new("purchasing.orders.view", "Purchasing", "Orders", "Xem đơn mua hàng"),
+        new("purchasing.deliveries.view", "Purchasing", "Deliveries", "Xem theo dõi giao hàng"),
+        new("purchasing.payments.view", "Purchasing", "Payments", "Xem đề nghị thanh toán"),
+        new("purchasing.documents.view", "Purchasing", "Documents", "Xem hồ sơ chứng từ"),
+        new("purchasing.settings.view", "Purchasing", "Settings", "Xem thiết lập mua hàng"),
     ];
 
     public static IReadOnlySet<string> All { get; } =

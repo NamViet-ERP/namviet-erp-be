@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using NamViet.ERP.Api.Infrastructure.Authorization;
 using NamViet.ERP.Modules.Hr.Domain.Entities;
 using NamViet.ERP.Modules.Hr.Infrastructure.Persistence;
 using NamViet.ERP.SharedKernel.Common;
@@ -25,6 +26,7 @@ public class LeaveController(HrDbContext db) : ControllerBase
 {
     // ── Loại nghỉ phép ─────────────────────────────────────────────────────────
     [HttpGet("types")]
+    [RequirePermission("hrm.leaves.view")]
     public async Task<IActionResult> GetTypes(CancellationToken ct)
     {
         var items = await db.LeaveTypes
@@ -35,7 +37,7 @@ public class LeaveController(HrDbContext db) : ControllerBase
     }
 
     [HttpPost("types")]
-    [Authorize(Roles = "Admin,HR")]
+    [RequirePermission("hrm.leaves.manage")]
     public async Task<IActionResult> CreateType([FromBody] CreateLeaveTypeRequest request, CancellationToken ct)
     {
         var lt = new LeaveType { Name = request.Name, IsPaid = request.IsPaid };
@@ -46,6 +48,7 @@ public class LeaveController(HrDbContext db) : ControllerBase
 
     // ── Đơn nghỉ phép ──────────────────────────────────────────────────────────
     [HttpGet]
+    [RequirePermission("hrm.leaves.view")]
     public async Task<IActionResult> GetAll(
         [FromQuery] int page = 1, [FromQuery] int pageSize = 20,
         [FromQuery] int? employeeId = null,
@@ -80,6 +83,7 @@ public class LeaveController(HrDbContext db) : ControllerBase
     }
 
     [HttpPost]
+    [RequirePermission("hrm.leaves.create")]
     public async Task<IActionResult> Create([FromBody] CreateLeaveRequest request, CancellationToken ct)
     {
         if (!DateOnly.TryParse(request.FromDate, out var from) ||
@@ -101,7 +105,7 @@ public class LeaveController(HrDbContext db) : ControllerBase
     }
 
     [HttpPatch("{id:int}/approve")]
-    [Authorize(Roles = "Admin,HR,BOD")]
+    [RequirePermission("hrm.leaves.approve")]
     public async Task<IActionResult> Approve(int id, [FromBody] ApproveLeaveRequest request, CancellationToken ct)
     {
         var leave = await db.LeaveRequests.FindAsync([id], ct);
@@ -131,6 +135,7 @@ public class LeaveController(HrDbContext db) : ControllerBase
 
     // ── Số ngày phép còn lại ────────────────────────────────────────────────────
     [HttpGet("balance/{employeeId:int}/{year:int}")]
+    [RequirePermission("hrm.leaves.view")]
     public async Task<IActionResult> GetBalance(int employeeId, int year, CancellationToken ct)
     {
         var b = await db.LeaveBalances
@@ -145,7 +150,7 @@ public class LeaveController(HrDbContext db) : ControllerBase
     }
 
     [HttpPost("balance")]
-    [Authorize(Roles = "Admin,HR")]
+    [RequirePermission("hrm.leaves.manage")]
     public async Task<IActionResult> SetBalance([FromBody] SetLeaveBalanceRequest request, CancellationToken ct)
     {
         var balance = await db.LeaveBalances

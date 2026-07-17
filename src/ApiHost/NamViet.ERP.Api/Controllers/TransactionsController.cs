@@ -2,6 +2,7 @@ using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using NamViet.ERP.Api.Infrastructure.Authorization;
 using NamViet.ERP.Modules.Warehouse.Application.DTOs;
 using NamViet.ERP.Modules.Warehouse.Infrastructure.Helpers;
 using NamViet.ERP.Modules.Warehouse.Application.Transactions;
@@ -17,6 +18,7 @@ namespace NamViet.ERP.Api.Controllers;
 public class TransactionsController(WarehouseDbContext db, IMediator mediator) : ControllerBase
 {
     [HttpGet]
+    [RequirePermission("wms.transactions.view:all")]
     public async Task<IActionResult> GetAll(
         [FromQuery] int page = 1, [FromQuery] int pageSize = 20,
         [FromQuery] string? type = null, [FromQuery] string? status = null,
@@ -55,6 +57,7 @@ public class TransactionsController(WarehouseDbContext db, IMediator mediator) :
     }
 
     [HttpGet("{ticketCode}")]
+    [RequirePermission("wms.transactions.view:all")]
     public async Task<IActionResult> GetById(string ticketCode, CancellationToken ct)
     {
         var t = await db.WarehouseTransactions
@@ -76,7 +79,7 @@ public class TransactionsController(WarehouseDbContext db, IMediator mediator) :
     }
 
     [HttpPost]
-    [Authorize(Roles = "Admin,Warehouse_Keeper,Procurement")]
+    [RequirePermission("wms.transactions.create")]
     public async Task<IActionResult> Create([FromBody] CreateTransactionRequest request, CancellationToken ct)
     {
         var result = await mediator.Send(new CreateTransactionCommand(request), ct);
@@ -84,7 +87,7 @@ public class TransactionsController(WarehouseDbContext db, IMediator mediator) :
     }
 
     [HttpPost("{ticketCode}/approve")]
-    [Authorize(Roles = "Admin,BOD,PM,Accountant")]
+    [RequirePermission("wms.transactions.approve")]
     public async Task<IActionResult> Approve(string ticketCode, [FromBody] ApproveTransactionRequest request, CancellationToken ct)
     {
         var status = await mediator.Send(
