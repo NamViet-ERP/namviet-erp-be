@@ -29,11 +29,13 @@ public static class IdentityModule
             opt.Password.RequireUppercase = true;
             opt.Password.RequireNonAlphanumeric = false;
             opt.User.RequireUniqueEmail = true;
+            IdentitySecurityOptions.ConfigureLockout(opt);
         })
         .AddEntityFrameworkStores<IdentityDbContext>()
         .AddDefaultTokenProviders();
 
         services.AddScoped<ITokenService, TokenService>();
+        services.AddSingleton<IRefreshTokenHasher, RefreshTokenHasher>();
         services.AddScoped<IPermissionService, PermissionService>();
         services.AddScoped<NamViet.ERP.SharedKernel.Interfaces.IAccountStatusProvider, AccountStatusProvider>();
 

@@ -22,6 +22,7 @@ using NamViet.ERP.Api.Infrastructure.Authorization;
 using NamViet.ERP.Modules.Identity.Application.Commands;
 
 using NamViet.ERP.Modules.Identity.Domain.Entities;
+using NamViet.ERP.Modules.Identity.Infrastructure.Handlers;
 
 using NamViet.ERP.SharedKernel.Interfaces;
 
@@ -64,20 +65,11 @@ public class AuthController(
     private async Task<IActionResult> LoginWithUsernameAsync(LoginRequest request, CancellationToken ct)
 
     {
-
-        var user = await userManager.Users
-
-            .FirstOrDefaultAsync(u =>
-
-                (u.UserName == request.Username || u.Email == request.Username) && u.DeletedAt == null, ct);
-
-        if (user is null) return Unauthorized("Tài khoản không tồn tại.");
-
-        if (!user.IsActive) return Unauthorized("Tài khoản của bạn đã bị khóa hoặc chưa được kích hoạt.");
-
-
-
-        var auth = await mediator.Send(new LoginCommand(user.Email!, request.Password, request.RememberMe), ct);
+        var auth = await mediator.Send(
+            new LoginCommand(request.Username, request.Password, request.RememberMe),
+            ct);
+        var user = await userManager.FindByIdAsync(auth.User.Id.ToString())
+            ?? throw new UnauthorizedAccessException(LoginHandler.InvalidLoginMessage);
 
         var authUser = await BuildAuthUserDtoAsync(user, ct);
 

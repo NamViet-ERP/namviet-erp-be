@@ -7,7 +7,7 @@ public sealed class LoginCommandValidator : AbstractValidator<LoginCommand>
 {
     public LoginCommandValidator()
     {
-        RuleFor(x => x.Email)
+        RuleFor(x => x.Username)
             .NotEmpty().WithMessage("Vui lòng nhập email hoặc tên đăng nhập.");
 
         RuleFor(x => x.Password)

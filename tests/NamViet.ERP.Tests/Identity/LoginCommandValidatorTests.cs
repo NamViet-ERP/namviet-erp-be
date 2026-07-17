@@ -9,10 +9,10 @@ public class LoginCommandValidatorTests
     private readonly LoginCommandValidator _validator = new();
 
     [Fact]
-    public void Should_fail_when_email_empty()
+    public void Should_fail_when_username_empty()
     {
         var result = _validator.TestValidate(new LoginCommand("", "password"));
-        result.ShouldHaveValidationErrorFor(x => x.Email);
+        result.ShouldHaveValidationErrorFor(x => x.Username);
     }
 
     [Fact]

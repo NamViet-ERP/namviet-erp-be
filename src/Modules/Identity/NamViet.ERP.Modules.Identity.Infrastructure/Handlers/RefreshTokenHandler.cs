@@ -14,43 +14,51 @@ namespace NamViet.ERP.Modules.Identity.Infrastructure.Handlers;
 public class RefreshTokenHandler(
     UserManager<ApplicationUser> userManager,
     ITokenService tokenService,
+    IRefreshTokenHasher refreshTokenHasher,
     IPermissionService permissionService,
     IdentityDbContext db,
     IEmployeeInfoProvider employeeInfo) : IRequestHandler<RefreshTokenCommand, AuthResponse>
 {
     public async Task<AuthResponse> Handle(RefreshTokenCommand request, CancellationToken ct)
     {
-        var stored = await db.RefreshTokens
-            .Include(t => t.User)
-            .FirstOrDefaultAsync(t => t.Token == request.RefreshToken, ct);
+        var now = DateTime.UtcNow;
+        var presentedTokenHash = refreshTokenHasher.Hash(request.RefreshToken);
+        var newRefreshValue = tokenService.GenerateRefreshToken();
+        var newRefreshHash = refreshTokenHasher.Hash(newRefreshValue);
+        await using var transaction = await db.Database.BeginTransactionAsync(ct);
 
-        if (stored is null || !stored.IsActive)
+        var stored = await RefreshTokenRotationStore.TryConsumeAsync(
+            db,
+            request.RefreshToken,
+            presentedTokenHash,
+            newRefreshHash,
+            now,
+            ct);
+
+        if (stored is null)
             throw new UnauthorizedAccessException("Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.");
 
         var user = stored.User;
         if (user.DeletedAt.HasValue || !user.IsActive)
             throw new UnauthorizedAccessException("Tài khoản không còn hoạt động.");
 
+        var remainingDays = Math.Max(1, (stored.ExpiresAt - now).TotalDays);
+        var newRefresh = new RefreshToken
+        {
+            UserId = user.Id,
+            TokenHash = newRefreshHash,
+            ExpiresAt = now.AddDays(remainingDays),
+        };
+        db.RefreshTokens.Add(newRefresh);
+
         var roles = await userManager.GetRolesAsync(user);
         var permissions = await permissionService.GetPermissionsForUserAsync(user, ct);
         var linked = await employeeInfo.GetByUserAsync(user.Id, user.EmployeeCode, ct);
         var accessToken = tokenService.GenerateAccessToken(user, roles, permissions, linked?.EmployeeId);
-        var newRefreshValue = tokenService.GenerateRefreshToken();
 
-        stored.RevokedAt = DateTime.UtcNow;
-        stored.ReplacedByToken = newRefreshValue;
-
-        var remainingDays = Math.Max(1, (stored.ExpiresAt - DateTime.UtcNow).TotalDays);
-        var newRefresh = new RefreshToken
-        {
-            UserId = user.Id,
-            Token = newRefreshValue,
-            ExpiresAt = DateTime.UtcNow.AddDays(remainingDays),
-        };
-        db.RefreshTokens.Add(newRefresh);
-
-        user.UpdatedAt = DateTime.UtcNow;
+        user.UpdatedAt = now;
         await db.SaveChangesAsync(ct);
+        await transaction.CommitAsync(ct);
 
         return new AuthResponse(
             accessToken,

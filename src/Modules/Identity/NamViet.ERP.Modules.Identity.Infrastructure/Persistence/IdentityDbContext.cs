@@ -41,7 +41,10 @@ public class IdentityDbContext(DbContextOptions<IdentityDbContext> options)
         {
             e.ToTable("refresh_tokens");
             e.HasKey(t => t.Id);
-            e.Property(t => t.Token).HasMaxLength(512).IsRequired();
+            e.Property(t => t.Token).HasMaxLength(512);
+            e.Property(t => t.TokenHash).HasMaxLength(64);
+            e.Property(t => t.ReplacedByTokenHash).HasMaxLength(64);
+            e.HasIndex(t => t.TokenHash).IsUnique();
             e.HasOne(t => t.User)
              .WithMany(u => u.RefreshTokens)
              .HasForeignKey(t => t.UserId)
