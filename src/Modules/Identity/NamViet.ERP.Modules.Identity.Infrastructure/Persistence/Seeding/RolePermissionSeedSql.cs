@@ -38,6 +38,38 @@ internal static class RolePermissionSeedSql
         return builder.ToString();
     }
 
+    /// <summary>
+    /// Replace permission claims for selected roles so revoked rights (e.g. Accountant write) are removed.
+    /// </summary>
+    public static string BuildResyncSelectedRolesSql()
+    {
+        var builder = new StringBuilder();
+        foreach (var roleName in RolePermissionTemplates.RolesToResync)
+        {
+            if (!RolePermissionTemplates.ByIdentityRoleName.TryGetValue(roleName, out var permissions))
+                continue;
+
+            var normalized = roleName.ToUpperInvariant();
+            var permissionArray = string.Join(", ", permissions.Select(p => $"'{p.Replace("'", "''")}'"));
+
+            builder.AppendLine($"""
+                DELETE FROM identity.role_claims rc
+                USING identity.roles r
+                WHERE rc."RoleId" = r."Id"
+                  AND r."NormalizedName" = '{normalized}'
+                  AND rc."ClaimType" = '{PermissionCatalog.ClaimType}';
+
+                INSERT INTO identity.role_claims ("RoleId", "ClaimType", "ClaimValue")
+                SELECT r."Id", '{PermissionCatalog.ClaimType}', perm
+                FROM identity.roles r
+                CROSS JOIN unnest(ARRAY[{permissionArray}]::text[]) AS perm
+                WHERE r."NormalizedName" = '{normalized}';
+                """);
+        }
+
+        return builder.ToString();
+    }
+
     public static string BuildDownSql() =>
         $"DELETE FROM identity.role_claims WHERE \"ClaimType\" = '{PermissionCatalog.ClaimType}';";
 }

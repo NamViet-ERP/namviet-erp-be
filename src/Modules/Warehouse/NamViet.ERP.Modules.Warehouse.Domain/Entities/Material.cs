@@ -16,7 +16,6 @@ public class Material : BaseEntity
     public bool IsActive { get; set; } = true;
 
     public MaterialCategory Category { get; set; } = null!;
-    public ICollection<PriceBook> PriceBooks { get; set; } = [];
     public ICollection<ProjectInventory> ProjectInventories { get; set; } = [];
     public ICollection<WarehouseTransactionItem> TransactionItems { get; set; } = [];
 }

@@ -13,7 +13,8 @@ namespace NamViet.ERP.Api.Controllers.Wms;
 public class ExportsController(
     IExportApplicationService exports,
     IWmsVoucherExcelExportService voucherExport,
-    IValidator<CreateExportDto> createValidator) : ControllerBase
+    IValidator<CreateExportDto> createValidator,
+    ProjectWarehouseAccessService projectAccess) : ControllerBase
 {
     [HttpGet]
     [RequirePermission("wms.exports.view:all")]
@@ -64,7 +65,16 @@ public class ExportsController(
         var validation = await createValidator.ValidateAsync(dto, ct);
         if (!validation.IsValid)
             return BadRequest(string.Join("; ", validation.Errors.Select(e => e.ErrorMessage)));
-        return Ok(await exports.CreateAsync(dto, ct));
+        try
+        {
+            if (!string.IsNullOrWhiteSpace(dto.Project))
+                await projectAccess.EnsureCanOperateOnProjectAsync(dto.Project, ct);
+            return Ok(await exports.CreateAsync(dto, ct));
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, ex.Message);
+        }
     }
 
     [HttpPut("{id}")]
@@ -74,7 +84,16 @@ public class ExportsController(
         var validation = await createValidator.ValidateAsync(dto, ct);
         if (!validation.IsValid)
             return BadRequest(string.Join("; ", validation.Errors.Select(e => e.ErrorMessage)));
-        return await WmsVoucherControllerResponses.ExecuteAsync(() => exports.UpdateAsync(id, dto, ct), ct);
+        try
+        {
+            if (!string.IsNullOrWhiteSpace(dto.Project))
+                await projectAccess.EnsureCanOperateOnProjectAsync(dto.Project, ct);
+            return await WmsVoucherControllerResponses.ExecuteAsync(() => exports.UpdateAsync(id, dto, ct), ct);
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, ex.Message);
+        }
     }
 
     [HttpPost("{id}/approve")]

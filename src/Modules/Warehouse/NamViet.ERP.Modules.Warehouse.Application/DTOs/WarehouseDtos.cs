@@ -22,20 +22,9 @@ public record UpsertSupplierRequest(
     string SupplierCode, string SupplierName,
     string? ContactPhone, int MaxDebtDays = 30, string Rating = "A");
 
-// ── Price Book ─────────────────────────────────────────────────────────────
-public record PriceBookDto(
-    int Id, string MaterialCode, string MaterialName,
-    int SupplierId, string SupplierName,
-    decimal UnitPrice, string? PurchaseUrl, string? CatalogUrl, DateTime PriceDate);
-
-public record CreatePriceBookRequest(
-    string MaterialCode, int SupplierId,
-    decimal UnitPrice, string? PurchaseUrl, string? CatalogUrl);
-
-public record PriceBookLookupDto(
-    decimal UnitPrice, string? PurchaseUrl, string? CatalogUrl, DateTime? PriceDate);
-
 // ── Projects ──────────────────────────────────────────────────────────────
+public record ProjectWarehouseKeeperDto(Guid UserId, string DisplayName);
+
 public record ProjectDto(
     string ProjectCode, string ProjectName, string ProjectType,
     Guid PmId, string PmName, DateOnly StartDate, DateOnly? EndDate,
@@ -45,16 +34,19 @@ public record ProjectDto(
     decimal StockReservedQty = 0,
     int StockMaterialCount = 0,
     decimal ApprovedImportValue = 0,
-    decimal MaterialBudgetRemaining = 0);
+    decimal MaterialBudgetRemaining = 0,
+    IReadOnlyList<ProjectWarehouseKeeperDto>? WarehouseKeepers = null);
 
 public record CreateProjectRequest(
     string ProjectCode, string ProjectName, ProjectType ProjectType,
     Guid PmId, string PmName, DateOnly StartDate, DateOnly? EndDate,
-    decimal MaterialBudget = 0m);
+    decimal MaterialBudget = 0m,
+    IReadOnlyList<ProjectWarehouseKeeperDto>? WarehouseKeepers = null);
 
 public record UpdateProjectRequest(
     string ProjectName, Guid PmId, string PmName,
-    DateOnly? EndDate, decimal MaterialBudget, ProjectStatus Status);
+    DateOnly? EndDate, decimal MaterialBudget, ProjectStatus Status,
+    IReadOnlyList<ProjectWarehouseKeeperDto>? WarehouseKeepers = null);
 
 // ── Project Inventory ─────────────────────────────────────────────────────
 public record ProjectInventoryDto(

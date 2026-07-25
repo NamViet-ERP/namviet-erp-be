@@ -11,6 +11,5 @@ public class Supplier : BaseEntity
     public int MaxDebtDays { get; set; } = 30;
     public string Rating { get; set; } = "A";                  // A, B, C
 
-    public ICollection<PriceBook> PriceBooks { get; set; } = [];
     public ICollection<WarehouseTransaction> Transactions { get; set; } = [];
 }

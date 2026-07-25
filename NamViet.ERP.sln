@@ -49,6 +49,8 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "scripts", "scripts", "{C4AD
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DatabaseMigrator", "scripts\DatabaseMigrator\DatabaseMigrator.csproj", "{4145F2EB-6DAB-461B-AC24-EBC15289C766}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SeedPurchasingDemoData", "scripts\SeedPurchasingDemoData\SeedPurchasingDemoData.csproj", "{5155F2EB-6DAB-461B-AC24-EBC15289C767}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -227,6 +229,18 @@ Global
 		{4145F2EB-6DAB-461B-AC24-EBC15289C766}.Release|x64.Build.0 = Release|Any CPU
 		{4145F2EB-6DAB-461B-AC24-EBC15289C766}.Release|x86.ActiveCfg = Release|Any CPU
 		{4145F2EB-6DAB-461B-AC24-EBC15289C766}.Release|x86.Build.0 = Release|Any CPU
+		{5155F2EB-6DAB-461B-AC24-EBC15289C767}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{5155F2EB-6DAB-461B-AC24-EBC15289C767}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{5155F2EB-6DAB-461B-AC24-EBC15289C767}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{5155F2EB-6DAB-461B-AC24-EBC15289C767}.Debug|x64.Build.0 = Debug|Any CPU
+		{5155F2EB-6DAB-461B-AC24-EBC15289C767}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{5155F2EB-6DAB-461B-AC24-EBC15289C767}.Debug|x86.Build.0 = Debug|Any CPU
+		{5155F2EB-6DAB-461B-AC24-EBC15289C767}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{5155F2EB-6DAB-461B-AC24-EBC15289C767}.Release|Any CPU.Build.0 = Release|Any CPU
+		{5155F2EB-6DAB-461B-AC24-EBC15289C767}.Release|x64.ActiveCfg = Release|Any CPU
+		{5155F2EB-6DAB-461B-AC24-EBC15289C767}.Release|x64.Build.0 = Release|Any CPU
+		{5155F2EB-6DAB-461B-AC24-EBC15289C767}.Release|x86.ActiveCfg = Release|Any CPU
+		{5155F2EB-6DAB-461B-AC24-EBC15289C767}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -252,5 +266,6 @@ Global
 		{40404040-4040-4040-4040-404040404040} = {DDDDDDDD-DDDD-DDDD-DDDD-DDDDDDDDDDDD}
 		{9EEC3BBE-36EE-4C5C-AECA-FB71C90E2FFE} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 		{4145F2EB-6DAB-461B-AC24-EBC15289C766} = {C4AD9936-F0DF-1090-6077-3D4A6324E662}
+		{5155F2EB-6DAB-461B-AC24-EBC15289C767} = {C4AD9936-F0DF-1090-6077-3D4A6324E662}
 	EndGlobalSection
 EndGlobal

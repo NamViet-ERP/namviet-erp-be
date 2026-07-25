@@ -12,20 +12,31 @@ public record UpdateWarehouseDto(
 
 public record ImportItemDto(
     string ProductId, string Sku, string Name, decimal Qty, string Unit, decimal UnitPrice,
-    string? Supplier = null, int? SupplierId = null);
+    string? Supplier = null, int? SupplierId = null, string? Notes = null);
+public record ImportAttachmentDto(
+    Guid Id,
+    string Kind,
+    string FileName,
+    string StorageKey,
+    string UploadedAt);
+public record CreateImportDto(
+    string VoucherCode, string Date, string Supplier, string ReferenceCode,
+    decimal TotalValue, string Status, string WarehouseApproval, string ApprovedBy,
+    string WarehouseKeeper, List<ImportItemDto> Items, string? CreatedBy, string Note,
+    string WarehouseId, bool? IsDirectProcurement, string? Project,
+    string? PlanCode = null);
 public record ImportDto(
     string Id, string VoucherCode, string Date, string Supplier, string ReferenceCode,
     decimal TotalValue, string Status, string WarehouseApproval, string ApprovedBy,
     string? ApprovedAt, string WarehouseKeeper, List<ImportItemDto> Items, string CreatedBy, string Note,
     string WarehouseId, bool? IsDirectProcurement, string? Project,
-    string CreatedAt);
-public record CreateImportDto(
-    string VoucherCode, string Date, string Supplier, string ReferenceCode,
-    decimal TotalValue, string Status, string WarehouseApproval, string ApprovedBy,
-    string WarehouseKeeper, List<ImportItemDto> Items, string? CreatedBy, string Note,
-    string WarehouseId, bool? IsDirectProcurement, string? Project);
+    string CreatedAt,
+    string? PlanCode = null,
+    string? ReceiptEvaluation = null,
+    List<ImportAttachmentDto>? Attachments = null);
 
 public record ApproveImportRequest(bool ConfirmOverBudget = false);
+public record UpdateImportReceiptEvaluationRequest(string? Evaluation);
 
 public record ImportBudgetExceededResponse(
     string Code,

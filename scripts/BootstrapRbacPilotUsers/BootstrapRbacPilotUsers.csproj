@@ -11,6 +11,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Modules\Identity\NamViet.ERP.Modules.Identity.Infrastructure\NamViet.ERP.Modules.Identity.Infrastructure.csproj" />
     <ProjectReference Include="..\..\src\Modules\Hr\NamViet.ERP.Modules.Hr.Infrastructure\NamViet.ERP.Modules.Hr.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Warehouse\NamViet.ERP.Modules.Warehouse.Infrastructure\NamViet.ERP.Modules.Warehouse.Infrastructure.csproj" />
   </ItemGroup>
 
 </Project>

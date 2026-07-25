@@ -86,6 +86,57 @@ Lần chạy sau sẽ bỏ qua theo marker (`demo_data_seed_v1`, `demo_data_seed
 
 ---
 
+## RBAC pilot users (Admin / HR / Staff / PM / Thủ kho / Kế toán / Cung ứng)
+
+| File | Mục đích |
+|------|----------|
+| `BootstrapRbacPilotUsers/` | Tạo user + hồ sơ NV pilot + gán thủ kho vào dự án demo |
+
+Password chung: `Test@123`
+
+| Email | Role | Mã NV |
+|-------|------|-------|
+| `admin@namviet.vn` | Admin | NV-0001 |
+| `hr@namviet.vn` | HR | NV-0002 |
+| `staff@namviet.vn` | Staff | NV-0003 |
+| `pm@namviet.vn` | PM | NV-0004 |
+| `keeper@namviet.vn` | Warehouse_Keeper | NV-0005 |
+| `keeper2@namviet.vn` | Warehouse_Keeper | NV-0006 |
+| `accountant@namviet.vn` | Accountant | NV-0007 |
+| `procurement@namviet.vn` | Procurement | NV-0008 |
+
+Gán thủ kho (nếu dự án đã seed):
+
+- `keeper@` → `DA-2026-DEMO-001`, `DEMO-PUR-PROJ`
+- `keeper2@` → `DA-2026-DEMO-002`, `DEMO-PUR-PROJ`
+
+```powershell
+# Nên chạy SeedWmsDemoData (+ SeedPurchasingDemoData) trước để có dự án demo
+cd scripts/BootstrapRbacPilotUsers
+$env:ConnectionStrings__Default = "Host=localhost;Port=5432;Database=namviet_erp;Username=...;Password=..."
+dotnet run
+```
+
+Script idempotent: user đã có thì reset password / sync role; gán keeper bỏ qua nếu đã tồn tại.
+
+---
+
+## Dữ liệu demo mua hàng (KHMH / PO)
+
+| File | Mục đích |
+|------|----------|
+| `SeedPurchasingDemoData/` | CLI seed dự án `DEMO-PUR-PROJ`, KHMH, PO, NCC demo |
+
+(Migration `SeedPurchasingDemoData` cũng có thể đã chạy khi migrate warehouse.)
+
+```powershell
+cd scripts/SeedPurchasingDemoData
+$env:ConnectionStrings__Default = "Host=localhost;Port=5432;Database=namviet_erp;Username=...;Password=..."
+dotnet run
+```
+
+---
+
 ## Liên quan repo
 
 - Deploy checklist: `docs/DEPLOY.md`  

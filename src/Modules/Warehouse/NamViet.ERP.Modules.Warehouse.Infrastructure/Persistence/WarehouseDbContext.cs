@@ -41,20 +41,29 @@ public class WarehouseDbContext(DbContextOptions<WarehouseDbContext> options) : 
     public DbSet<MaterialUnit> MaterialUnits => Set<MaterialUnit>();
     public DbSet<InventoryReservation> InventoryReservations => Set<InventoryReservation>();
     public DbSet<Supplier> Suppliers => Set<Supplier>();
-    public DbSet<PriceBook> PriceBooks => Set<PriceBook>();
     public DbSet<Project> Projects => Set<Project>();
+    public DbSet<ProjectWarehouseKeeper> ProjectWarehouseKeepers => Set<ProjectWarehouseKeeper>();
     public DbSet<ProjectInventory> ProjectInventories => Set<ProjectInventory>();
     public DbSet<ProjectMaterialLoan> ProjectMaterialLoans => Set<ProjectMaterialLoan>();
     public DbSet<WarehouseTransaction> WarehouseTransactions => Set<WarehouseTransaction>();
     public DbSet<WarehouseTransactionItem> WarehouseTransactionItems => Set<WarehouseTransactionItem>();
+    public DbSet<WarehouseTransactionAttachment> WarehouseTransactionAttachments => Set<WarehouseTransactionAttachment>();
     public DbSet<WmsWarehouse> WmsWarehouses => Set<WmsWarehouse>();
     public DbSet<WarehouseInventory> WarehouseInventories => Set<WarehouseInventory>();
     public DbSet<Stocktake> Stocktakes => Set<Stocktake>();
     public DbSet<StocktakeItem> StocktakeItems => Set<StocktakeItem>();
     public DbSet<ConsumableQuota> ConsumableQuotas => Set<ConsumableQuota>();
     public DbSet<ProjectBom> ProjectBoms => Set<ProjectBom>();
+    public DbSet<PurchasePlan> PurchasePlans => Set<PurchasePlan>();
+    public DbSet<PurchasePlanLine> PurchasePlanLines => Set<PurchasePlanLine>();
+    public DbSet<PurchasePlanLineQuote> PurchasePlanLineQuotes => Set<PurchasePlanLineQuote>();
     public DbSet<PurchaseOrder> PurchaseOrders => Set<PurchaseOrder>();
     public DbSet<PurchaseOrderItem> PurchaseOrderItems => Set<PurchaseOrderItem>();
+    public DbSet<PurchaseDefect> PurchaseDefects => Set<PurchaseDefect>();
+    public DbSet<PurchaseDefectItem> PurchaseDefectItems => Set<PurchaseDefectItem>();
+    public DbSet<PurchaseDefectAttachment> PurchaseDefectAttachments => Set<PurchaseDefectAttachment>();
+    public DbSet<PurchasePayment> PurchasePayments => Set<PurchasePayment>();
+    public DbSet<ActivityEvent> ActivityEvents => Set<ActivityEvent>();
     public DbSet<Conversion> Conversions => Set<Conversion>();
     public DbSet<ConversionItem> ConversionItems => Set<ConversionItem>();
     public DbSet<ProductBarcode> ProductBarcodes => Set<ProductBarcode>();
@@ -138,17 +147,6 @@ public class WarehouseDbContext(DbContextOptions<WarehouseDbContext> options) : 
             e.HasQueryFilter(s => s.DeletedAt == null);
         });
 
-        model.Entity<PriceBook>(e =>
-        {
-            e.ToTable("price_book");
-            e.HasKey(p => p.Id);
-            e.Property(p => p.UnitPrice).HasColumnType("numeric(18,2)").IsRequired();
-            e.HasOne(p => p.Material).WithMany(m => m.PriceBooks)
-             .HasForeignKey(p => p.MaterialCode).OnDelete(DeleteBehavior.Cascade);
-            e.HasOne(p => p.Supplier).WithMany(s => s.PriceBooks)
-             .HasForeignKey(p => p.SupplierId).OnDelete(DeleteBehavior.Cascade);
-        });
-
         model.Entity<Project>(e =>
         {
             e.ToTable("projects");
@@ -162,6 +160,18 @@ public class WarehouseDbContext(DbContextOptions<WarehouseDbContext> options) : 
             e.Property(p => p.ClientProjectId).HasMaxLength(50);
             e.Property(p => p.Stage).HasMaxLength(50);
             e.HasQueryFilter(p => p.DeletedAt == null);
+            e.HasMany(p => p.WarehouseKeepers).WithOne(k => k.Project)
+             .HasForeignKey(k => k.ProjectCode).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        model.Entity<ProjectWarehouseKeeper>(e =>
+        {
+            e.ToTable("project_warehouse_keepers");
+            e.HasKey(k => k.Id);
+            e.Property(k => k.ProjectCode).HasMaxLength(50).IsRequired();
+            e.Property(k => k.DisplayName).HasMaxLength(255).IsRequired();
+            e.HasIndex(k => new { k.ProjectCode, k.UserId }).IsUnique();
+            e.HasIndex(k => k.UserId);
         });
 
         model.Entity<ProjectInventory>(e =>
@@ -217,6 +227,7 @@ public class WarehouseDbContext(DbContextOptions<WarehouseDbContext> options) : 
             e.Property(t => t.FromWarehouseId).HasMaxLength(50);
             e.Property(t => t.ToWarehouseId).HasMaxLength(50);
             e.Property(t => t.ReferenceCode).HasMaxLength(100);
+            e.Property(t => t.PurchasePlanCode).HasMaxLength(50);
             e.Property(t => t.SoCode).HasMaxLength(100);
             e.Property(t => t.Customer).HasMaxLength(255);
             e.Property(t => t.WarehouseKeeper).HasMaxLength(255);
@@ -226,6 +237,7 @@ public class WarehouseDbContext(DbContextOptions<WarehouseDbContext> options) : 
                 .HasDefaultValue(WarehouseKeeperApprovalStatus.Pending);
             e.Property(t => t.BeneficiaryProjectCode).HasMaxLength(50);
             e.Property(t => t.SupplierName).HasMaxLength(255);
+            e.Property(t => t.ReceiptEvaluation).HasMaxLength(2000);
             e.Property(t => t.LinkedTicketCode).HasMaxLength(50);
             e.HasOne(t => t.LinkedTransaction).WithMany()
              .HasForeignKey(t => t.LinkedTicketCode)
@@ -255,6 +267,18 @@ public class WarehouseDbContext(DbContextOptions<WarehouseDbContext> options) : 
              .HasForeignKey(i => i.TicketCode).OnDelete(DeleteBehavior.Cascade);
             e.HasOne(i => i.Material).WithMany(m => m.TransactionItems)
              .HasForeignKey(i => i.MaterialCode).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        model.Entity<WarehouseTransactionAttachment>(e =>
+        {
+            e.ToTable("warehouse_transaction_attachments");
+            e.HasKey(a => a.Id);
+            e.Property(a => a.Kind).HasMaxLength(20).IsRequired();
+            e.Property(a => a.StorageKey).HasMaxLength(500).IsRequired();
+            e.Property(a => a.FileName).HasMaxLength(255).IsRequired();
+            e.HasIndex(a => a.TicketCode);
+            e.HasOne(a => a.Transaction).WithMany(t => t.Attachments)
+             .HasForeignKey(a => a.TicketCode).OnDelete(DeleteBehavior.Cascade);
         });
 
         model.Entity<WmsWarehouse>(e =>
@@ -326,16 +350,114 @@ public class WarehouseDbContext(DbContextOptions<WarehouseDbContext> options) : 
             e.Property(b => b.Qty).HasColumnType("numeric(18,4)");
         });
 
+        model.Entity<PurchasePlan>(e =>
+        {
+            e.ToTable("purchase_plans");
+            e.HasKey(p => p.Code);
+            e.Property(p => p.Code).HasMaxLength(50);
+            e.Property(p => p.ProjectCode).HasMaxLength(50).IsRequired();
+            e.Property(p => p.Status).HasMaxLength(30).IsRequired();
+            e.Property(p => p.Note).HasMaxLength(2000);
+            e.Property(p => p.CreatedByName).HasMaxLength(200);
+            e.Property(p => p.BudgetTotal).HasColumnType("numeric(18,2)");
+            e.Property(p => p.ProposalTotal).HasColumnType("numeric(18,2)");
+            e.Property(p => p.PurchaseTotal).HasColumnType("numeric(18,2)");
+            e.Property(p => p.PaidTotal).HasColumnType("numeric(18,2)");
+            e.HasOne(p => p.Project).WithMany()
+             .HasForeignKey(p => p.ProjectCode).OnDelete(DeleteBehavior.Restrict);
+            e.HasIndex(p => p.ProjectCode);
+            e.HasIndex(p => p.Status);
+            e.HasIndex(p => p.CreatedAt);
+            e.HasQueryFilter(p => p.DeletedAt == null);
+        });
+
+        model.Entity<PurchasePlanLine>(e =>
+        {
+            e.ToTable("purchase_plan_lines");
+            e.HasKey(l => l.Id);
+            e.Property(l => l.PlanCode).HasMaxLength(50).IsRequired();
+            e.Property(l => l.SystemName).HasMaxLength(200);
+            e.Property(l => l.Category).HasMaxLength(200);
+            e.Property(l => l.MaterialCode).HasMaxLength(100);
+            e.Property(l => l.ProductName).HasMaxLength(500).IsRequired();
+            e.Property(l => l.Spec).HasMaxLength(1000);
+            e.Property(l => l.Unit).HasMaxLength(50);
+            e.Property(l => l.Quantity).HasColumnType("numeric(18,4)");
+            e.Property(l => l.KgPerUnit).HasColumnType("numeric(18,4)");
+            e.Property(l => l.LineNote).HasMaxLength(2000);
+            e.Property(l => l.PurchaseStatus).HasMaxLength(100);
+            e.Property(l => l.StatusNote).HasMaxLength(1000);
+            e.Property(l => l.BudgetUnitPrice).HasColumnType("numeric(18,2)");
+            e.Property(l => l.BudgetAmount).HasColumnType("numeric(18,2)");
+            e.Property(l => l.ProposalKgPerUnit).HasColumnType("numeric(18,4)");
+            e.Property(l => l.ProposalUnitPrice).HasColumnType("numeric(18,2)");
+            e.Property(l => l.ProposalAmount).HasColumnType("numeric(18,2)");
+            e.Property(l => l.ProposalSupplierName).HasMaxLength(300);
+            e.Property(l => l.ProposalNote).HasMaxLength(2000);
+            e.Property(l => l.ProposalStatus).HasMaxLength(100);
+            e.Property(l => l.DeliveryNote).HasMaxLength(2000);
+            e.Property(l => l.PurchaseKgPerUnit).HasColumnType("numeric(18,4)");
+            e.Property(l => l.PurchaseUnitPrice).HasColumnType("numeric(18,2)");
+            e.Property(l => l.PurchaseAmount).HasColumnType("numeric(18,2)");
+            e.Property(l => l.PurchaseSupplierName).HasMaxLength(300);
+            e.Property(l => l.PurchaseNote).HasMaxLength(2000);
+            e.Property(l => l.SelectedUnitPrice).HasColumnType("numeric(18,2)");
+            e.Property(l => l.SelectedAmount).HasColumnType("numeric(18,2)");
+            e.Property(l => l.SelectedSupplierName).HasMaxLength(300);
+            e.Property(l => l.SelectionReason).HasMaxLength(1000);
+            e.Property(l => l.OrderedQty).HasColumnType("numeric(18,4)");
+            e.Property(l => l.ReceivedQty).HasColumnType("numeric(18,4)");
+            e.Property(l => l.DefectQty).HasColumnType("numeric(18,4)");
+            e.Ignore(l => l.RemainingOrderableQty);
+            e.HasOne(l => l.Plan).WithMany(p => p.Lines)
+             .HasForeignKey(l => l.PlanCode).OnDelete(DeleteBehavior.Cascade);
+            e.HasIndex(l => new { l.PlanCode, l.LineNo }).IsUnique();
+            e.HasIndex(l => l.MaterialCode);
+        });
+
+        model.Entity<PurchasePlanLineQuote>(e =>
+        {
+            e.ToTable("purchase_plan_line_quotes");
+            e.HasKey(q => q.Id);
+            e.Property(q => q.KgPerUnit).HasColumnType("numeric(18,4)");
+            e.Property(q => q.UnitPrice).HasColumnType("numeric(18,2)");
+            e.Property(q => q.Amount).HasColumnType("numeric(18,2)");
+            e.Property(q => q.SupplierName).HasMaxLength(300);
+            e.Property(q => q.Note).HasMaxLength(2000);
+            e.Property(q => q.Status).HasMaxLength(100);
+            e.HasOne(q => q.PlanLine).WithMany(l => l.Quotes)
+             .HasForeignKey(q => q.PlanLineId).OnDelete(DeleteBehavior.Cascade);
+            e.HasIndex(q => new { q.PlanLineId, q.SortOrder });
+        });
+
         model.Entity<PurchaseOrder>(e =>
         {
             e.ToTable("purchase_orders");
             e.HasKey(p => p.Code);
             e.Property(p => p.Code).HasMaxLength(50);
             e.Property(p => p.ProjectCode).HasMaxLength(50);
+            e.Property(p => p.PlanCode).HasMaxLength(50).IsRequired();
+            e.Property(p => p.ApprovalStatus).HasMaxLength(30).IsRequired();
+            e.Property(p => p.OrderPlacementStatus).HasMaxLength(30).IsRequired();
+            e.Property(p => p.DeliveryStatus).HasMaxLength(30).IsRequired();
+            e.Property(p => p.PaymentStatus).HasMaxLength(30).IsRequired();
+            e.Property(p => p.Note).HasMaxLength(2000);
+            e.Property(p => p.TotalAmount).HasColumnType("numeric(18,2)");
+            e.Property(p => p.SupplierNameSnapshot).HasMaxLength(300);
+            e.Property(p => p.ApprovedByName).HasMaxLength(200);
+            e.Property(p => p.PlacedByName).HasMaxLength(200);
+            e.Property(p => p.CreatedByName).HasMaxLength(200);
             e.HasOne(p => p.Project).WithMany()
              .HasForeignKey(p => p.ProjectCode).OnDelete(DeleteBehavior.Restrict).IsRequired(false);
+            e.HasOne(p => p.Plan).WithMany(pl => pl.PurchaseOrders)
+             .HasForeignKey(p => p.PlanCode).OnDelete(DeleteBehavior.Restrict);
             e.HasOne(p => p.Supplier).WithMany()
              .HasForeignKey(p => p.SupplierId).OnDelete(DeleteBehavior.SetNull).IsRequired(false);
+            e.HasIndex(p => p.PlanCode);
+            e.HasIndex(p => p.ProjectCode);
+            e.HasIndex(p => p.OrderPlacementStatus);
+            e.HasIndex(p => p.DeliveryStatus);
+            e.HasIndex(p => p.PaymentStatus);
             e.HasQueryFilter(p => p.DeletedAt == null);
         });
 
@@ -344,10 +466,109 @@ public class WarehouseDbContext(DbContextOptions<WarehouseDbContext> options) : 
             e.ToTable("purchase_order_items");
             e.HasKey(i => i.Id);
             e.Property(i => i.MaterialCode).HasMaxLength(100);
+            e.Property(i => i.Sku).HasMaxLength(100);
+            e.Property(i => i.Name).HasMaxLength(500);
+            e.Property(i => i.Spec).HasMaxLength(1000);
+            e.Property(i => i.Unit).HasMaxLength(50);
+            e.Property(i => i.Note).HasMaxLength(2000);
+            e.Property(i => i.EstPrice).HasColumnType("numeric(18,2)");
+            e.Property(i => i.PoPrice).HasColumnType("numeric(18,2)");
+            e.Property(i => i.Ordered).HasColumnType("numeric(18,4)");
+            e.Property(i => i.Received).HasColumnType("numeric(18,4)");
+            e.Property(i => i.Defected).HasColumnType("numeric(18,4)").HasDefaultValue(0m);
             e.HasOne(i => i.PurchaseOrder).WithMany(p => p.Items)
              .HasForeignKey(i => i.PoCode).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(i => i.PlanLine).WithMany(l => l.PurchaseOrderItems)
+             .HasForeignKey(i => i.PlanLineId).OnDelete(DeleteBehavior.Restrict).IsRequired(false);
             e.HasOne(i => i.Material).WithMany()
-             .HasForeignKey(i => i.MaterialCode).OnDelete(DeleteBehavior.Restrict);
+             .HasForeignKey(i => i.MaterialCode).OnDelete(DeleteBehavior.Restrict).IsRequired(false);
+        });
+
+        model.Entity<PurchaseDefect>(e =>
+        {
+            e.ToTable("purchase_defects");
+            e.HasKey(d => d.TicketCode);
+            e.HasIndex(d => d.Id).IsUnique();
+            e.Property(d => d.TicketCode).HasMaxLength(50);
+            e.Property(d => d.PoCode).HasMaxLength(50).IsRequired();
+            e.Property(d => d.PlanCode).HasMaxLength(50);
+            e.Property(d => d.ProjectCode).HasMaxLength(50);
+            e.Property(d => d.SupplierName).HasMaxLength(255);
+            e.Property(d => d.Status).HasMaxLength(20).IsRequired();
+            e.Property(d => d.Reason).HasMaxLength(2000);
+            e.Property(d => d.Note).HasMaxLength(2000);
+            e.Property(d => d.CreatedByName).HasMaxLength(255);
+            e.Property(d => d.ApprovedByName).HasMaxLength(255);
+            e.HasIndex(d => d.PoCode);
+            e.HasIndex(d => d.Status);
+            e.HasOne(d => d.PurchaseOrder).WithMany()
+             .HasForeignKey(d => d.PoCode).OnDelete(DeleteBehavior.Restrict);
+            e.HasQueryFilter(d => d.DeletedAt == null);
+        });
+
+        model.Entity<PurchaseDefectItem>(e =>
+        {
+            e.ToTable("purchase_defect_items");
+            e.HasKey(i => i.Id);
+            e.Property(i => i.TicketCode).HasMaxLength(50).IsRequired();
+            e.Property(i => i.MaterialCode).HasMaxLength(100);
+            e.Property(i => i.Name).HasMaxLength(500).IsRequired();
+            e.Property(i => i.Unit).HasMaxLength(50);
+            e.Property(i => i.Quantity).HasColumnType("numeric(18,4)").IsRequired();
+            e.Property(i => i.LineReason).HasMaxLength(1000);
+            e.HasIndex(i => i.PoItemId);
+            e.HasOne(i => i.Defect).WithMany(d => d.Items)
+             .HasForeignKey(i => i.TicketCode).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        model.Entity<PurchaseDefectAttachment>(e =>
+        {
+            e.ToTable("purchase_defect_attachments");
+            e.HasKey(a => a.Id);
+            e.Property(a => a.TicketCode).HasMaxLength(50).IsRequired();
+            e.Property(a => a.Kind).HasMaxLength(20).IsRequired();
+            e.Property(a => a.StorageKey).HasMaxLength(500).IsRequired();
+            e.Property(a => a.FileName).HasMaxLength(255).IsRequired();
+            e.HasIndex(a => a.TicketCode);
+            e.HasOne(a => a.Defect).WithMany(d => d.Attachments)
+             .HasForeignKey(a => a.TicketCode).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        model.Entity<PurchasePayment>(e =>
+        {
+            e.ToTable("purchase_payments");
+            e.HasKey(p => p.Code);
+            e.Property(p => p.Code).HasMaxLength(50);
+            e.Property(p => p.PoCode).HasMaxLength(50).IsRequired();
+            e.Property(p => p.SupplierNameSnapshot).HasMaxLength(300);
+            e.Property(p => p.InvoiceNo).HasMaxLength(100);
+            e.Property(p => p.Amount).HasColumnType("numeric(18,2)");
+            e.Property(p => p.Status).HasMaxLength(30).IsRequired();
+            e.Property(p => p.Note).HasMaxLength(2000);
+            e.Property(p => p.CreatedByName).HasMaxLength(200);
+            e.HasOne(p => p.PurchaseOrder).WithMany()
+             .HasForeignKey(p => p.PoCode).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(p => p.Supplier).WithMany()
+             .HasForeignKey(p => p.SupplierId).OnDelete(DeleteBehavior.SetNull).IsRequired(false);
+            e.HasIndex(p => p.PoCode).IsUnique();
+            e.HasIndex(p => p.Status);
+            e.HasIndex(p => p.DueDate);
+            e.HasQueryFilter(p => p.DeletedAt == null);
+        });
+
+        model.Entity<ActivityEvent>(e =>
+        {
+            e.ToTable("activity_events");
+            e.HasKey(a => a.Id);
+            e.Property(a => a.ActorName).HasMaxLength(200).IsRequired();
+            e.Property(a => a.Module).HasMaxLength(50).IsRequired();
+            e.Property(a => a.Action).HasMaxLength(80).IsRequired();
+            e.Property(a => a.EntityType).HasMaxLength(50);
+            e.Property(a => a.EntityCode).HasMaxLength(80);
+            e.Property(a => a.Message).HasMaxLength(2000).IsRequired();
+            e.Property(a => a.CategoryLabel).HasMaxLength(100).IsRequired();
+            e.HasIndex(a => new { a.Module, a.OccurredAt });
+            e.HasIndex(a => new { a.ActorUserId, a.OccurredAt });
         });
 
         model.Entity<Conversion>(e =>

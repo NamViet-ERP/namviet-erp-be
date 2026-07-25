@@ -21,4 +21,5 @@ public class Project : BaseEntity
 
     public ICollection<ProjectInventory> Inventories { get; set; } = [];
     public ICollection<WarehouseTransaction> Transactions { get; set; } = [];
+    public ICollection<ProjectWarehouseKeeper> WarehouseKeepers { get; set; } = [];
 }

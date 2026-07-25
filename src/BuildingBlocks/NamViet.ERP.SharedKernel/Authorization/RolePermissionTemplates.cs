@@ -52,31 +52,78 @@ public static class RolePermissionTemplates
         "hrm.leaves.approve",
     ];
 
-    private static readonly string[] PmPermissions =
+    /** Xem toàn bộ phân hệ kho — không CUD. */
+    private static readonly string[] WmsViewOnlyPermissions =
     [
-        ..CorePermissions,
         "wms.dashboard.view",
         "wms.stock.view:all",
         "wms.projects.view:all",
-        "wms.projects.create",
-        "wms.projects.update",
         "wms.materials.view:all",
         "wms.imports.view:all",
-        "wms.imports.approve",
         "wms.exports.view:all",
-        "wms.exports.approve",
         "wms.transfers.view:all",
-        "wms.transfers.approve",
         "wms.export_returns.view:all",
-        "wms.export_returns.approve",
+        "wms.defects.view:all",
         "wms.stocktakes.view:all",
+        "wms.stocktakes.settings.view",
         "wms.suppliers.view:all",
         "wms.categories.view:all",
         "wms.material_units.view:all",
-        "wms.price_books.view:all",
         "wms.reports.view:all",
-        "wms.reports.export",
         "wms.transactions.view:all",
+        "wms.prices.view",
+    ];
+
+    /** Xem mua hàng — không CUD. */
+    private static readonly string[] PurchasingViewOnlyPermissions =
+    [
+        "purchasing.dashboard.view",
+        "purchasing.suppliers.view",
+        "purchasing.plans.view",
+        "purchasing.orders.view",
+        "purchasing.payments.view",
+        "purchasing.deliveries.view",
+        "purchasing.documents.view",
+        "purchasing.settings.view",
+        "purchasing.arrival_plans.view",
+    ];
+
+    private static readonly string[] PurchasingWritePermissions =
+    [
+        "purchasing.dashboard.view",
+        "purchasing.suppliers.view",
+        "purchasing.plans.view",
+        "purchasing.plans.create",
+        "purchasing.plans.update",
+        "purchasing.plans.import",
+        "purchasing.arrival_plans.view",
+        "purchasing.orders.view",
+        "purchasing.orders.create",
+        "purchasing.orders.update",
+        "purchasing.orders.approve",
+        "purchasing.orders.unapprove",
+        "purchasing.orders.place",
+        "purchasing.deliveries.view",
+        "purchasing.payments.view",
+        "purchasing.payments.create",
+        "purchasing.documents.view",
+        "purchasing.settings.view",
+        "wms.suppliers.view:all",
+        "wms.projects.view:all",
+    ];
+
+    private static readonly string[] PmPermissions =
+    [
+        ..CorePermissions,
+        ..WmsViewOnlyPermissions,
+        "wms.projects.create",
+        "wms.projects.update",
+        "wms.imports.approve",
+        "wms.exports.approve",
+        "wms.transfers.approve",
+        "wms.export_returns.approve",
+        "wms.defects.approve",
+        "wms.reports.export",
         "wms.transactions.approve",
         "hrm.leaves.view",
         "hrm.leaves.create",
@@ -88,6 +135,8 @@ public static class RolePermissionTemplates
         "wms.dashboard.view",
         "wms.stock.view:all",
         "wms.projects.view:all",
+        "wms.projects.create",
+        "wms.projects.update",
         "wms.materials.view:all",
         "wms.materials.create",
         "wms.materials.update",
@@ -105,6 +154,9 @@ public static class RolePermissionTemplates
         "wms.export_returns.view:all",
         "wms.export_returns.create",
         "wms.export_returns.approve",
+        "wms.defects.view:all",
+        "wms.defects.create",
+        "wms.defects.approve",
         "wms.stocktakes.view:all",
         "wms.stocktakes.create",
         "wms.stocktakes.approve",
@@ -122,14 +174,12 @@ public static class RolePermissionTemplates
         "wms.material_units.create",
         "wms.material_units.update",
         "wms.material_units.delete",
-        "wms.price_books.view:all",
-        "wms.price_books.create",
-        "wms.price_books.update",
-        "wms.price_books.delete",
         "wms.reports.view:all",
         "wms.reports.export",
         "wms.transactions.view:all",
         "wms.transactions.create",
+        // Không có wms.prices.view — ẩn giá
+        "purchasing.arrival_plans.view",
         "hrm.leaves.view",
         "hrm.leaves.create",
     ];
@@ -153,24 +203,27 @@ public static class RolePermissionTemplates
         "hrm.leaves.approve",
         "wms.transactions.view:all",
         "wms.transactions.approve",
+        "wms.prices.view",
     ];
 
+    /** Kế toán: chỉ xem mua hàng + kho (có giá). */
     private static readonly string[] AccountantPermissions =
     [
         ..CorePermissions,
         "hrm.leaves.view",
         "hrm.leaves.create",
-        "wms.transactions.view:all",
-        "wms.transactions.approve",
+        ..PurchasingViewOnlyPermissions,
+        ..WmsViewOnlyPermissions,
     ];
 
+    /** Cung ứng: toàn quyền mua hàng; kho chỉ xem (có giá). */
     private static readonly string[] ProcurementPermissions =
     [
         ..CorePermissions,
         "hrm.leaves.view",
         "hrm.leaves.create",
-        "wms.transactions.view:all",
-        "wms.transactions.create",
+        ..PurchasingWritePermissions,
+        ..WmsViewOnlyPermissions,
     ];
 
     public static IReadOnlyDictionary<string, IReadOnlyList<string>> ByIdentityRoleName { get; } =
@@ -190,4 +243,13 @@ public static class RolePermissionTemplates
         roleName is not null && ByIdentityRoleName.TryGetValue(roleName, out var permissions)
             ? permissions
             : [];
+
+    /** Roles whose permission claims should be replaced to match templates (not only additive). */
+    public static IReadOnlyList<string> RolesToResync { get; } =
+    [
+        WarehouseRole,
+        AccountantRole,
+        ProcurementRole,
+        PmRole,
+    ];
 }

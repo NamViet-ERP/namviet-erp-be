@@ -1,15 +1,18 @@
+using Microsoft.Extensions.Configuration;
+
 namespace NamViet.ERP.Api.Services.Storage;
 
-public class LocalFileStorage(IWebHostEnvironment env) : IFileStorage
+public class LocalFileStorage(IWebHostEnvironment env, IConfiguration configuration) : IFileStorage
 {
-    private string StorageRoot => Path.GetFullPath(
-        Path.Combine(env.ContentRootPath, "App_Data", "private-uploads"));
+    private string? _resolvedRoot;
+
+    private string StorageRoot => _resolvedRoot ??= ResolvePrimaryRoot();
 
     public async Task<StoredFile> SaveAsync(
         Stream content, string relativePath, string contentType, CancellationToken ct = default)
     {
         var normalized = relativePath.Replace('\\', '/').TrimStart('/');
-        var fullPath = ResolvePath(normalized);
+        var fullPath = ResolvePath(StorageRoot, normalized);
         var dir = Path.GetDirectoryName(fullPath);
         if (!string.IsNullOrEmpty(dir))
             Directory.CreateDirectory(dir);
@@ -26,11 +29,15 @@ public class LocalFileStorage(IWebHostEnvironment env) : IFileStorage
     {
         if (string.IsNullOrWhiteSpace(storageKey)) return null;
         var normalizedKey = NormalizeKey(storageKey);
-        string fullPath;
-        try { fullPath = ResolvePath(normalizedKey); }
-        catch (InvalidOperationException) { return null; }
-        if (File.Exists(fullPath))
-            return new StoredFileContent(fullPath, new FileInfo(fullPath).Length);
+
+        foreach (var root in EnumerateLookupRoots())
+        {
+            string fullPath;
+            try { fullPath = ResolvePath(root, normalizedKey); }
+            catch (InvalidOperationException) { continue; }
+            if (File.Exists(fullPath))
+                return new StoredFileContent(fullPath, new FileInfo(fullPath).Length);
+        }
 
         var legacyRoot = Path.GetFullPath(Path.Combine(
             env.WebRootPath ?? Path.Combine(env.ContentRootPath, "wwwroot"), "uploads"));
@@ -60,7 +67,7 @@ public class LocalFileStorage(IWebHostEnvironment env) : IFileStorage
         })
         {
             ct.ThrowIfCancellationRequested();
-            var root = ResolvePath(relativeRoot);
+            var root = ResolvePath(StorageRoot, relativeRoot);
             if (!Directory.Exists(root)) continue;
 
             var pending = new Stack<string>();
@@ -92,13 +99,77 @@ public class LocalFileStorage(IWebHostEnvironment env) : IFileStorage
         return Task.FromResult(deleted);
     }
 
-    private string ResolvePath(string relativePath)
+    private string ResolvePrimaryRoot()
+    {
+        var configured = configuration["FileStorage:Root"];
+        if (!string.IsNullOrWhiteSpace(configured))
+        {
+            var path = Path.GetFullPath(configured);
+            Directory.CreateDirectory(path);
+            return path;
+        }
+
+        // Prefer shared artifacts folder so VS Debug and api-run publish use the same uploads.
+        var artifacts = FindRepoRelative(
+            env.ContentRootPath,
+            Path.Combine("artifacts", "api-run", "App_Data", "private-uploads"));
+        if (artifacts is not null)
+        {
+            Directory.CreateDirectory(artifacts);
+            return artifacts;
+        }
+
+        var local = Path.GetFullPath(Path.Combine(env.ContentRootPath, "App_Data", "private-uploads"));
+        Directory.CreateDirectory(local);
+        return local;
+    }
+
+    private IEnumerable<string> EnumerateLookupRoots()
+    {
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var candidate in new[]
+                 {
+                     StorageRoot,
+                     Path.GetFullPath(Path.Combine(env.ContentRootPath, "App_Data", "private-uploads")),
+                     FindRepoRelative(
+                         env.ContentRootPath,
+                         Path.Combine("artifacts", "api-run", "App_Data", "private-uploads")),
+                 })
+        {
+            if (candidate is null || !seen.Add(candidate)) continue;
+            yield return candidate;
+        }
+    }
+
+    private static string? FindRepoRelative(string startDir, string relativeParts)
+    {
+        try
+        {
+            var dir = new DirectoryInfo(Path.GetFullPath(startDir));
+            while (dir is not null)
+            {
+                var marker = Path.Combine(dir.FullName, "NamViet.ERP.sln");
+                var candidate = Path.Combine(dir.FullName, relativeParts);
+                if (File.Exists(marker) || Directory.Exists(candidate))
+                    return Path.GetFullPath(candidate);
+                dir = dir.Parent;
+            }
+        }
+        catch
+        {
+            /* ignore path probe failures */
+        }
+        return null;
+    }
+
+    private static string ResolvePath(string storageRoot, string relativePath)
     {
         var normalized = relativePath.Replace('\\', '/').TrimStart('/');
         var fullPath = Path.GetFullPath(Path.Combine(
-            StorageRoot, normalized.Replace('/', Path.DirectorySeparatorChar)));
-        var rootPrefix = StorageRoot.TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
-        if (!fullPath.StartsWith(rootPrefix, StringComparison.OrdinalIgnoreCase))
+            storageRoot, normalized.Replace('/', Path.DirectorySeparatorChar)));
+        var rootPrefix = storageRoot.TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+        if (!fullPath.StartsWith(rootPrefix, StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(fullPath, storageRoot, StringComparison.OrdinalIgnoreCase))
             throw new InvalidOperationException("Invalid storage key.");
         return fullPath;
     }

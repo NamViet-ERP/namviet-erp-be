@@ -1,7 +1,9 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using NamViet.ERP.Api.Application.Dtos.Wms;
+using NamViet.ERP.Api.Application.Services.Purchasing;
 using NamViet.ERP.Api.Application.Services.Wms;
+using NamViet.ERP.Api.Services.Storage;
 using NamViet.ERP.Modules.Warehouse.Domain;
 using NamViet.ERP.Modules.Warehouse.Domain.Entities;
 using NamViet.ERP.Modules.Warehouse.Domain.Enums;
@@ -42,6 +44,18 @@ internal sealed class FakeProjectBudgetService : IProjectBudgetService
         Task.CompletedTask;
 }
 
+internal sealed class FakeFileStorage : IFileStorage
+{
+    public Task<StoredFile> SaveAsync(Stream content, string relativePath, string contentType, CancellationToken ct = default) =>
+        Task.FromResult(new StoredFile(relativePath, Path.GetFileName(relativePath), 0));
+
+    public StoredFileContent? Get(string storageKey) => null;
+
+    public Task<int> DeleteUnreferencedOlderThanAsync(
+        IReadOnlySet<string> referencedKeys, DateTime olderThanUtc, CancellationToken ct = default) =>
+        Task.FromResult(0);
+}
+
 internal sealed class WmsVoucherTestContext : IDisposable
 {
     public WarehouseDbContext Db { get; }
@@ -61,7 +75,9 @@ internal sealed class WmsVoucherTestContext : IDisposable
         Db = new WarehouseDbContext(options);
         Inventory = new InventoryDomainService(Db);
         var stocktakeFreeze = new StocktakeFreezeGuard(Db);
-        Imports = new ImportApplicationService(Db, Inventory, new FakeProjectBudgetService(), stocktakeFreeze, CurrentUser);
+        Imports = new ImportApplicationService(
+            Db, Inventory, new FakeProjectBudgetService(), stocktakeFreeze, CurrentUser,
+            new PurchaseOrderReceiptService(Db), new FakeFileStorage());
         Exports = new ExportApplicationService(Db, Inventory, stocktakeFreeze, CurrentUser);
         Transfers = new TransferApplicationService(Db, Inventory, stocktakeFreeze, CurrentUser);
         ExportReturns = new ExportReturnApplicationService(Db, Inventory, stocktakeFreeze, CurrentUser);

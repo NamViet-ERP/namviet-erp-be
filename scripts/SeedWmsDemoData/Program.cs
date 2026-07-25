@@ -9,6 +9,7 @@ using NamViet.ERP.Modules.Warehouse.Domain.Services;
 using NamViet.ERP.Modules.Warehouse.Infrastructure;
 using NamViet.ERP.Modules.Warehouse.Infrastructure.Helpers;
 using NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence;
+using NamViet.ERP.Modules.Warehouse.Application.Catalog;
 
 const string SeedMarkerKey = "demo_data_seed_v1";
 const string SeedMarkerBulkKey = "demo_data_seed_v2_bulk10";
@@ -17,6 +18,7 @@ const string SeedMarkerRejectedKey = "demo_data_seed_v4_rejected";
 const string SeedMarkerCatalogKey = "demo_data_seed_v5_material_paths";
 const string SeedMarkerStocktakeKey = "demo_data_seed_v6_stocktakes";
 const string SeedMarkerStocktakeTestKey = "demo_data_seed_v7_stocktake_test";
+const string SeedMarkerKhmhMaterialsKey = "demo_data_seed_v8_khmh_materials";
 var demoActorId = Guid.Parse("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee");
 
 var force = args.Any(a => string.Equals(a, "--force", StringComparison.OrdinalIgnoreCase));
@@ -56,6 +58,7 @@ var ranV4 = false;
 var ranV5 = false;
 var ranV6 = false;
 var ranV7 = false;
+var ranV8 = false;
 
 if (!force && await db.WmsSettings.AnyAsync(s => s.Key == SeedMarkerKey))
 {
@@ -172,7 +175,22 @@ else
     ranV7 = true;
 }
 
-if (!ranV1 && !ranV2 && !ranV3 && !ranV4 && !ranV5 && !ranV6 && !ranV7)
+if (!force && await db.WmsSettings.AnyAsync(s => s.Key == SeedMarkerKhmhMaterialsKey))
+{
+    Console.WriteLine("Batch v8 (50 vật tư KHMH) đã có — bỏ qua.");
+}
+else
+{
+    await using var tx8 = await db.Database.BeginTransactionAsync();
+    var categoryId = await EnsureDemoCategoryAsync(db);
+    await EnsureKhmhCatalogMaterialsAsync(db, categoryId);
+    db.WmsSettings.Add(new WmsSetting { Key = SeedMarkerKhmhMaterialsKey, Value = DateTime.UtcNow.ToString("O") });
+    await db.SaveChangesAsync();
+    await tx8.CommitAsync();
+    ranV8 = true;
+}
+
+if (!ranV1 && !ranV2 && !ranV3 && !ranV4 && !ranV5 && !ranV6 && !ranV7 && !ranV8)
 {
     Console.WriteLine("Không có gì mới để seed. Dùng --force để chạy lại (idempotent theo mã).");
     return 0;
@@ -208,6 +226,10 @@ if (ranV6)
 if (ranV7)
 {
     Console.WriteLine("  [v7] +phiếu KK test: khôi phục PENDING-01 (nếu đã xóa), PENDING-03/04, CANCELLED-01");
+}
+if (ranV8)
+{
+    Console.WriteLine("  [v8] +50 vật tư khớp mẫu import KHMH (VT-THEP-*, VT-ONG-*, …)");
 }
 Console.WriteLine("Mở lại FE (VITE_API_BASE_URL, VITE_USE_MOCK=false) và refresh trang.");
 return 0;
@@ -310,6 +332,31 @@ async Task EnsureMaterialsAsync(WarehouseDbContext db, int categoryId)
     }
 
     await db.SaveChangesAsync();
+}
+
+async Task EnsureKhmhCatalogMaterialsAsync(WarehouseDbContext db, int categoryId)
+{
+    var added = 0;
+    foreach (var row in KhmhDemoMaterialCatalog.All)
+    {
+        if (await db.Materials.AnyAsync(m => m.MaterialCode == row.MaterialCode))
+            continue;
+
+        db.Materials.Add(new Material
+        {
+            MaterialCode = row.MaterialCode,
+            MaterialName = row.ProductName,
+            CategoryId = categoryId,
+            Unit = row.Unit,
+            TechnicalSpec = row.Spec,
+            IsActive = true,
+            IsConsumable = false,
+        });
+        added++;
+    }
+
+    await db.SaveChangesAsync();
+    Console.WriteLine($"  → KHMH materials: thêm {added}/{KhmhDemoMaterialCatalog.All.Count} mã.");
 }
 
 async Task EnsureProjectsAsync(WarehouseDbContext db)

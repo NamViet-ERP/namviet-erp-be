@@ -29,6 +29,8 @@ public class WarehouseTransaction : BaseEntity
     public string? FromWarehouseId { get; set; }
     public string? ToWarehouseId { get; set; }
     public string? ReferenceCode { get; set; }
+    /// <summary>Mã KHMH khi NK tạo từ PO (denormalized for list/detail).</summary>
+    public string? PurchasePlanCode { get; set; }
     public string? SoCode { get; set; }
     public string? Customer { get; set; }
     public string? WarehouseKeeper { get; set; }
@@ -36,6 +38,7 @@ public class WarehouseTransaction : BaseEntity
     public bool IsDirectProcurement { get; set; }
     public string? BeneficiaryProjectCode { get; set; }
     public string? SupplierName { get; set; }
+    public string? ReceiptEvaluation { get; set; }
     /// <summary>Liên kết cặp phiếu NK↔XK cho Direct Issue.</summary>
     public string? LinkedTicketCode { get; set; }
 
@@ -46,6 +49,7 @@ public class WarehouseTransaction : BaseEntity
     public Supplier? Supplier { get; set; }
     public WarehouseTransaction? LinkedTransaction { get; set; }
     public ICollection<WarehouseTransactionItem> Items { get; set; } = [];
+    public ICollection<WarehouseTransactionAttachment> Attachments { get; set; } = [];
     public ICollection<InventoryReservation> Reservations { get; set; } = [];
 
     /// <summary>Sinh ticket_code tự động theo loại phiếu và số thứ tự</summary>

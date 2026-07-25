@@ -10,6 +10,9 @@ using NamViet.ERP.Modules.Hr.Infrastructure.Persistence;
 using NamViet.ERP.Modules.Identity.Domain.Entities;
 using NamViet.ERP.Modules.Identity.Infrastructure;
 using NamViet.ERP.Modules.Identity.Infrastructure.Persistence;
+using NamViet.ERP.Modules.Warehouse.Domain.Entities;
+using NamViet.ERP.Modules.Warehouse.Infrastructure;
+using NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence;
 using NamViet.ERP.SharedKernel.Authorization;
 
 // Identity: min 8 chars, digit, uppercase.
@@ -17,17 +20,111 @@ const string DefaultPassword = "Test@123";
 const string EmployeeCodePrefix = "NV-";
 const int EmployeeCodeDigits = 4;
 
+// Admin ×2; mỗi vai trò khác ×10. Tên thật để test RBAC / UI chính xác.
 var pilotUsers = new[]
 {
-    new PilotUser(
-        "admin@namviet.vn", "Admin Test", "Admin", "NV-0001",
-        "Vận hành", "Hà Nội", "Quản trị hệ thống", Gender.Male),
-    new PilotUser(
-        "hr@namviet.vn", "HR Test", "HR", "NV-0002",
-        "HCNS", "Hà Nội", "Chuyên viên nhân sự", Gender.Male),
-    new PilotUser(
-        "staff@namviet.vn", "Staff Test", RolePermissionTemplates.StaffRole, "NV-0003",
-        "Xây dựng", "Hải Phòng", "Nhân viên kho", Gender.Male),
+    // Admin (2)
+    new PilotUser("admin@namviet.vn", "Nguyễn Văn Khoa", RolePermissionTemplates.AdminRole, "NV-0001", "Vận hành", "Hà Nội", "Quản trị hệ thống", Gender.Male),
+    new PilotUser("admin2@namviet.vn", "Trần Thị Mai Anh", RolePermissionTemplates.AdminRole, "NV-0002", "Vận hành", "Hà Nội", "Quản trị hệ thống", Gender.Female),
+
+    // HR (10)
+    new PilotUser("hr01@namviet.vn", "Lê Thị Thu Hà", RolePermissionTemplates.HrRole, "NV-0011", "HCNS", "Hà Nội", "Chuyên viên nhân sự", Gender.Female),
+    new PilotUser("hr02@namviet.vn", "Phạm Minh Tuấn", RolePermissionTemplates.HrRole, "NV-0012", "HCNS", "Hà Nội", "Chuyên viên nhân sự", Gender.Male),
+    new PilotUser("hr03@namviet.vn", "Hoàng Thị Lan", RolePermissionTemplates.HrRole, "NV-0013", "HCNS", "Hải Phòng", "Chuyên viên nhân sự", Gender.Female),
+    new PilotUser("hr04@namviet.vn", "Vũ Đức Anh", RolePermissionTemplates.HrRole, "NV-0014", "HCNS", "Hà Nội", "Chuyên viên nhân sự", Gender.Male),
+    new PilotUser("hr05@namviet.vn", "Đặng Thị Hương", RolePermissionTemplates.HrRole, "NV-0015", "HCNS", "Đà Nẵng", "Chuyên viên nhân sự", Gender.Female),
+    new PilotUser("hr06@namviet.vn", "Bùi Quang Huy", RolePermissionTemplates.HrRole, "NV-0016", "HCNS", "Hà Nội", "Chuyên viên nhân sự", Gender.Male),
+    new PilotUser("hr07@namviet.vn", "Ngô Thị Thanh", RolePermissionTemplates.HrRole, "NV-0017", "HCNS", "TP.HCM", "Chuyên viên nhân sự", Gender.Female),
+    new PilotUser("hr08@namviet.vn", "Đỗ Văn Long", RolePermissionTemplates.HrRole, "NV-0018", "HCNS", "Hà Nội", "Chuyên viên nhân sự", Gender.Male),
+    new PilotUser("hr09@namviet.vn", "Lý Thị Ngọc", RolePermissionTemplates.HrRole, "NV-0019", "HCNS", "Bình Dương", "Chuyên viên nhân sự", Gender.Female),
+    new PilotUser("hr10@namviet.vn", "Trịnh Quốc Bảo", RolePermissionTemplates.HrRole, "NV-0020", "HCNS", "Hà Nội", "Chuyên viên nhân sự", Gender.Male),
+
+    // Staff (10)
+    new PilotUser("staff01@namviet.vn", "Nguyễn Văn Đức", RolePermissionTemplates.StaffRole, "NV-0031", "Xây dựng", "Hải Phòng", "Nhân viên kho", Gender.Male),
+    new PilotUser("staff02@namviet.vn", "Trần Thị Kim Anh", RolePermissionTemplates.StaffRole, "NV-0032", "Xây dựng", "Hà Nội", "Nhân viên kho", Gender.Female),
+    new PilotUser("staff03@namviet.vn", "Phan Văn Hùng", RolePermissionTemplates.StaffRole, "NV-0033", "Xây dựng", "Đà Nẵng", "Nhân viên kho", Gender.Male),
+    new PilotUser("staff04@namviet.vn", "Lưu Thị Mỹ Linh", RolePermissionTemplates.StaffRole, "NV-0034", "Xây dựng", "TP.HCM", "Nhân viên kho", Gender.Female),
+    new PilotUser("staff05@namviet.vn", "Cao Minh Nhật", RolePermissionTemplates.StaffRole, "NV-0035", "Xây dựng", "Hà Nội", "Nhân viên kho", Gender.Male),
+    new PilotUser("staff06@namviet.vn", "Đinh Thị Phương", RolePermissionTemplates.StaffRole, "NV-0036", "Xây dựng", "Bình Dương", "Nhân viên kho", Gender.Female),
+    new PilotUser("staff07@namviet.vn", "Mai Văn Thành", RolePermissionTemplates.StaffRole, "NV-0037", "Xây dựng", "Hải Phòng", "Nhân viên kho", Gender.Male),
+    new PilotUser("staff08@namviet.vn", "Tạ Thị Hồng", RolePermissionTemplates.StaffRole, "NV-0038", "Xây dựng", "Hà Nội", "Nhân viên kho", Gender.Female),
+    new PilotUser("staff09@namviet.vn", "Hồ Quang Vinh", RolePermissionTemplates.StaffRole, "NV-0039", "Xây dựng", "TP.HCM", "Nhân viên kho", Gender.Male),
+    new PilotUser("staff10@namviet.vn", "Chu Thị Diệu", RolePermissionTemplates.StaffRole, "NV-0040", "Xây dựng", "Đà Nẵng", "Nhân viên kho", Gender.Female),
+
+    // PM (10)
+    new PilotUser("pm01@namviet.vn", "Nguyễn Hoàng Nam", RolePermissionTemplates.PmRole, "NV-0051", "Xây dựng", "Hà Nội", "Quản lý dự án", Gender.Male),
+    new PilotUser("pm02@namviet.vn", "Phạm Thị Thu Trang", RolePermissionTemplates.PmRole, "NV-0052", "Xây dựng", "TP.HCM", "Quản lý dự án", Gender.Female),
+    new PilotUser("pm03@namviet.vn", "Lê Quốc Việt", RolePermissionTemplates.PmRole, "NV-0053", "Xây dựng", "Đà Nẵng", "Quản lý dự án", Gender.Male),
+    new PilotUser("pm04@namviet.vn", "Võ Thị Bích Ngọc", RolePermissionTemplates.PmRole, "NV-0054", "Xây dựng", "Hà Nội", "Quản lý dự án", Gender.Female),
+    new PilotUser("pm05@namviet.vn", "Trương Minh Khôi", RolePermissionTemplates.PmRole, "NV-0055", "Xây dựng", "Bình Dương", "Quản lý dự án", Gender.Male),
+    new PilotUser("pm06@namviet.vn", "Đào Thị Thanh Tâm", RolePermissionTemplates.PmRole, "NV-0056", "Xây dựng", "Hải Phòng", "Quản lý dự án", Gender.Female),
+    new PilotUser("pm07@namviet.vn", "Huỳnh Văn Sơn", RolePermissionTemplates.PmRole, "NV-0057", "Xây dựng", "TP.HCM", "Quản lý dự án", Gender.Male),
+    new PilotUser("pm08@namviet.vn", "Nguyễn Thị Ánh", RolePermissionTemplates.PmRole, "NV-0058", "Xây dựng", "Hà Nội", "Quản lý dự án", Gender.Female),
+    new PilotUser("pm09@namviet.vn", "Phan Thanh Bình", RolePermissionTemplates.PmRole, "NV-0059", "Xây dựng", "Đà Nẵng", "Quản lý dự án", Gender.Male),
+    new PilotUser("pm10@namviet.vn", "Lâm Thị Quỳnh", RolePermissionTemplates.PmRole, "NV-0060", "Xây dựng", "TP.HCM", "Quản lý dự án", Gender.Female),
+
+    // Warehouse_Keeper (10)
+    new PilotUser("keeper01@namviet.vn", "Nguyễn Văn Hậu", RolePermissionTemplates.WarehouseRole, "NV-0071", "Kho", "Hà Nội", "Thủ kho", Gender.Male),
+    new PilotUser("keeper02@namviet.vn", "Trần Thị Thuý", RolePermissionTemplates.WarehouseRole, "NV-0072", "Kho", "Bình Dương", "Thủ kho", Gender.Female),
+    new PilotUser("keeper03@namviet.vn", "Lê Minh Cường", RolePermissionTemplates.WarehouseRole, "NV-0073", "Kho", "Hải Phòng", "Thủ kho", Gender.Male),
+    new PilotUser("keeper04@namviet.vn", "Phạm Thị Yến", RolePermissionTemplates.WarehouseRole, "NV-0074", "Kho", "Đà Nẵng", "Thủ kho", Gender.Female),
+    new PilotUser("keeper05@namviet.vn", "Hoàng Văn Tùng", RolePermissionTemplates.WarehouseRole, "NV-0075", "Kho", "TP.HCM", "Thủ kho", Gender.Male),
+    new PilotUser("keeper06@namviet.vn", "Vũ Thị Mai", RolePermissionTemplates.WarehouseRole, "NV-0076", "Kho", "Hà Nội", "Thủ kho", Gender.Female),
+    new PilotUser("keeper07@namviet.vn", "Đặng Quốc Dũng", RolePermissionTemplates.WarehouseRole, "NV-0077", "Kho", "Bình Dương", "Thủ kho", Gender.Male),
+    new PilotUser("keeper08@namviet.vn", "Bùi Thị Hằng", RolePermissionTemplates.WarehouseRole, "NV-0078", "Kho", "Hải Phòng", "Thủ kho", Gender.Female),
+    new PilotUser("keeper09@namviet.vn", "Ngô Văn Phong", RolePermissionTemplates.WarehouseRole, "NV-0079", "Kho", "Đà Nẵng", "Thủ kho", Gender.Male),
+    new PilotUser("keeper10@namviet.vn", "Đỗ Thị Lan Anh", RolePermissionTemplates.WarehouseRole, "NV-0080", "Kho", "TP.HCM", "Thủ kho", Gender.Female),
+
+    // Accountant (10)
+    new PilotUser("acc01@namviet.vn", "Nguyễn Thị Hồng Nhung", RolePermissionTemplates.AccountantRole, "NV-0091", "Tài chính", "Hà Nội", "Kế toán", Gender.Female),
+    new PilotUser("acc02@namviet.vn", "Trần Văn Khoa", RolePermissionTemplates.AccountantRole, "NV-0092", "Tài chính", "Hà Nội", "Kế toán", Gender.Male),
+    new PilotUser("acc03@namviet.vn", "Lê Thị Phương Thảo", RolePermissionTemplates.AccountantRole, "NV-0093", "Tài chính", "TP.HCM", "Kế toán", Gender.Female),
+    new PilotUser("acc04@namviet.vn", "Phạm Đức Thắng", RolePermissionTemplates.AccountantRole, "NV-0094", "Tài chính", "Đà Nẵng", "Kế toán", Gender.Male),
+    new PilotUser("acc05@namviet.vn", "Hoàng Thị Kim Oanh", RolePermissionTemplates.AccountantRole, "NV-0095", "Tài chính", "Hải Phòng", "Kế toán", Gender.Female),
+    new PilotUser("acc06@namviet.vn", "Vũ Minh Tuấn", RolePermissionTemplates.AccountantRole, "NV-0096", "Tài chính", "Hà Nội", "Kế toán", Gender.Male),
+    new PilotUser("acc07@namviet.vn", "Đặng Thị Thuỷ", RolePermissionTemplates.AccountantRole, "NV-0097", "Tài chính", "Bình Dương", "Kế toán", Gender.Female),
+    new PilotUser("acc08@namviet.vn", "Bùi Quang Trung", RolePermissionTemplates.AccountantRole, "NV-0098", "Tài chính", "TP.HCM", "Kế toán", Gender.Male),
+    new PilotUser("acc09@namviet.vn", "Ngô Thị Hạnh", RolePermissionTemplates.AccountantRole, "NV-0099", "Tài chính", "Hà Nội", "Kế toán", Gender.Female),
+    new PilotUser("acc10@namviet.vn", "Đỗ Văn Hải", RolePermissionTemplates.AccountantRole, "NV-0100", "Tài chính", "Đà Nẵng", "Kế toán", Gender.Male),
+
+    // Procurement (10)
+    new PilotUser("proc01@namviet.vn", "Nguyễn Minh Châu", RolePermissionTemplates.ProcurementRole, "NV-0111", "Mua hàng", "Hà Nội", "Nhân viên cung ứng", Gender.Female),
+    new PilotUser("proc02@namviet.vn", "Trần Quốc Hưng", RolePermissionTemplates.ProcurementRole, "NV-0112", "Mua hàng", "Hà Nội", "Nhân viên cung ứng", Gender.Male),
+    new PilotUser("proc03@namviet.vn", "Lê Thị Mỹ Dung", RolePermissionTemplates.ProcurementRole, "NV-0113", "Mua hàng", "TP.HCM", "Nhân viên cung ứng", Gender.Female),
+    new PilotUser("proc04@namviet.vn", "Phạm Văn Đạt", RolePermissionTemplates.ProcurementRole, "NV-0114", "Mua hàng", "Đà Nẵng", "Nhân viên cung ứng", Gender.Male),
+    new PilotUser("proc05@namviet.vn", "Hoàng Thị Ngọc Hà", RolePermissionTemplates.ProcurementRole, "NV-0115", "Mua hàng", "Hải Phòng", "Nhân viên cung ứng", Gender.Female),
+    new PilotUser("proc06@namviet.vn", "Vũ Đức Mạnh", RolePermissionTemplates.ProcurementRole, "NV-0116", "Mua hàng", "Bình Dương", "Nhân viên cung ứng", Gender.Male),
+    new PilotUser("proc07@namviet.vn", "Đặng Thị Thuỳ Dương", RolePermissionTemplates.ProcurementRole, "NV-0117", "Mua hàng", "Hà Nội", "Nhân viên cung ứng", Gender.Female),
+    new PilotUser("proc08@namviet.vn", "Bùi Văn Khoa", RolePermissionTemplates.ProcurementRole, "NV-0118", "Mua hàng", "TP.HCM", "Nhân viên cung ứng", Gender.Male),
+    new PilotUser("proc09@namviet.vn", "Ngô Thị Kim Chi", RolePermissionTemplates.ProcurementRole, "NV-0119", "Mua hàng", "Đà Nẵng", "Nhân viên cung ứng", Gender.Female),
+    new PilotUser("proc10@namviet.vn", "Đỗ Minh Triết", RolePermissionTemplates.ProcurementRole, "NV-0120", "Mua hàng", "Hà Nội", "Nhân viên cung ứng", Gender.Male),
+
+    // BOD (10)
+    new PilotUser("bod01@namviet.vn", "Nguyễn Văn Thành", RolePermissionTemplates.BodRole, "NV-0131", "Ban lãnh đạo", "Hà Nội", "Ban giám đốc", Gender.Male),
+    new PilotUser("bod02@namviet.vn", "Trần Thị Lan Hương", RolePermissionTemplates.BodRole, "NV-0132", "Ban lãnh đạo", "Hà Nội", "Ban giám đốc", Gender.Female),
+    new PilotUser("bod03@namviet.vn", "Lê Hoàng Phúc", RolePermissionTemplates.BodRole, "NV-0133", "Ban lãnh đạo", "TP.HCM", "Ban giám đốc", Gender.Male),
+    new PilotUser("bod04@namviet.vn", "Phạm Thị Thuý Hằng", RolePermissionTemplates.BodRole, "NV-0134", "Ban lãnh đạo", "Đà Nẵng", "Ban giám đốc", Gender.Female),
+    new PilotUser("bod05@namviet.vn", "Hoàng Quốc Bảo", RolePermissionTemplates.BodRole, "NV-0135", "Ban lãnh đạo", "Hải Phòng", "Ban giám đốc", Gender.Male),
+    new PilotUser("bod06@namviet.vn", "Vũ Thị Ngọc Bích", RolePermissionTemplates.BodRole, "NV-0136", "Ban lãnh đạo", "Hà Nội", "Ban giám đốc", Gender.Female),
+    new PilotUser("bod07@namviet.vn", "Đặng Minh Tuấn", RolePermissionTemplates.BodRole, "NV-0137", "Ban lãnh đạo", "TP.HCM", "Ban giám đốc", Gender.Male),
+    new PilotUser("bod08@namviet.vn", "Bùi Thị Thanh Vân", RolePermissionTemplates.BodRole, "NV-0138", "Ban lãnh đạo", "Bình Dương", "Ban giám đốc", Gender.Female),
+    new PilotUser("bod09@namviet.vn", "Ngô Văn Kiên", RolePermissionTemplates.BodRole, "NV-0139", "Ban lãnh đạo", "Đà Nẵng", "Ban giám đốc", Gender.Male),
+    new PilotUser("bod10@namviet.vn", "Đỗ Thị Kim Loan", RolePermissionTemplates.BodRole, "NV-0140", "Ban lãnh đạo", "Hà Nội", "Ban giám đốc", Gender.Female),
+};
+
+/// <summary>Gán thủ kho → dự án demo (chỉ khi project đã tồn tại sau SeedWms / SeedPurchasing).</summary>
+var keeperProjectAssignments = new (string Email, string[] ProjectCodes)[]
+{
+    ("keeper01@namviet.vn", ["DA-2026-DEMO-001", "DEMO-PUR-PROJ"]),
+    ("keeper02@namviet.vn", ["DA-2026-DEMO-002", "DEMO-PUR-PROJ"]),
+    ("keeper03@namviet.vn", ["DA-2026-DEMO-001", "DA-2026-DEMO-002"]),
+    ("keeper04@namviet.vn", ["DEMO-PUR-PROJ"]),
+    ("keeper05@namviet.vn", ["DA-2026-DEMO-001"]),
+    ("keeper06@namviet.vn", ["DA-2026-DEMO-002"]),
+    ("keeper07@namviet.vn", ["DEMO-PUR-PROJ", "DA-2026-DEMO-001"]),
+    ("keeper08@namviet.vn", ["DA-2026-DEMO-002", "DEMO-PUR-PROJ"]),
+    ("keeper09@namviet.vn", ["DA-2026-DEMO-001", "DEMO-PUR-PROJ"]),
+    ("keeper10@namviet.vn", ["DA-2026-DEMO-002", "DEMO-PUR-PROJ"]),
 };
 
 var apiConfigDir = Path.GetFullPath(Path.Combine(
@@ -52,6 +149,7 @@ var services = new ServiceCollection();
 services.AddLogging(b => b.AddConsole().SetMinimumLevel(LogLevel.Warning));
 services.AddIdentityModule(configuration);
 services.AddHrModule(configuration);
+services.AddWarehouseModule(configuration);
 
 await using var provider = services.BuildServiceProvider();
 await using var scope = provider.CreateAsyncScope();
@@ -60,11 +158,15 @@ var userManager = scope.ServiceProvider.GetRequiredService<UserManager<Applicati
 var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<ApplicationRole>>();
 var identityDb = scope.ServiceProvider.GetRequiredService<IdentityDbContext>();
 var hrDb = scope.ServiceProvider.GetRequiredService<HrDbContext>();
+var warehouseDb = scope.ServiceProvider.GetRequiredService<WarehouseDbContext>();
 
 await identityDb.Database.MigrateAsync();
 await hrDb.Database.MigrateAsync();
+await warehouseDb.Database.MigrateAsync();
 
-foreach (var roleName in pilotUsers.Select(u => u.Role).Distinct(StringComparer.Ordinal))
+foreach (var roleName in RolePermissionTemplates.ByIdentityRoleName.Keys
+             .Concat(pilotUsers.Select(u => u.Role))
+             .Distinct(StringComparer.Ordinal))
     await EnsureRoleAsync(roleManager, roleName);
 
 var departmentId = await EnsurePilotDepartmentAsync(hrDb);
@@ -78,6 +180,8 @@ Console.WriteLine();
 foreach (var spec in pilotUsers)
 {
     var positionId = positionIds[spec.PositionName];
+    await FreeEmployeeCodeAsync(hrDb, identityDb, userManager, spec.EmployeeCode, spec.Email);
+
     var user = await userManager.FindByEmailAsync(spec.Email);
     if (user is null)
     {
@@ -110,6 +214,14 @@ foreach (var spec in pilotUsers)
             Console.Error.WriteLine($"Failed to reset password for {spec.Email}: {FormatErrors(reset.Errors)}");
             return 1;
         }
+
+        if (!string.Equals(user.Name, spec.Name, StringComparison.Ordinal))
+        {
+            user.Name = spec.Name;
+            user.UpdatedAt = DateTime.UtcNow;
+            await userManager.UpdateAsync(user);
+            Console.WriteLine($"  → updated display name → {spec.Name}");
+        }
     }
 
     if (!await userManager.IsInRoleAsync(user, spec.Role))
@@ -118,10 +230,26 @@ foreach (var spec in pilotUsers)
         Console.WriteLine($"  → assigned role {spec.Role}");
     }
 
-    await FreeEmployeeCodeAsync(hrDb, identityDb, userManager, spec.EmployeeCode, spec.Email);
-
     var employee = await hrDb.Employees
-        .FirstOrDefaultAsync(e => e.DeletedAt == null && (e.Email == spec.Email || e.Code == spec.EmployeeCode));
+        .IgnoreQueryFilters()
+        .FirstOrDefaultAsync(e =>
+            e.DeletedAt == null
+            && (e.Email == spec.Email || e.Code == spec.EmployeeCode));
+
+    // Soft-deleted row still occupying the unique code — rename then create.
+    if (employee is null)
+    {
+        var softConflict = await hrDb.Employees
+            .IgnoreQueryFilters()
+            .FirstOrDefaultAsync(e => e.DeletedAt != null && e.Code == spec.EmployeeCode);
+        if (softConflict is not null)
+        {
+            softConflict.Code = $"LEGACY-HR-{softConflict.Id}";
+            softConflict.UpdatedAt = DateTime.UtcNow;
+            await hrDb.SaveChangesAsync();
+            Console.WriteLine($"  → free soft-deleted HR code {spec.EmployeeCode} → {softConflict.Code}");
+        }
+    }
 
     if (employee is null)
     {
@@ -190,6 +318,11 @@ foreach (var spec in pilotUsers)
             employee.Gender = spec.Gender;
             changed = true;
         }
+        if (!string.Equals(employee.FullName, spec.Name, StringComparison.Ordinal))
+        {
+            employee.FullName = spec.Name;
+            changed = true;
+        }
         if (changed)
         {
             employee.UpdatedAt = DateTime.UtcNow;
@@ -214,9 +347,82 @@ foreach (var spec in pilotUsers)
     Console.WriteLine();
 }
 
-await RepairLegacyPilotEmployeesAsync(hrDb, userManager, departmentId);
+await RepairLegacyPilotEmployeesAsync(
+    hrDb,
+    userManager,
+    departmentId,
+    pilotUsers.Select(u => u.Email).ToHashSet(StringComparer.OrdinalIgnoreCase));
+
+await AssignWarehouseKeepersAsync(warehouseDb, userManager, keeperProjectAssignments);
 
 return 0;
+
+static async Task AssignWarehouseKeepersAsync(
+    WarehouseDbContext warehouseDb,
+    UserManager<ApplicationUser> userManager,
+    IReadOnlyList<(string Email, string[] ProjectCodes)> assignments)
+{
+    Console.WriteLine("Assigning warehouse keepers to demo projects…");
+
+    var existingProjectCodes = (await warehouseDb.Projects.AsNoTracking()
+            .Select(p => p.ProjectCode)
+            .ToListAsync())
+        .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+    if (existingProjectCodes.Count == 0)
+    {
+        Console.WriteLine("  (skip) Chưa có dự án — chạy SeedWmsDemoData / SeedPurchasingDemoData trước rồi chạy lại script này.");
+        return;
+    }
+
+    var added = 0;
+    var skippedMissingProject = 0;
+
+    foreach (var (email, projectCodes) in assignments)
+    {
+        var user = await userManager.FindByEmailAsync(email);
+        if (user is null)
+        {
+            Console.WriteLine($"  (skip) User {email} chưa tạo.");
+            continue;
+        }
+
+        var displayName = string.IsNullOrWhiteSpace(user.Name) ? email : user.Name!;
+
+        foreach (var projectCode in projectCodes)
+        {
+            if (!existingProjectCodes.Contains(projectCode))
+            {
+                skippedMissingProject++;
+                Console.WriteLine($"  (skip) Dự án {projectCode} chưa có — bỏ gán {email}.");
+                continue;
+            }
+
+            var exists = await warehouseDb.ProjectWarehouseKeepers.AnyAsync(k =>
+                k.ProjectCode == projectCode && k.UserId == user.Id);
+            if (exists)
+            {
+                Console.WriteLine($"  → {email} đã gán {projectCode}");
+                continue;
+            }
+
+            warehouseDb.ProjectWarehouseKeepers.Add(new ProjectWarehouseKeeper
+            {
+                ProjectCode = projectCode,
+                UserId = user.Id,
+                DisplayName = displayName,
+            });
+            added++;
+            Console.WriteLine($"  → gán {email} → {projectCode}");
+        }
+    }
+
+    if (added > 0)
+        await warehouseDb.SaveChangesAsync();
+
+    Console.WriteLine($"Keeper assignments done (added={added}, missingProject={skippedMissingProject}).");
+    Console.WriteLine();
+}
 
 static async Task FreeEmployeeCodeAsync(
     HrDbContext hrDb,
@@ -225,8 +431,10 @@ static async Task FreeEmployeeCodeAsync(
     string targetCode,
     string keepEmail)
 {
+    // Unique index includes soft-deleted rows — must IgnoreQueryFilters.
     var hrConflicts = await hrDb.Employees
-        .Where(e => e.DeletedAt == null && e.Code == targetCode && e.Email != keepEmail)
+        .IgnoreQueryFilters()
+        .Where(e => e.Code == targetCode && (e.Email == null || e.Email != keepEmail))
         .ToListAsync();
     foreach (var emp in hrConflicts)
     {
@@ -242,7 +450,8 @@ static async Task FreeEmployeeCodeAsync(
     var keepUserId = keepUser?.Id;
 
     var identityConflicts = await identityDb.Users
-        .Where(u => u.DeletedAt == null && u.EmployeeCode == targetCode && (keepUserId == null || u.Id != keepUserId))
+        .IgnoreQueryFilters()
+        .Where(u => u.EmployeeCode == targetCode && (keepUserId == null || u.Id != keepUserId))
         .ToListAsync();
     foreach (var u in identityConflicts)
     {
@@ -257,15 +466,9 @@ static async Task FreeEmployeeCodeAsync(
 static async Task RepairLegacyPilotEmployeesAsync(
     HrDbContext hrDb,
     UserManager<ApplicationUser> userManager,
-    int departmentId)
+    int departmentId,
+    HashSet<string> pilotEmails)
 {
-    var pilotEmails = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-    {
-        "admin@namviet.vn",
-        "hr@namviet.vn",
-        "staff@namviet.vn",
-    };
-
     var legacy = await hrDb.Employees
         .Where(e => e.DeletedAt == null && e.DepartmentId == departmentId)
         .Where(e => !pilotEmails.Contains(e.Email ?? string.Empty))
@@ -355,7 +558,10 @@ static async Task<Dictionary<string, int>> EnsurePilotPositionsAsync(
         {
             Name = name,
             DepartmentId = departmentId,
-            Level = name.Contains("Quản trị", StringComparison.Ordinal) ? "Quản lý" : "Nhân viên",
+            Level = name.Contains("Quản trị", StringComparison.Ordinal)
+                || name.Contains("Quản lý", StringComparison.Ordinal)
+                ? "Quản lý"
+                : "Nhân viên",
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow,
         };

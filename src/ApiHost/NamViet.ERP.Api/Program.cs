@@ -101,6 +101,7 @@ builder.Services.AddRateLimiter(options =>
 // ── Current user ───────────────────────────────────────────────────────────
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ICurrentUser, CurrentUserService>();
+builder.Services.AddSingleton<NamViet.ERP.Api.Infrastructure.Auth.IAuthCookieService, NamViet.ERP.Api.Infrastructure.Auth.AuthCookieService>();
 builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Wms.IWmsCatalogQueryService, NamViet.ERP.Api.Application.Services.Wms.WmsCatalogQueryService>();
 builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Wms.IWmsVoucherExcelExportService, NamViet.ERP.Api.Application.Services.Wms.WmsVoucherExcelExportService>();
 builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Wms.IWmsReportService, NamViet.ERP.Api.Application.Services.Wms.WmsReportService>();
@@ -108,6 +109,7 @@ builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Hr.IRecruitmentA
 builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Wms.IWmsNotificationService, NamViet.ERP.Api.Application.Services.Wms.WmsNotificationService>();
 builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Wms.IWmsLowStockAlertService, NamViet.ERP.Api.Application.Services.Wms.WmsLowStockAlertService>();
 builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Wms.IProjectBudgetService, NamViet.ERP.Api.Application.Services.Wms.ProjectBudgetService>();
+builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Wms.ProjectWarehouseAccessService>();
 builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Wms.IStocktakeFreezeGuard, NamViet.ERP.Api.Application.Services.Wms.StocktakeFreezeGuard>();
 builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Wms.IImportApplicationService, NamViet.ERP.Api.Application.Services.Wms.ImportApplicationService>();
 builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Wms.IImportExcelService, NamViet.ERP.Api.Application.Services.Wms.ImportExcelService>();
@@ -115,11 +117,23 @@ builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Wms.IExportAppli
 builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Wms.ITransferApplicationService, NamViet.ERP.Api.Application.Services.Wms.TransferApplicationService>();
 builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Wms.IExportReturnApplicationService, NamViet.ERP.Api.Application.Services.Wms.ExportReturnApplicationService>();
 builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Wms.IStocktakeApplicationService, NamViet.ERP.Api.Application.Services.Wms.StocktakeApplicationService>();
+builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Purchasing.IPurchasePlanCodeGenerator, NamViet.ERP.Api.Application.Services.Purchasing.PurchasePlanCodeGenerator>();
+builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Purchasing.IPurchaseOrderCodeGenerator, NamViet.ERP.Api.Application.Services.Purchasing.PurchaseOrderCodeGenerator>();
+builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Purchasing.IPurchasePlanImportService, NamViet.ERP.Api.Application.Services.Purchasing.PurchasePlanImportService>();
+builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Purchasing.IPurchasePlanService, NamViet.ERP.Api.Application.Services.Purchasing.PurchasePlanService>();
+builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Purchasing.IPurchaseOrderReceiptService, NamViet.ERP.Api.Application.Services.Purchasing.PurchaseOrderReceiptService>();
+builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Purchasing.IPurchaseDefectApplicationService, NamViet.ERP.Api.Application.Services.Purchasing.PurchaseDefectApplicationService>();
+builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Purchasing.IPurchaseOrderService, NamViet.ERP.Api.Application.Services.Purchasing.PurchaseOrderService>();
+builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Purchasing.IPurchasePaymentCodeGenerator, NamViet.ERP.Api.Application.Services.Purchasing.PurchasePaymentCodeGenerator>();
+builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Purchasing.IPurchasePaymentService, NamViet.ERP.Api.Application.Services.Purchasing.PurchasePaymentService>();
+builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Purchasing.IPurchasingDashboardService, NamViet.ERP.Api.Application.Services.Purchasing.PurchasingDashboardService>();
+builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Shared.IActivityEventWriter, NamViet.ERP.Api.Application.Services.Shared.ActivityEventWriter>();
 builder.Services.AddScoped<IAdminUserQueryService, AdminUserQueryService>();
 builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Hr.IEmployeeAccessService, NamViet.ERP.Api.Application.Services.Hr.EmployeeAccessService>();
 builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Hr.IEmployeeOnboardingInviteService, NamViet.ERP.Api.Application.Services.Hr.EmployeeOnboardingInviteService>();
 builder.Services.AddSingleton<NamViet.ERP.Api.Services.Storage.IFileStorage, NamViet.ERP.Api.Services.Storage.LocalFileStorage>();
 builder.Services.AddHostedService<NamViet.ERP.Api.Application.Services.Hr.HrPrivateUploadCleanupService>();
+builder.Services.AddSignalR();
 
 // ── CORS ───────────────────────────────────────────────────────────────────
 var allowedOrigins = (builder.Configuration["Cors:AllowedOrigins"] ?? "http://localhost:5173")
@@ -151,6 +165,9 @@ builder.Services.AddSwaggerGen(opt =>
         Version = "v1",
         Description = "Backend API for NamViet ERP"
     });
+    // Emit accurate nullability from C# NRT so FE OpenAPI codegen gets required vs optional right.
+    opt.SupportNonNullableReferenceTypes();
+    opt.NonNullableReferenceTypesAsRequired();
     opt.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
     {
         Name = "Authorization",
@@ -201,6 +218,7 @@ app.UseAuthentication();
 app.UseAuthorization();
 app.UseRateLimiter();
 app.MapControllers();
+app.MapHub<NamViet.ERP.Api.Hubs.ActivityHub>("/hubs/activity");
 app.MapHealthChecks("/health");
 
 app.Run();

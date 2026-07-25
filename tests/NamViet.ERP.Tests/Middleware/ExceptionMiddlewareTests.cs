@@ -1,5 +1,7 @@
 using System.Text.Json;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.FileProviders;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
 using NamViet.ERP.Api.Application.Services.Wms;
 using NamViet.ERP.Api.Middleware;
@@ -8,6 +10,8 @@ namespace NamViet.ERP.Tests.Middleware;
 
 public class ExceptionMiddlewareTests
 {
+    private static readonly IHostEnvironment TestEnv = new TestHostEnvironment();
+
     [Fact]
     public async Task Stocktake_freeze_conflict_exposes_safe_detail()
     {
@@ -46,7 +50,8 @@ public class ExceptionMiddlewareTests
 
         var middleware = new ExceptionMiddleware(
             _ => Task.FromException(exception),
-            NullLogger<ExceptionMiddleware>.Instance);
+            NullLogger<ExceptionMiddleware>.Instance,
+            TestEnv);
 
         await middleware.InvokeAsync(context);
         return context;
@@ -56,5 +61,13 @@ public class ExceptionMiddlewareTests
     {
         context.Response.Body.Position = 0;
         return await JsonDocument.ParseAsync(context.Response.Body);
+    }
+
+    private sealed class TestHostEnvironment : IHostEnvironment
+    {
+        public string EnvironmentName { get; set; } = Environments.Production;
+        public string ApplicationName { get; set; } = "Tests";
+        public string ContentRootPath { get; set; } = AppContext.BaseDirectory;
+        public IFileProvider ContentRootFileProvider { get; set; } = new NullFileProvider();
     }
 }

@@ -2,9 +2,11 @@ namespace NamViet.ERP.Api.Application.Dtos.Auth;
 
 public record LoginRequest(string Username, string Password, bool RememberMe = false);
 
-public record RefreshTokenRequest(string RefreshToken);
+/// <summary>Optional body refresh token — preferred transport is HttpOnly cookie.</summary>
+public record RefreshTokenRequest(string? RefreshToken = null);
 
-public record TokenPairResponse(string Token, string RefreshToken);
+/// <summary>Refresh success — new access token in body; refresh rotates via HttpOnly cookie.</summary>
+public record TokenPairResponse(string AccessToken);
 
 public record AuthUserDto(
     string Id,
@@ -18,4 +20,4 @@ public record AuthUserDto(
     string? EmployeeStatus,
     IReadOnlyList<string> Permissions);
 
-public record LoginResponse(string Token, string RefreshToken, AuthUserDto User);
+public record LoginResponse(AuthUserDto User, string? AccessToken = null);

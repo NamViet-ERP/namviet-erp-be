@@ -64,6 +64,7 @@ public class RefreshTokenHandler(
             accessToken,
             newRefreshValue,
             tokenService.GetAccessTokenExpiry(),
+            newRefresh.ExpiresAt,
             new UserDto(user.Id, user.EmployeeCode, user.Name, user.Email!,
                 linked?.DepartmentName, user.AvatarUrl, [.. roles]));
     }

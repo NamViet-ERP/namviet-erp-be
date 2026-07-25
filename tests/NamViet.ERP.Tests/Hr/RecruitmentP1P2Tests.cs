@@ -1,6 +1,8 @@
 using System.Text.Json;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.FileProviders;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
 using NamViet.ERP.Api.Application.Dtos.Hr;
 using NamViet.ERP.Api.Application.Services.Hr;
@@ -131,7 +133,8 @@ public class RecruitmentP1P2Tests
         const string sensitiveMessage = "database row 42 is in secret state";
         var middleware = new ExceptionMiddleware(
             _ => throw new InvalidOperationException(sensitiveMessage),
-            NullLogger<ExceptionMiddleware>.Instance);
+            NullLogger<ExceptionMiddleware>.Instance,
+            new TestHostEnvironment());
         var context = new DefaultHttpContext();
         context.Response.Body = new MemoryStream();
 
@@ -190,4 +193,12 @@ public class RecruitmentP1P2Tests
             RecruitmentPlanId = recruitmentPlanId,
             Status = status,
         };
+
+    private sealed class TestHostEnvironment : IHostEnvironment
+    {
+        public string EnvironmentName { get; set; } = Environments.Production;
+        public string ApplicationName { get; set; } = "Tests";
+        public string ContentRootPath { get; set; } = AppContext.BaseDirectory;
+        public IFileProvider ContentRootFileProvider { get; set; } = new NullFileProvider();
+    }
 }

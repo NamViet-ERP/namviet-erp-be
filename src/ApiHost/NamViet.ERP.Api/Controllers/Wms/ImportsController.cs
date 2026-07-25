@@ -1,9 +1,13 @@
 using FluentValidation;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using NamViet.ERP.Api.Application.Dtos.Purchasing;
 using NamViet.ERP.Api.Application.Dtos.Wms;
+using NamViet.ERP.Api.Application.Services.Purchasing;
 using NamViet.ERP.Api.Application.Services.Wms;
 using NamViet.ERP.Api.Infrastructure.Authorization;
+using NamViet.ERP.Api.Services.Storage;
+using NamViet.ERP.SharedKernel.Authorization;
 
 namespace NamViet.ERP.Api.Controllers.Wms;
 
@@ -14,7 +18,9 @@ public class ImportsController(
     IImportApplicationService imports,
     IImportExcelService importExcel,
     IWmsVoucherExcelExportService voucherExport,
-    IValidator<CreateImportDto> createValidator) : ControllerBase
+    IValidator<CreateImportDto> createValidator,
+    IFileStorage fileStorage,
+    ProjectWarehouseAccessService projectAccess) : ControllerBase
 {
     [HttpGet]
     [RequirePermission("wms.imports.view:all")]
@@ -39,7 +45,16 @@ public class ImportsController(
         var validation = await createValidator.ValidateAsync(dto, ct);
         if (!validation.IsValid)
             return BadRequest(string.Join("; ", validation.Errors.Select(e => e.ErrorMessage)));
-        return Ok(await imports.CreateAsync(dto, ct));
+        try
+        {
+            if (!string.IsNullOrWhiteSpace(dto.Project))
+                await projectAccess.EnsureCanOperateOnProjectAsync(dto.Project, ct);
+            return Ok(await imports.CreateAsync(dto, ct));
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, ex.Message);
+        }
     }
 
     [HttpPut("{id}")]
@@ -49,7 +64,16 @@ public class ImportsController(
         var validation = await createValidator.ValidateAsync(dto, ct);
         if (!validation.IsValid)
             return BadRequest(string.Join("; ", validation.Errors.Select(e => e.ErrorMessage)));
-        return await WmsVoucherControllerResponses.ExecuteAsync(() => imports.UpdateAsync(id, dto, ct), ct);
+        try
+        {
+            if (!string.IsNullOrWhiteSpace(dto.Project))
+                await projectAccess.EnsureCanOperateOnProjectAsync(dto.Project, ct);
+            return await WmsVoucherControllerResponses.ExecuteAsync(() => imports.UpdateAsync(id, dto, ct), ct);
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, ex.Message);
+        }
     }
 
     [HttpGet("export")]
@@ -77,6 +101,68 @@ public class ImportsController(
             bytes,
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             fileName);
+    }
+
+    [HttpGet("from-po/{poCode}/preview")]
+    [RequirePermission("wms.imports.create")]
+    public async Task<ActionResult<PoImportPreviewDto>> PreviewFromPurchaseOrder(string poCode, CancellationToken ct)
+    {
+        try
+        {
+            var preview = await imports.PreviewImportFromPurchaseOrderAsync(poCode, ct);
+            await projectAccess.EnsureCanOperateOnProjectAsync(preview.ProjectCode, ct);
+            return Ok(MaskPoImportPrices(preview));
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, ex.Message);
+        }
+        catch (PurchasingConflictException ex)
+        {
+            return Conflict(ex.Message);
+        }
+    }
+
+    [HttpPost("from-po/{poCode}")]
+    [RequirePermission("wms.imports.create")]
+    public async Task<ActionResult<ImportDto>> CreateFromPurchaseOrder(
+        string poCode,
+        [FromBody] CreateImportFromPoRequest? request,
+        CancellationToken ct)
+    {
+        try
+        {
+            var preview = await imports.PreviewImportFromPurchaseOrderAsync(poCode, ct);
+            await projectAccess.EnsureCanOperateOnProjectAsync(preview.ProjectCode, ct);
+            var created = await imports.CreateDraftFromPurchaseOrderAsync(poCode, request, ct);
+            return Ok(created);
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, ex.Message);
+        }
+        catch (PurchasingConflictException ex)
+        {
+            return Conflict(ex.Message);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+    }
+
+    private PoImportPreviewDto MaskPoImportPrices(PoImportPreviewDto preview)
+    {
+        // Prices stripped on FE too; BE hides when claim missing (Admin has all via catalog).
+        if (User.IsInRole("Admin") || User.HasClaim(PermissionCatalog.ClaimType, "wms.prices.view"))
+            return preview;
+
+        return preview with
+        {
+            Lines = preview.Lines
+                .Select(l => l with { UnitPrice = 0m })
+                .ToList(),
+        };
     }
 
     [HttpPost("{id}/approve")]
@@ -111,6 +197,88 @@ public class ImportsController(
         {
             return StatusCode(500, "Không thể duyệt phiếu nhập. Vui lòng thử lại hoặc liên hệ quản trị viên.");
         }
+    }
+
+    [HttpPut("{id}/receipt-evaluation")]
+    [RequirePermission("wms.imports.update")]
+    public async Task<ActionResult<ImportDto>> UpdateReceiptEvaluation(
+        string id,
+        [FromBody] UpdateImportReceiptEvaluationRequest request,
+        CancellationToken ct)
+    {
+        try
+        {
+            var item = await imports.UpdateReceiptEvaluationAsync(id, request.Evaluation, ct);
+            return item is null ? NotFound() : Ok(item);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+    }
+
+    [HttpPost("{id}/attachments")]
+    [RequirePermission("wms.imports.update")]
+    [RequestSizeLimit(10 * 1024 * 1024 + 1024)]
+    public async Task<ActionResult<ImportAttachmentDto>> UploadAttachment(
+        string id,
+        IFormFile file,
+        [FromForm] string? kind,
+        CancellationToken ct)
+    {
+        if (file is null || file.Length == 0)
+            return BadRequest("Vui lòng chọn file.");
+        if (file.Length > 10 * 1024 * 1024)
+            return BadRequest("File vượt quá 10MB.");
+
+        try
+        {
+            await using var stream = file.OpenReadStream();
+            var created = await imports.UploadAttachmentAsync(
+                id,
+                kind ?? "document",
+                file.FileName,
+                file.ContentType ?? "application/octet-stream",
+                stream,
+                ct);
+            return created is null ? NotFound() : Ok(created);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+    }
+
+    [HttpDelete("{id}/attachments/{attachmentId:guid}")]
+    [RequirePermission("wms.imports.update")]
+    public async Task<IActionResult> DeleteAttachment(
+        string id,
+        Guid attachmentId,
+        CancellationToken ct)
+    {
+        try
+        {
+            var ok = await imports.DeleteAttachmentAsync(id, attachmentId, ct);
+            return ok ? NoContent() : NotFound();
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+    }
+
+    [HttpGet("{id}/attachments/{attachmentId:guid}/download")]
+    [RequirePermission("wms.imports.view:all")]
+    public async Task<IActionResult> DownloadAttachment(
+        string id,
+        Guid attachmentId,
+        CancellationToken ct)
+    {
+        var dto = await imports.GetAttachmentAsync(id, attachmentId, ct);
+        if (dto is null) return NotFound();
+        var stored = fileStorage.Get(dto.StorageKey);
+        if (stored is null) return NotFound();
+        return PhysicalFile(stored.FullPath, "application/octet-stream", dto.FileName);
     }
 
     [HttpPost("{id}/submit")]

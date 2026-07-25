@@ -25,6 +25,41 @@ public class ProjectsController(
     IValidator<CreateProjectRequest> createValidator,
     IValidator<UpdateProjectRequest> updateValidator) : ControllerBase
 {
+    private static IReadOnlyList<ProjectWarehouseKeeperDto> NormalizeKeepers(
+        IReadOnlyList<ProjectWarehouseKeeperDto>? keepers) =>
+        (keepers ?? [])
+            .Where(k => k.UserId != Guid.Empty)
+            .GroupBy(k => k.UserId)
+            .Select(g =>
+            {
+                var first = g.First();
+                var name = string.IsNullOrWhiteSpace(first.DisplayName)
+                    ? first.UserId.ToString()
+                    : first.DisplayName.Trim();
+                return new ProjectWarehouseKeeperDto(g.Key, name);
+            })
+            .ToList();
+
+    private async Task ReplaceKeepersAsync(
+        string projectCode,
+        IReadOnlyList<ProjectWarehouseKeeperDto>? keepers,
+        CancellationToken ct)
+    {
+        var normalized = NormalizeKeepers(keepers);
+        var existing = await db.ProjectWarehouseKeepers
+            .Where(k => k.ProjectCode == projectCode)
+            .ToListAsync(ct);
+        db.ProjectWarehouseKeepers.RemoveRange(existing);
+        if (normalized.Count == 0) return;
+
+        db.ProjectWarehouseKeepers.AddRange(normalized.Select(k => new ProjectWarehouseKeeper
+        {
+            ProjectCode = projectCode,
+            UserId = k.UserId,
+            DisplayName = k.DisplayName,
+        }));
+    }
+
     [HttpGet]
     [RequirePermission("wms.projects.view:all")]
     public async Task<IActionResult> GetAll(
@@ -166,6 +201,7 @@ public class ProjectsController(
             MaterialBudget = request.MaterialBudget
         };
         db.Projects.Add(project);
+        await ReplaceKeepersAsync(project.ProjectCode, request.WarehouseKeepers, ct);
         await db.SaveChangesAsync(ct);
         var items = await MapProjectsWithStockAsync([project], ct);
         return CreatedAtAction(nameof(GetById), new { code = project.ProjectCode }, items[0]);
@@ -188,6 +224,7 @@ public class ProjectsController(
         p.MaterialBudget = request.MaterialBudget;
         p.Status = request.Status;
         p.UpdatedAt = DateTime.UtcNow;
+        await ReplaceKeepersAsync(code, request.WarehouseKeepers, ct);
         await db.SaveChangesAsync(ct);
         return NoContent();
     }
@@ -219,10 +256,23 @@ public class ProjectsController(
         var stockByCode = stockRows.ToDictionary(x => x.ProjectCode);
         var approvedByCode = await projectBudget.GetApprovedImportValuesAsync(codes, ct);
 
+        var keepers = await db.ProjectWarehouseKeepers.AsNoTracking()
+            .Where(k => codes.Contains(k.ProjectCode))
+            .OrderBy(k => k.DisplayName)
+            .ToListAsync(ct);
+        var keepersByCode = keepers
+            .GroupBy(k => k.ProjectCode)
+            .ToDictionary(
+                g => g.Key,
+                g => (IReadOnlyList<ProjectWarehouseKeeperDto>)g
+                    .Select(k => new ProjectWarehouseKeeperDto(k.UserId, k.DisplayName))
+                    .ToList());
+
         return projects.Select(p =>
         {
             stockByCode.TryGetValue(p.ProjectCode, out var stock);
             approvedByCode.TryGetValue(p.ProjectCode, out var approvedImportValue);
+            keepersByCode.TryGetValue(p.ProjectCode, out var projectKeepers);
             var remaining = p.MaterialBudget - approvedImportValue;
             return new ProjectDto(
                 p.ProjectCode, p.ProjectName, p.ProjectType.ToString(),
@@ -232,7 +282,8 @@ public class ProjectsController(
                 stock?.StockReservedQty ?? 0,
                 stock?.StockMaterialCount ?? 0,
                 approvedImportValue,
-                remaining);
+                remaining,
+                projectKeepers ?? []);
         }).ToList();
     }
 

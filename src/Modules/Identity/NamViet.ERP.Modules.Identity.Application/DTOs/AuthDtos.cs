@@ -18,6 +18,7 @@ public record AuthResponse(
     string AccessToken,
     string RefreshToken,
     DateTime AccessTokenExpiry,
+    DateTime RefreshTokenExpiry,
     UserDto User);
 
 public record UserDto(

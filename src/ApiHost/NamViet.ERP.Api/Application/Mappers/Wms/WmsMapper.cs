@@ -96,7 +96,16 @@ public static class WmsMapper
             i.MaterialCode, i.MaterialCode,
             TransactionItemHelper.ResolveName(i),
             i.Quantity, TransactionItemHelper.ResolveUnit(i), i.UnitPrice,
-            i.SupplierName, i.SupplierId)).ToList();
+            i.SupplierName, i.SupplierId, i.Notes)).ToList();
+        var attachments = t.Attachments
+            .OrderByDescending(a => a.UploadedAt)
+            .Select(a => new ImportAttachmentDto(
+                a.Id,
+                a.Kind,
+                a.FileName,
+                a.StorageKey,
+                FormatCreatedAt(a.UploadedAt)))
+            .ToList();
         var total = items.Sum(x => x.Qty * x.UnitPrice);
         return new ImportDto(
             t.Id.ToString(), t.TicketCode, FormatDate(t.CreatedAt),
@@ -108,7 +117,10 @@ public static class WmsMapper
             items, t.CreatedByName, t.Notes ?? "",
             t.WarehouseId ?? "", t.IsDirectProcurement,
             t.BeneficiaryProjectCode,
-            FormatCreatedAt(t.CreatedAt));
+            FormatCreatedAt(t.CreatedAt),
+            t.PurchasePlanCode,
+            t.ReceiptEvaluation,
+            attachments);
     }
 
     public static ExportDto ToExport(

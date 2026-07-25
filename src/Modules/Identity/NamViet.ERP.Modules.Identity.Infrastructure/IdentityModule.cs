@@ -63,6 +63,32 @@ public static class IdentityModule
                 IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(signingKey)),
                 ClockSkew = TimeSpan.Zero
             };
+            opt.Events = new JwtBearerEvents
+            {
+                OnMessageReceived = context =>
+                {
+                    var authHeader = context.Request.Headers.Authorization.FirstOrDefault();
+                    var hasBearer = !string.IsNullOrEmpty(authHeader)
+                        && authHeader.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase);
+
+                    if (!hasBearer)
+                    {
+                        var cookieToken = context.Request.Cookies["nv_access_token"];
+                        if (!string.IsNullOrEmpty(cookieToken))
+                            context.Token = cookieToken;
+                    }
+
+                    if (string.IsNullOrEmpty(context.Token) && !hasBearer)
+                    {
+                        var accessToken = context.Request.Query["access_token"];
+                        var path = context.HttpContext.Request.Path;
+                        if (!string.IsNullOrEmpty(accessToken) && path.StartsWithSegments("/hubs"))
+                            context.Token = accessToken;
+                    }
+
+                    return Task.CompletedTask;
+                }
+            };
         });
 
         return services;
