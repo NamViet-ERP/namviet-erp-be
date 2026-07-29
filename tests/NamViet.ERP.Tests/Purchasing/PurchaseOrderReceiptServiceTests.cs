@@ -26,9 +26,11 @@ public class PurchaseOrderReceiptServiceTests : IDisposable
         _db = new WarehouseDbContext(options);
         Seed();
 
-        _plans = new PurchasePlanService(_db, new PurchasePlanCodeGenerator(_db), _user);
+        _plans = new PurchasePlanService(
+            _db, new PurchasePlanCodeGenerator(_db), _user, new FakeActivityEventWriter());
         _orders = new PurchaseOrderService(
-            _db, new PurchaseOrderCodeGenerator(_db), _plans, _user);
+            _db, new PurchaseOrderCodeGenerator(_db), _plans, _user, new FakeActivityEventWriter(),
+            new FakeFileStorage());
         _receipt = new PurchaseOrderReceiptService(_db);
     }
 
