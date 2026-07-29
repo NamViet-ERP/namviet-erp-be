@@ -18,6 +18,17 @@ Hằng số policy: `Infrastructure/RateLimiting/RateLimitPolicies.cs`
 
 Từ chối: HTTP **429** + JSON problem (`title`: "Quá nhiều yêu cầu").
 
+IP client lấy từ `HttpContext.Connection.RemoteIpAddress` **sau** `UseForwardedHeaders` (tin `X-Forwarded-For` từ proxy). Cấu hình: `ForwardedHeaders:*` trong appsettings.
+
+---
+
+## Health (anonymous, không rate-limit)
+
+| Method | Route | Mục đích |
+|--------|-------|----------|
+| GET | `/health` | Liveness — luôn 200 nếu process sống |
+| GET | `/health/ready` | Readiness — DB + file storage; 503 khi chưa sẵn |
+
 ---
 
 ## Bảng endpoint anonymous

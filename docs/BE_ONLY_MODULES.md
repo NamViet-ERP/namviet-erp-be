@@ -10,7 +10,6 @@ Giữ lại cho roadmap / tích hợp sau — **không** xóa trừ khi business
 | `KpiController` | `/api/hr/kpi` | KPI HR |
 | `LeaveController` | `/api/hr/leaves` | Nghỉ phép |
 | `LoansController` | `/api/warehouse/loans` | Mượn / tạm ứng vật tư |
-| `PriceBooksController` | `/api/warehouse/price-books` | Bảng giá |
 | `TransactionsController` | `/api/warehouse/transactions` | Giao dịch kho tổng hợp |
 | `AdminRequestsController` | `/api/hr/admin-requests` | Yêu cầu admin HR |
 | `DepartmentsController` | `/api/hr/departments` | Phòng ban |
@@ -20,6 +19,8 @@ Giữ lại cho roadmap / tích hợp sau — **không** xóa trừ khi business
 | `Wms/LendingLogsController` | `/api/lending-logs` | Mượn vật tư giữa dự án |
 | `Wms/WarehousesController` | `/api/warehouses` | Danh mục kho vật lý |
 | `Wms/SettingsController` | `/api/settings` | Cấu hình WMS theo section |
+
+> **Đã gỡ:** `PriceBooksController` / bảng giá — migration `DropPriceBooks` (không còn API).
 
 ## Projects — contract FE đang dùng
 

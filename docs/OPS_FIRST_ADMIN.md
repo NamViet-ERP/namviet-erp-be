@@ -8,7 +8,7 @@ Tham chiếu: `docs/DEPLOY.md` (checklist deploy), `docs/SECURITY_PUBLIC_ENDPOIN
 
 ## 1. Điều kiện tiên quyết
 
-- [ ] API chạy được, `GET /health` → 200  
+- [ ] API chạy được, `GET /health` → 200 và `GET /health/ready` → 200  
 - [ ] EF migrate xong (Identity + Warehouse + HR)  
 - [ ] `Jwt:SigningKey` và `ConnectionStrings:Default` đã set đúng  
 - [ ] Biết email và mật khẩu mạnh cho admin đầu tiên (≥ 8 ký tự, có hoa + số — giống rule `RegisterCommandValidator`)

@@ -36,6 +36,9 @@ Tham chiếu `.env.example` (Docker) và override cho API:
 | `Jwt__SigningKey` | Có | ≥ 32 ký tự, random, không placeholder |
 | `Jwt__Issuer` / `Jwt__Audience` | Có | Khớp cấu hình client |
 | `Cors__AllowedOrigins` | Có | URL frontend production, phân tách bằng dấu phẩy |
+| `ForwardedHeaders__ClearKnownLists` | Không | Mặc định `true` khi API chỉ nhận traffic từ reverse proxy |
+| `ForwardedHeaders__KnownProxies` | Khuyến nghị (prod) | IP proxy tin cậy, phân tách bằng dấu phẩy (vd. `10.0.0.5`). Khi set, chỉ tin các IP này |
+| `FileStorage__Root` | Không | Thư mục upload private; mặc định `App_Data/private-uploads` |
 
 `ConfigurationSecurityValidator` **fail fast** khi:
 
@@ -106,9 +109,18 @@ cd publish
 dotnet NamViet.ERP.Api.dll
 ```
 
-Health: `GET /health` → 200.
+Health:
+
+| Endpoint | Mục đích | Kỳ vọng |
+|----------|----------|---------|
+| `GET /health` | Liveness (process sống) | 200 — **không** phụ thuộc DB |
+| `GET /health/ready` | Readiness (DB + file storage ghi được) | 200 khi sẵn sàng nhận traffic; 503 nếu DB/storage lỗi |
+
+Orchestrator / load balancer: probe liveness → `/health`; chỉ route traffic khi `/health/ready` = 200.
 
 **Swagger:** chỉ bật khi `ASPNETCORE_ENVIRONMENT=Development` — production không expose `/swagger` (mặc định trong `Program.cs`).
+
+**Reverse proxy:** bật `X-Forwarded-For` / `X-Forwarded-Proto`. API dùng `UseForwardedHeaders` để rate-limit theo IP client thật (không phải IP proxy).
 
 ---
 
@@ -117,10 +129,13 @@ Health: `GET /health` → 200.
 - [ ] `ConnectionStrings:Default` — password mạnh, không placeholder  
 - [ ] `Jwt:SigningKey` — ≥ 32 ký tự, unique per environment  
 - [ ] `Cors:AllowedOrigins` — đúng domain FE production  
+- [ ] TLS terminate tại reverse proxy; `X-Forwarded-For` / `X-Forwarded-Proto` tới API  
+- [ ] `ForwardedHeaders:KnownProxies` (hoặc mạng chỉ proxy mới vào được API)  
 - [ ] PostgreSQL backup policy  
-- [ ] HTTPS termination  
-- [ ] Log (Serilog) đi tới file/aggregator  
-- [ ] Rate limit auth/public endpoint — đã bật trong code; cân nhắc WAF thêm  
+- [ ] `GET /health` = 200 và `GET /health/ready` = 200 sau migrate  
+- [ ] Log (Serilog) đi tới file/aggregator — **không** log JWT / password  
+- [ ] Rate limit auth/public endpoint — đã bật; IP lấy sau forwarded headers  
+- [ ] Bootstrap admin **một lần** (`docs/OPS_FIRST_ADMIN.md`) — **không** chạy demo seed / `BootstrapRbacPilotUsers` trên production  
 - [ ] Không có user admin cứng trong migration  
 
 ---
@@ -172,11 +187,16 @@ Tạo protected environment (ví dụ `production`), bật required reviewers v�
 curl -s -o /dev/null -w "%{http_code}" https://api.<domain>/health
 # Kỳ vọng: 200
 
+curl -s -o /dev/null -w "%{http_code}" https://api.<domain>/health/ready
+# Kỳ vọng: 200 (503 nếu DB/storage chưa sẵn)
+
 curl -X POST https://api.<domain>/api/auth/login \
   -H "Content-Type: application/json" \
   -d '{"username":"...","password":"...","rememberMe":false}'
 # Kỳ vọng: 200 + token (sau khi có user)
 ```
+
+Staging (sau login): thử **1 flow Kho** (vd. danh sách NK hoặc tồn) + **1 flow Mua hàng** (vd. KHMH hoặc PO).
 
 ---
 
@@ -196,3 +216,10 @@ Tóm tắt: login/refresh (`auth`), onboard & apply (`public-write`), upload HR 
 | ConnectionStrings:Default required | Chưa set env |
 | Lỗi migrator | DB không reachable, thiếu quyền DDL, hoặc thiếu `ConnectionStrings:Default` |
 | CORS từ FE | Thiếu origin trong `Cors:AllowedOrigins` |
+| `/health/ready` 503 | DB unreachable / password sai, hoặc `FileStorage` không ghi được |
+
+---
+
+## 12. Gate release FE+BE
+
+Checklist tổng hợp (“quy chuẩn hết”): repo FE `docs/RELEASE_GATES.md` + `npm run verify:release-gates`.
