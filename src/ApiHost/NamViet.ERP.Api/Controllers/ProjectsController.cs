@@ -62,7 +62,7 @@ public class ProjectsController(
 
     [HttpGet]
     [RequirePermission("wms.projects.view:all")]
-    public async Task<IActionResult> GetAll(
+    public async Task<ActionResult<PagedResult<ProjectDto>>> GetAll(
         [FromQuery] int page = 1, [FromQuery] int pageSize = 20,
         [FromQuery] string? search = null, [FromQuery] string? status = null,
         CancellationToken ct = default)
@@ -88,7 +88,7 @@ public class ProjectsController(
 
     [HttpGet("{code}")]
     [RequirePermission("wms.projects.view:all")]
-    public async Task<IActionResult> GetById(string code, CancellationToken ct)
+    public async Task<ActionResult<ProjectDto>> GetById(string code, CancellationToken ct)
     {
         var p = await db.Projects.FirstOrDefaultAsync(x => x.ProjectCode == code, ct);
         if (p is null) return NotFound();
@@ -98,7 +98,7 @@ public class ProjectsController(
 
     [HttpGet("{code}/inventory")]
     [RequirePermission("wms.projects.view:all")]
-    public async Task<IActionResult> GetInventory(string code, CancellationToken ct)
+    public async Task<ActionResult<List<ProjectInventoryDto>>> GetInventory(string code, CancellationToken ct)
     {
         var items = await db.ProjectInventories
             .Include(pi => pi.Material)
@@ -139,7 +139,7 @@ public class ProjectsController(
 
     [HttpGet("{code}/ledger")]
     [RequirePermission("wms.projects.view:all")]
-    public async Task<IActionResult> GetLedger(string code, CancellationToken ct)
+    public async Task<ActionResult<List<ProjectLedgerEntryDto>>> GetLedger(string code, CancellationToken ct)
     {
         if (!await db.Projects.AnyAsync(p => p.ProjectCode == code, ct))
             return NotFound();

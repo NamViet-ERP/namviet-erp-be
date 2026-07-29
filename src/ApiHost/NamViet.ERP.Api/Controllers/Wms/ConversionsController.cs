@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using NamViet.ERP.Api.Application.Dtos.Wms;
 using NamViet.ERP.Api.Application.Mappers.Wms;
+using NamViet.ERP.Api.Infrastructure.Authorization;
 using NamViet.ERP.Modules.Warehouse.Domain.Entities;
 using NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence;
 using NamViet.ERP.SharedKernel.Interfaces;
@@ -15,6 +16,7 @@ namespace NamViet.ERP.Api.Controllers.Wms;
 public class ConversionsController(WarehouseDbContext db, ICurrentUser currentUser) : ControllerBase
 {
     [HttpGet]
+    [RequirePermission("wms.conversions.view:all")]
     public async Task<ActionResult<List<ConversionDto>>> List(CancellationToken ct)
     {
         var items = await db.Conversions.Include(c => c.Items).Where(c => c.DeletedAt == null).ToListAsync(ct);
@@ -22,6 +24,7 @@ public class ConversionsController(WarehouseDbContext db, ICurrentUser currentUs
     }
 
     [HttpPost]
+    [RequirePermission("wms.conversions.create")]
     public async Task<ActionResult<ConversionDto>> Create([FromBody] ConversionDto dto, CancellationToken ct)
     {
         var c = new Conversion

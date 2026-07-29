@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using NamViet.ERP.Api.Application.Dtos.Wms;
 using NamViet.ERP.Api.Application.Mappers.Wms;
 using NamViet.ERP.Api.Application.Services.Wms;
+using NamViet.ERP.Api.Infrastructure.Authorization;
 using NamViet.ERP.Modules.Warehouse.Domain.Entities;
 using NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence;
 
@@ -15,6 +16,7 @@ namespace NamViet.ERP.Api.Controllers.Wms;
 public class WarehousesController(WarehouseDbContext db, IWmsCatalogQueryService catalog) : ControllerBase
 {
     [HttpGet]
+    [RequirePermission("wms.warehouses.view:all")]
     public async Task<ActionResult<List<WarehouseDto>>> List(CancellationToken ct)
     {
         var warehouses = await db.WmsWarehouses.Where(w => w.DeletedAt == null).ToListAsync(ct);
@@ -28,6 +30,7 @@ public class WarehousesController(WarehouseDbContext db, IWmsCatalogQueryService
     }
 
     [HttpGet("{id}")]
+    [RequirePermission("wms.warehouses.view:all")]
     public async Task<ActionResult<WarehouseDto>> GetById(string id, CancellationToken ct)
     {
         var w = await db.WmsWarehouses.FirstOrDefaultAsync(x => x.Id == id && x.DeletedAt == null, ct);
@@ -37,6 +40,7 @@ public class WarehousesController(WarehouseDbContext db, IWmsCatalogQueryService
     }
 
     [HttpPost]
+    [RequirePermission("wms.warehouses.create")]
     public async Task<ActionResult<WarehouseDto>> Create([FromBody] CreateWarehouseDto dto, CancellationToken ct)
     {
         var id = $"wh-{Guid.NewGuid():N}"[..10];
@@ -57,6 +61,7 @@ public class WarehousesController(WarehouseDbContext db, IWmsCatalogQueryService
     }
 
     [HttpPut("{id}")]
+    [RequirePermission("wms.warehouses.update")]
     public async Task<ActionResult<WarehouseDto>> Update(string id, [FromBody] UpdateWarehouseDto dto, CancellationToken ct)
     {
         var w = await db.WmsWarehouses.FirstOrDefaultAsync(x => x.Id == id && x.DeletedAt == null, ct);
@@ -75,6 +80,7 @@ public class WarehousesController(WarehouseDbContext db, IWmsCatalogQueryService
     }
 
     [HttpDelete("{id}")]
+    [RequirePermission("wms.warehouses.delete")]
     public async Task<IActionResult> Delete(string id, CancellationToken ct)
     {
         var w = await db.WmsWarehouses.FirstOrDefaultAsync(x => x.Id == id && x.DeletedAt == null, ct);

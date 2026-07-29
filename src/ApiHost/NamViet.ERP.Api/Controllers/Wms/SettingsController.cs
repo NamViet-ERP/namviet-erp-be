@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using NamViet.ERP.Api.Infrastructure.Authorization;
 using NamViet.ERP.Modules.Warehouse.Domain.Entities;
 using NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence;
 
@@ -12,6 +13,7 @@ namespace NamViet.ERP.Api.Controllers.Wms;
 public class SettingsController(WarehouseDbContext db) : ControllerBase
 {
     [HttpGet("{section}")]
+    [RequirePermission("wms.settings.view")]
     public async Task<ActionResult<object>> Get(string section, CancellationToken ct)
     {
         var setting = await db.WmsSettings.FirstOrDefaultAsync(s => s.Key == section, ct);
@@ -19,6 +21,7 @@ public class SettingsController(WarehouseDbContext db) : ControllerBase
     }
 
     [HttpPut("{section}")]
+    [RequirePermission("wms.settings.update")]
     public async Task<IActionResult> Put(string section, [FromBody] string value, CancellationToken ct)
     {
         var setting = await db.WmsSettings.FirstOrDefaultAsync(s => s.Key == section, ct);

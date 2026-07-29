@@ -18,7 +18,7 @@ public class MaterialsController(WarehouseDbContext db) : ControllerBase
 {
     [HttpGet]
     [RequirePermission("wms.materials.view:all")]
-    public async Task<IActionResult> GetAll(
+    public async Task<ActionResult<PagedResult<MaterialDto>>> GetAll(
         [FromQuery] int page = 1, [FromQuery] int pageSize = 20,
         [FromQuery] string? search = null,
         [FromQuery] string? danhMuc = null,
@@ -77,7 +77,7 @@ public class MaterialsController(WarehouseDbContext db) : ControllerBase
 
     [HttpGet("{code}")]
     [RequirePermission("wms.materials.view:all")]
-    public async Task<IActionResult> GetById(string code, CancellationToken ct)
+    public async Task<ActionResult<MaterialDto>> GetById(string code, CancellationToken ct)
     {
         var m = await db.Materials.AsNoTracking()
             .FirstOrDefaultAsync(x => x.MaterialCode == code && x.DeletedAt == null, ct);
