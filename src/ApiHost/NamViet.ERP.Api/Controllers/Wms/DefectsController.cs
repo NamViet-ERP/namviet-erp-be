@@ -19,6 +19,12 @@ public class DefectsController(
     public async Task<ActionResult<List<PurchaseDefectDto>>> List(CancellationToken ct) =>
         Ok(await defects.ListAsync(ct));
 
+    [HttpGet("eligible-purchase-orders")]
+    [RequirePermission("wms.defects.create")]
+    public async Task<ActionResult<IReadOnlyList<PoDefectEligiblePurchaseOrderDto>>> ListEligiblePurchaseOrders(
+        CancellationToken ct) =>
+        Ok(await defects.ListEligiblePurchaseOrdersAsync(ct));
+
     [HttpGet("{id}")]
     [RequirePermission("wms.defects.view:all")]
     public async Task<ActionResult<PurchaseDefectDto>> GetById(string id, CancellationToken ct)
@@ -39,6 +45,18 @@ public class DefectsController(
         [FromBody] CreateDefectFromPoRequest request,
         CancellationToken ct) =>
         Ok(await defects.CreateFromPoAsync(poCode, request, ct));
+
+    [HttpGet("from-stock/{projectCode}/preview")]
+    [RequirePermission("wms.defects.create")]
+    public async Task<ActionResult<StockDefectPreviewDto>> PreviewFromStock(string projectCode, CancellationToken ct) =>
+        Ok(await defects.PreviewFromStockAsync(projectCode, ct));
+
+    [HttpPost("from-stock")]
+    [RequirePermission("wms.defects.create")]
+    public async Task<ActionResult<PurchaseDefectDto>> CreateFromStock(
+        [FromBody] CreateDefectFromStockRequest request,
+        CancellationToken ct) =>
+        Ok(await defects.CreateFromStockAsync(request, ct));
 
     [HttpPost("{id}/submit")]
     [RequirePermission("wms.defects.create")]
@@ -64,6 +82,17 @@ public class DefectsController(
         CancellationToken ct)
     {
         var item = await defects.UpdateReasonAsync(id, request.Reason, ct);
+        return item is null ? NotFound() : Ok(item);
+    }
+
+    [HttpPut("{id}/processing")]
+    [RequirePermission("wms.defects.approve")]
+    public async Task<ActionResult<PurchaseDefectDto>> UpdateProcessing(
+        string id,
+        [FromBody] UpdateDefectProcessingRequest request,
+        CancellationToken ct)
+    {
+        var item = await defects.UpdateProcessingAsync(id, request, ct);
         return item is null ? NotFound() : Ok(item);
     }
 
