@@ -28,7 +28,7 @@ Repo BE cần có `Dockerfile` ở root (đã thêm). FE đã ở: https://namvi
 | Key | Value |
 |-----|--------|
 | `ASPNETCORE_ENVIRONMENT` | `Production` |
-| `ASPNETCORE_URLS` | `http://0.0.0.0:8080` |
+| `PORT` | *(không cần set — Render tự inject; Dockerfile đã bind `${PORT}`)* |
 | `ConnectionStrings__Default` | `Host=aws-0-ap-southeast-1.pooler.supabase.com;Port=5432;Database=postgres;Username=postgres.ufqgndvupcdmxqupxspl;Password=NvErp2026!Prod;SSL Mode=Require;Trust Server Certificate=true` |
 | `Jwt__SigningKey` | `lR4!8xP2#qV9mK7tN3dF6wZ1cH5uJ0sB` |
 | `Jwt__Issuer` | `namviet-erp` |

@@ -11,7 +11,10 @@ RUN dotnet publish src/ApiHost/NamViet.ERP.Api/NamViet.ERP.Api.csproj \
 
 FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS final
 WORKDIR /app
+# Render injects PORT; default 8080 for local docker runs.
 ENV ASPNETCORE_URLS=http://0.0.0.0:8080
+ENV PORT=8080
 EXPOSE 8080
 COPY --from=build /app/publish .
-ENTRYPOINT ["dotnet", "NamViet.ERP.Api.dll"]
+# Shell form so $PORT from Render is applied at runtime.
+ENTRYPOINT ["/bin/sh", "-c", "export ASPNETCORE_URLS=http://0.0.0.0:${PORT:-8080}; exec dotnet NamViet.ERP.Api.dll"]
