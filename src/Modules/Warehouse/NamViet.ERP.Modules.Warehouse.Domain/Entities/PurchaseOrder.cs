@@ -37,6 +37,7 @@ public class PurchaseOrder : BaseEntity
     public PurchasePlan? Plan { get; set; }
     public Supplier? Supplier { get; set; }
     public ICollection<PurchaseOrderItem> Items { get; set; } = [];
+    public ICollection<PurchaseOrderAttachment> Attachments { get; set; } = [];
 }
 
 public class PurchaseOrderItem
@@ -88,4 +89,27 @@ public static class PurchaseOrderPaymentStatuses
     public const string Partial = "partial";
     public const string Paid = "paid";
     public const string Overdue = "overdue";
+}
+
+/// <summary>Tài liệu đính kèm PO (hợp đồng, hóa đơn, CO/CQ, BB giao hàng, …).</summary>
+public class PurchaseOrderAttachment
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public string PoCode { get; set; } = string.Empty;
+    /// <summary>contract | invoice | co | cq | bbgh | other</summary>
+    public string DocType { get; set; } = "other";
+    public string FileName { get; set; } = string.Empty;
+    public string StorageKey { get; set; } = string.Empty;
+    public DateTime UploadedAt { get; set; } = DateTime.UtcNow;
+    public string? UploadedByName { get; set; }
+
+    public PurchaseOrder? PurchaseOrder { get; set; }
+}
+
+public static class PurchaseOrderAttachmentDocTypes
+{
+    public static readonly HashSet<string> Allowed = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "contract", "invoice", "co", "cq", "bbgh", "bbnt", "other",
+    };
 }
