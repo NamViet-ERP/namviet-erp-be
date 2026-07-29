@@ -104,6 +104,18 @@ public static class PermissionCatalog
         new("wms.transactions.create", "WMS", "Transactions", "Tạo giao dịch kho"),
         new("wms.transactions.approve", "WMS", "Transactions", "Duyệt giao dịch kho"),
         new("wms.prices.view", "WMS", "Prices", "Xem đơn giá / thành tiền / giá trị tồn trên kho & mua hàng"),
+        new("wms.settings.view", "WMS", "Settings", "Xem thiết lập kho"),
+        new("wms.settings.update", "WMS", "Settings", "Sửa thiết lập kho"),
+        new("wms.warehouses.view:all", "WMS", "Warehouses", "Xem danh sách kho"),
+        new("wms.warehouses.create", "WMS", "Warehouses", "Tạo kho"),
+        new("wms.warehouses.update", "WMS", "Warehouses", "Sửa kho"),
+        new("wms.warehouses.delete", "WMS", "Warehouses", "Xóa kho"),
+        new("wms.conversions.view:all", "WMS", "Conversions", "Xem phiếu chuyển đổi vật tư"),
+        new("wms.conversions.create", "WMS", "Conversions", "Tạo phiếu chuyển đổi vật tư"),
+        new("wms.lending_logs.view:all", "WMS", "LendingLogs", "Xem phiếu mượn vật tư"),
+        new("wms.lending_logs.create", "WMS", "LendingLogs", "Tạo phiếu mượn vật tư"),
+        new("wms.lending_logs.update", "WMS", "LendingLogs", "Ký / hoàn trả phiếu mượn vật tư"),
+        new("wms.lending_logs.delete", "WMS", "LendingLogs", "Xóa phiếu mượn vật tư"),
 
         // Purchasing (cung ứng)
         new("purchasing.dashboard.view", "Purchasing", "Dashboard", "Xem dashboard mua hàng"),
@@ -123,6 +135,9 @@ public static class PermissionCatalog
         new("purchasing.deliveries.view", "Purchasing", "Deliveries", "Xem theo dõi giao hàng"),
         new("purchasing.payments.view", "Purchasing", "Payments", "Xem đề nghị thanh toán"),
         new("purchasing.payments.create", "Purchasing", "Payments", "Tạo đề nghị thanh toán"),
+        new("purchasing.payments.submit", "Purchasing", "Payments", "Gửi đề nghị thanh toán"),
+        new("purchasing.payments.pay", "Purchasing", "Payments", "Xác nhận đã thanh toán DNTT"),
+        new("purchasing.payments.cancel", "Purchasing", "Payments", "Hủy đề nghị thanh toán"),
         new("purchasing.documents.view", "Purchasing", "Documents", "Xem hồ sơ chứng từ"),
         new("purchasing.settings.view", "Purchasing", "Settings", "Xem thiết lập mua hàng"),
     ];
