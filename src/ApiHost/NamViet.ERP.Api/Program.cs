@@ -1,8 +1,11 @@
 using FluentValidation;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.OpenApi.Models;
 using NamViet.ERP.Api.Application.Services.Admin;
 using NamViet.ERP.Api.Application.Services.Hr;
+using NamViet.ERP.Api.Infrastructure.Health;
 using NamViet.ERP.Api.Infrastructure.RateLimiting;
 using NamViet.ERP.Api.Infrastructure;
 using NamViet.ERP.Api.Middleware;
@@ -23,6 +26,32 @@ ConfigurationSecurityValidator.Validate(builder.Configuration, builder.Environme
 // ── Serilog ────────────────────────────────────────────────────────────────
 builder.Host.UseSerilog((ctx, cfg) =>
     cfg.ReadFrom.Configuration(ctx.Configuration).Enrich.FromLogContext());
+
+// ── Forwarded headers (TLS reverse proxy → real client IP for rate limit) ──
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    // Behind a trusted edge proxy that is the only path to the app (Docker/K8s/Nginx),
+    // clear known lists so X-Forwarded-* from that hop is applied. Restrict further via
+    // ForwardedHeaders:KnownProxies if the API is reachable from untrusted networks.
+    if (builder.Configuration.GetValue("ForwardedHeaders:ClearKnownLists", true))
+    {
+        options.KnownNetworks.Clear();
+        options.KnownProxies.Clear();
+    }
+
+    var knownProxies = builder.Configuration["ForwardedHeaders:KnownProxies"];
+    if (!string.IsNullOrWhiteSpace(knownProxies))
+    {
+        options.KnownProxies.Clear();
+        options.KnownNetworks.Clear();
+        foreach (var raw in knownProxies.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            if (System.Net.IPAddress.TryParse(raw, out var ip))
+                options.KnownProxies.Add(ip);
+        }
+    }
+});
 
 // ── Modules ────────────────────────────────────────────────────────────────
 builder.Services.AddIdentityModule(builder.Configuration);
@@ -69,7 +98,8 @@ builder.Services.AddRateLimiter(options =>
         RateLimitPartition.GetFixedWindowLimiter(ClientIp(ctx), _ => new FixedWindowRateLimiterOptions
         {
             AutoReplenishment = true,
-            PermitLimit = 10,
+            // Local Playwright / smoke login the same account many times; keep prod tight.
+            PermitLimit = builder.Environment.IsDevelopment() ? 200 : 10,
             Window = TimeSpan.FromMinutes(1),
         }));
 
@@ -127,6 +157,11 @@ builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Purchasing.IPurc
 builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Purchasing.IPurchasePaymentCodeGenerator, NamViet.ERP.Api.Application.Services.Purchasing.PurchasePaymentCodeGenerator>();
 builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Purchasing.IPurchasePaymentService, NamViet.ERP.Api.Application.Services.Purchasing.PurchasePaymentService>();
 builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Purchasing.IPurchasingDashboardService, NamViet.ERP.Api.Application.Services.Purchasing.PurchasingDashboardService>();
+builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Purchasing.ISupplierModuleSettingsService, NamViet.ERP.Api.Application.Services.Purchasing.SupplierModuleSettingsService>();
+builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Purchasing.ISupplierGroupService, NamViet.ERP.Api.Application.Services.Purchasing.SupplierGroupService>();
+builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Purchasing.ISupplierContactService, NamViet.ERP.Api.Application.Services.Purchasing.SupplierContactService>();
+builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Purchasing.ISupplierEvaluationService, NamViet.ERP.Api.Application.Services.Purchasing.SupplierEvaluationService>();
+builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Purchasing.ISuppliersDashboardService, NamViet.ERP.Api.Application.Services.Purchasing.SuppliersDashboardService>();
 builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Shared.IActivityEventWriter, NamViet.ERP.Api.Application.Services.Shared.ActivityEventWriter>();
 builder.Services.AddScoped<IAdminUserQueryService, AdminUserQueryService>();
 builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Hr.IEmployeeAccessService, NamViet.ERP.Api.Application.Services.Hr.EmployeeAccessService>();
@@ -189,12 +224,19 @@ builder.Services.AddSwaggerGen(opt =>
     });
 });
 
-// ── Health check ───────────────────────────────────────────────────────────
-builder.Services.AddHealthChecks();
+// ── Health checks ──────────────────────────────────────────────────────────
+// /health        → liveness (process up; no dependency checks)
+// /health/ready  → readiness (PostgreSQL + file storage writable)
+builder.Services.AddHealthChecks()
+    .AddCheck<PostgresReadyHealthCheck>("postgres", tags: ["ready"])
+    .AddCheck<FileStorageReadyHealthCheck>("file_storage", tags: ["ready"]);
 
 var app = builder.Build();
 
 // ── Middleware pipeline ────────────────────────────────────────────────────
+// Must run before rate limiting / auth so RemoteIpAddress reflects X-Forwarded-For.
+app.UseForwardedHeaders();
+
 app.UseMiddleware<ExceptionMiddleware>();
 
 if (app.Environment.IsDevelopment())
@@ -219,6 +261,30 @@ app.UseAuthorization();
 app.UseRateLimiter();
 app.MapControllers();
 app.MapHub<NamViet.ERP.Api.Hubs.ActivityHub>("/hubs/activity");
-app.MapHealthChecks("/health");
+
+app.MapHealthChecks("/health", new HealthCheckOptions
+{
+    // Liveness: do not run dependency checks (orchestrator restart loop safe).
+    Predicate = _ => false,
+});
+app.MapHealthChecks("/health/ready", new HealthCheckOptions
+{
+    Predicate = check => check.Tags.Contains("ready"),
+    ResponseWriter = async (context, report) =>
+    {
+        context.Response.ContentType = "application/json";
+        await context.Response.WriteAsJsonAsync(new
+        {
+            status = report.Status.ToString(),
+            checks = report.Entries.Select(e => new
+            {
+                name = e.Key,
+                status = e.Value.Status.ToString(),
+                description = e.Value.Description,
+                error = e.Value.Exception?.Message,
+            }),
+        });
+    },
+});
 
 app.Run();
