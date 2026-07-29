@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using NamViet.ERP.Api.Application.Dtos.Purchasing;
 using NamViet.ERP.Api.Application.Mappers.Purchasing;
 using NamViet.ERP.Api.Application.Services.Shared;
+using NamViet.ERP.Api.Services.Storage;
 using NamViet.ERP.Modules.Warehouse.Domain.Entities;
 using NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence;
 using NamViet.ERP.SharedKernel.Interfaces;
@@ -29,6 +30,17 @@ public interface IPurchaseOrderService
     Task<PurchaseOrderDetailDto?> ApproveAsync(string code, CancellationToken ct = default);
     Task<PurchaseOrderDetailDto?> UnapproveAsync(string code, CancellationToken ct = default);
     Task<PurchaseOrderDetailDto?> PlaceAsync(string code, CancellationToken ct = default);
+
+    Task<IReadOnlyList<PurchaseOrderAttachmentDto>?> ListAttachmentsAsync(string code, CancellationToken ct = default);
+    Task<PurchaseOrderAttachmentDto?> UploadAttachmentAsync(
+        string code,
+        string docType,
+        string fileName,
+        string contentType,
+        Stream content,
+        CancellationToken ct = default);
+    Task<PurchaseOrderAttachmentDto?> GetAttachmentAsync(string code, Guid attachmentId, CancellationToken ct = default);
+    Task<bool> DeleteAttachmentAsync(string code, Guid attachmentId, CancellationToken ct = default);
 }
 
 public sealed class PurchaseOrderService(
@@ -36,7 +48,8 @@ public sealed class PurchaseOrderService(
     IPurchaseOrderCodeGenerator codeGenerator,
     IPurchasePlanService planService,
     ICurrentUser currentUser,
-    IActivityEventWriter activity) : IPurchaseOrderService
+    IActivityEventWriter activity,
+    IFileStorage fileStorage) : IPurchaseOrderService
 {
     public async Task<PurchaseOrderPagedResponse> ListAsync(
         int page,
@@ -446,6 +459,111 @@ public sealed class PurchaseOrderService(
             EntityCode: code), ct);
 
         return await GetByCodeAsync(code, ct);
+    }
+
+    public async Task<IReadOnlyList<PurchaseOrderAttachmentDto>?> ListAttachmentsAsync(
+        string code, CancellationToken ct = default)
+    {
+        var poCode = code.Trim();
+        var exists = await db.PurchaseOrders.AsNoTracking().AnyAsync(o => o.Code == poCode, ct);
+        if (!exists) return null;
+
+        var rows = await db.PurchaseOrderAttachments.AsNoTracking()
+            .Where(a => a.PoCode == poCode)
+            .OrderByDescending(a => a.UploadedAt)
+            .ToListAsync(ct);
+
+        return rows.Select(ToAttachmentDto).ToList();
+    }
+
+    public async Task<PurchaseOrderAttachmentDto?> UploadAttachmentAsync(
+        string code,
+        string docType,
+        string fileName,
+        string contentType,
+        Stream content,
+        CancellationToken ct = default)
+    {
+        var poCode = code.Trim();
+        var order = await db.PurchaseOrders.FirstOrDefaultAsync(o => o.Code == poCode, ct);
+        if (order is null) return null;
+
+        var normalizedDocType = NormalizeDocType(docType);
+        EnsureAllowedExtension(fileName);
+
+        var ext = Path.GetExtension(fileName);
+        var relative = $"purchasing/orders/{poCode}/{normalizedDocType}/{Guid.NewGuid():N}{ext}";
+        var stored = await fileStorage.SaveAsync(content, relative, contentType, ct);
+
+        var attachment = new PurchaseOrderAttachment
+        {
+            PoCode = poCode,
+            DocType = normalizedDocType,
+            StorageKey = stored.StorageKey,
+            FileName = Path.GetFileName(fileName),
+            UploadedAt = DateTime.UtcNow,
+            UploadedByName = currentUser.IsAuthenticated ? currentUser.Name : null,
+        };
+        db.PurchaseOrderAttachments.Add(attachment);
+        order.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
+
+        return ToAttachmentDto(attachment);
+    }
+
+    public async Task<PurchaseOrderAttachmentDto?> GetAttachmentAsync(
+        string code, Guid attachmentId, CancellationToken ct = default)
+    {
+        var poCode = code.Trim();
+        var att = await db.PurchaseOrderAttachments.AsNoTracking()
+            .FirstOrDefaultAsync(a => a.PoCode == poCode && a.Id == attachmentId, ct);
+        return att is null ? null : ToAttachmentDto(att);
+    }
+
+    public async Task<bool> DeleteAttachmentAsync(string code, Guid attachmentId, CancellationToken ct = default)
+    {
+        var poCode = code.Trim();
+        var order = await db.PurchaseOrders.FirstOrDefaultAsync(o => o.Code == poCode, ct);
+        if (order is null) return false;
+
+        var att = await db.PurchaseOrderAttachments
+            .FirstOrDefaultAsync(a => a.PoCode == poCode && a.Id == attachmentId, ct);
+        if (att is null) return false;
+
+        db.PurchaseOrderAttachments.Remove(att);
+        order.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
+        return true;
+    }
+
+    private static PurchaseOrderAttachmentDto ToAttachmentDto(PurchaseOrderAttachment a) => new(
+        a.Id, a.PoCode, a.DocType, a.FileName, a.StorageKey, a.UploadedAt, a.UploadedByName);
+
+    private static string NormalizeDocType(string docType)
+    {
+        var t = (docType ?? string.Empty).Trim().ToLowerInvariant();
+        if (!PurchaseOrderAttachmentDocTypes.Allowed.Contains(t))
+            throw new PurchasingConflictException(
+                $"DocType không hợp lệ: '{docType}'. Cho phép: contract, invoice, co, cq, bbgh, bbnt, other.");
+        return t;
+    }
+
+    private static void EnsureAllowedExtension(string fileName)
+    {
+        var ext = Path.GetExtension(fileName).ToLowerInvariant();
+        // Ảnh + tài liệu văn phòng Microsoft / PDF thường dùng cho C/O, C/Q, HĐ, BBNT.
+        string[] allowed =
+        [
+            ".jpg", ".jpeg", ".png", ".webp", ".gif",
+            ".pdf",
+            ".doc", ".docx", ".rtf",
+            ".xls", ".xlsx", ".xlsm", ".xlsb", ".csv",
+            ".ppt", ".pptx",
+            ".txt",
+        ];
+        if (!allowed.Contains(ext))
+            throw new PurchasingConflictException(
+                $"Định dạng file không hỗ trợ: {ext}. Cho phép ảnh, PDF và file Microsoft Office (Word/Excel/PowerPoint).");
     }
 
     private static (Dictionary<string, Material> ByName, Dictionary<string, Material> ByCode) BuildMaterialLookups(

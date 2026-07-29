@@ -91,3 +91,12 @@ public record UpdatePurchaseOrderRequest(
     string? Note,
     DateOnly? OrderDate,
     List<CreatePurchaseOrderLineRequest> Lines);
+
+public record PurchaseOrderAttachmentDto(
+    Guid Id,
+    string PoCode,
+    string DocType,
+    string FileName,
+    string StorageKey,
+    DateTime UploadedAt,
+    string? UploadedByName);

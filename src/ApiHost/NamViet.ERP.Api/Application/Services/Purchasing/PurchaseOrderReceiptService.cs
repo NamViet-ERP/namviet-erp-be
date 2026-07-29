@@ -364,6 +364,7 @@ public sealed class PurchaseOrderReceiptService(WarehouseDbContext db) : IPurcha
             .Include(d => d.Items)
             .Where(d =>
                 d.PoCode == poCode
+                && d.SourceType == PurchaseDefectSourceTypes.Po
                 && d.Status == PurchaseDefectStatuses.Pending
                 && (excludeTicketCode == null || d.TicketCode != excludeTicketCode))
             .ToListAsync(ct);

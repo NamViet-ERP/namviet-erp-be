@@ -27,6 +27,14 @@ public class PurchasePlansController(
         CancellationToken ct = default) =>
         Ok(await plans.ListAsync(page, pageSize, code, projectCode, status, search, dateFrom, dateTo, ct));
 
+    [HttpGet("variance")]
+    [RequirePermission("purchasing.plans.view")]
+    public async Task<ActionResult<IReadOnlyList<PurchasePlanVarianceDto>>> GetVariance(
+        [FromQuery] string? planCode = null,
+        [FromQuery] string? projectCode = null,
+        CancellationToken ct = default) =>
+        Ok(await plans.GetVarianceAsync(planCode, projectCode, ct));
+
     [HttpGet("{code}")]
     [RequirePermission("purchasing.plans.view")]
     public async Task<ActionResult<PurchasePlanDetailDto>> GetByCode(string code, CancellationToken ct)

@@ -38,4 +38,19 @@ public class PurchasePaymentsController(IPurchasePaymentService payments) : Cont
         var created = await payments.CreateFromPoAsync(request, ct);
         return CreatedAtAction(nameof(GetByCode), new { code = created.Code }, created);
     }
+
+    [HttpPost("{code}/submit")]
+    [RequirePermission("purchasing.payments.submit")]
+    public async Task<ActionResult<PurchasePaymentDto>> Submit(string code, CancellationToken ct) =>
+        Ok(await payments.SubmitAsync(code, ct));
+
+    [HttpPost("{code}/pay")]
+    [RequirePermission("purchasing.payments.pay")]
+    public async Task<ActionResult<PurchasePaymentDto>> MarkPaid(string code, CancellationToken ct) =>
+        Ok(await payments.MarkPaidAsync(code, ct));
+
+    [HttpPost("{code}/cancel")]
+    [RequirePermission("purchasing.payments.cancel")]
+    public async Task<ActionResult<PurchasePaymentDto>> Cancel(string code, CancellationToken ct) =>
+        Ok(await payments.CancelAsync(code, ct));
 }

@@ -208,3 +208,29 @@ public record ConfirmPurchasePlanImportRequest(
     string ProjectCode,
     string? Note,
     List<PurchasePlanImportLinePreviewDto> Lines);
+
+public record PurchasePlanVarianceDto(
+    string PlanCode,
+    string ProjectCode,
+    IReadOnlyList<PurchasePlanVarianceLineDto> Lines);
+
+public record PurchasePlanVarianceLineDto(
+    string PlanCode,
+    string ProjectCode,
+    string? MaterialCode,
+    string ProductName,
+    decimal PlannedQty,
+    decimal OrderedQty,
+    decimal ReceivedQty,
+    decimal RemainingOrderableQty,
+    decimal VarianceOrderedPct,
+    decimal VarianceReceivedPct,
+    string Status);
+
+public static class PurchasePlanVarianceStatuses
+{
+    public const string OnTrack = "on_track";
+    public const string UnderOrdered = "under_ordered";
+    public const string OverReceived = "over_received";
+    public const string Delayed = "delayed";
+}

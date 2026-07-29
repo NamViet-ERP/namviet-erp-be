@@ -20,6 +20,9 @@ public interface IPurchasePaymentService
 
     Task<PurchasePaymentDto?> GetByCodeAsync(string code, CancellationToken ct = default);
     Task<PurchasePaymentDto> CreateFromPoAsync(CreatePurchasePaymentRequest request, CancellationToken ct = default);
+    Task<PurchasePaymentDto> SubmitAsync(string code, CancellationToken ct = default);
+    Task<PurchasePaymentDto> MarkPaidAsync(string code, CancellationToken ct = default);
+    Task<PurchasePaymentDto> CancelAsync(string code, CancellationToken ct = default);
 }
 
 public sealed class PurchasePaymentService(
@@ -129,5 +132,90 @@ public sealed class PurchasePaymentService(
             EntityCode: code), ct);
 
         return PurchasingMapper.ToPaymentDto(payment);
+    }
+
+    public async Task<PurchasePaymentDto> SubmitAsync(string code, CancellationToken ct = default)
+    {
+        var payment = await FindTrackedAsync(code, ct);
+        if (!string.Equals(payment.Status, PurchasePaymentStatuses.Draft, StringComparison.OrdinalIgnoreCase))
+            throw new PurchasingConflictException("Chỉ DNTT ở trạng thái Nháp mới gửi được.");
+
+        payment.Status = PurchasePaymentStatuses.Submitted;
+        payment.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
+
+        await activity.WriteAsync(new ActivityEventWriteRequest(
+            ActivityModules.Purchasing,
+            ActivityActions.PaymentSubmitted,
+            $"Gửi đề nghị thanh toán [{payment.Code}]",
+            ActivityCategories.Payment,
+            EntityType: "purchase_payment",
+            EntityCode: payment.Code), ct);
+
+        return PurchasingMapper.ToPaymentDto(payment);
+    }
+
+    public async Task<PurchasePaymentDto> MarkPaidAsync(string code, CancellationToken ct = default)
+    {
+        var payment = await FindTrackedAsync(code, ct);
+        if (!string.Equals(payment.Status, PurchasePaymentStatuses.Submitted, StringComparison.OrdinalIgnoreCase))
+            throw new PurchasingConflictException("Chỉ DNTT đã gửi mới xác nhận thanh toán được.");
+
+        payment.Status = PurchasePaymentStatuses.Paid;
+        payment.UpdatedAt = DateTime.UtcNow;
+
+        var order = await db.PurchaseOrders.FirstOrDefaultAsync(o => o.Code == payment.PoCode, ct);
+        if (order is not null)
+        {
+            // Một PO hiện chỉ có một DNTT; khi DNTT paid → PO paid.
+            order.PaymentStatus = PurchaseOrderPaymentStatuses.Paid;
+            order.PaymentWarning = false;
+            order.UpdatedAt = DateTime.UtcNow;
+        }
+
+        await db.SaveChangesAsync(ct);
+
+        await activity.WriteAsync(new ActivityEventWriteRequest(
+            ActivityModules.Purchasing,
+            ActivityActions.PaymentPaid,
+            $"Xác nhận đã thanh toán [{payment.Code}]",
+            ActivityCategories.Payment,
+            EntityType: "purchase_payment",
+            EntityCode: payment.Code), ct);
+
+        return PurchasingMapper.ToPaymentDto(payment);
+    }
+
+    public async Task<PurchasePaymentDto> CancelAsync(string code, CancellationToken ct = default)
+    {
+        var payment = await FindTrackedAsync(code, ct);
+        if (string.Equals(payment.Status, PurchasePaymentStatuses.Paid, StringComparison.OrdinalIgnoreCase))
+            throw new PurchasingConflictException("DNTT đã thanh toán không thể hủy.");
+        if (string.Equals(payment.Status, PurchasePaymentStatuses.Cancelled, StringComparison.OrdinalIgnoreCase))
+            throw new PurchasingConflictException("DNTT đã hủy trước đó.");
+
+        payment.Status = PurchasePaymentStatuses.Cancelled;
+        payment.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
+
+        await activity.WriteAsync(new ActivityEventWriteRequest(
+            ActivityModules.Purchasing,
+            ActivityActions.PaymentCancelled,
+            $"Hủy đề nghị thanh toán [{payment.Code}]",
+            ActivityCategories.Payment,
+            EntityType: "purchase_payment",
+            EntityCode: payment.Code), ct);
+
+        return PurchasingMapper.ToPaymentDto(payment);
+    }
+
+    private async Task<PurchasePayment> FindTrackedAsync(string code, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(code))
+            throw new PurchasingConflictException("Mã DNTT không hợp lệ.");
+
+        return await db.PurchasePayments
+            .FirstOrDefaultAsync(p => p.Code == code.Trim(), ct)
+            ?? throw new PurchasingConflictException($"Không tìm thấy DNTT '{code.Trim()}'.");
     }
 }

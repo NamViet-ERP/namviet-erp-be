@@ -96,7 +96,7 @@ public static class PurchasingMapper
         order.OrderPlacementStatus,
         order.DeliveryStatus,
         order.PaymentStatus,
-        order.PaymentWarning,
+        ComputePaymentWarning(order),
         order.Note,
         order.SupplierPaymentTermsDays,
         order.PaymentDueDate,
@@ -121,7 +121,7 @@ public static class PurchasingMapper
         order.OrderPlacementStatus,
         order.DeliveryStatus,
         order.PaymentStatus,
-        order.PaymentWarning,
+        ComputePaymentWarning(order),
         order.Note,
         order.SupplierPaymentTermsDays,
         order.PaymentDueDate,
@@ -131,6 +131,24 @@ public static class PurchasingMapper
         order.PlacedAt,
         order.CreatedByName,
         order.Items.Select(ToOrderLineDto).ToList());
+
+    /// <summary>
+    /// In-memory only: unpaid/partial/overdue past due date → warning (does not persist).
+    /// </summary>
+    public static bool ComputePaymentWarning(PurchaseOrder order)
+    {
+        if (order.PaymentWarning)
+            return true;
+
+        if (string.Equals(order.PaymentStatus, PurchaseOrderPaymentStatuses.Paid, StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        if (order.PaymentDueDate is null)
+            return false;
+
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        return order.PaymentDueDate.Value < today;
+    }
 
     public static PurchaseOrderLineDto ToOrderLineDto(PurchaseOrderItem item) => new(
         item.Id,

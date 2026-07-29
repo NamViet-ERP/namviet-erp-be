@@ -29,6 +29,11 @@ public interface IPurchasePlanService
     void RecalcTotals(PurchasePlan plan);
     /// <summary>Đồng bộ cột Tổng chi (PaidTotal) từ các PO đã thanh toán.</summary>
     Task SyncPaidTotalAsync(string planCode, CancellationToken ct = default);
+    /// <summary>So sánh kế hoạch vs thực tế (đã đặt / đã nhận) để cảnh báo lệch.</summary>
+    Task<IReadOnlyList<PurchasePlanVarianceDto>> GetVarianceAsync(
+        string? planCode = null,
+        string? projectCode = null,
+        CancellationToken ct = default);
 }
 
 public sealed class PurchasePlanService(
@@ -318,6 +323,93 @@ public sealed class PurchasePlanService(
         plan.PaidTotal = await SumPaidTotalForPlanAsync(planCode, ct);
         plan.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
+    }
+
+    public async Task<IReadOnlyList<PurchasePlanVarianceDto>> GetVarianceAsync(
+        string? planCode = null,
+        string? projectCode = null,
+        CancellationToken ct = default)
+    {
+        var q = db.PurchasePlans.AsNoTracking()
+            .Include(p => p.Lines)
+            .AsQueryable();
+
+        if (!string.IsNullOrWhiteSpace(planCode))
+            q = q.Where(p => p.Code == planCode.Trim());
+        if (!string.IsNullOrWhiteSpace(projectCode))
+            q = q.Where(p => p.ProjectCode == projectCode.Trim());
+
+        var plans = await q
+            .OrderByDescending(p => p.CreatedAt)
+            .ToListAsync(ct);
+
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var result = new List<PurchasePlanVarianceDto>(plans.Count);
+
+        foreach (var plan in plans)
+        {
+            var lines = plan.Lines
+                .OrderBy(l => l.LineNo)
+                .Select(l => ToVarianceLine(plan, l, today))
+                .ToList();
+
+            result.Add(new PurchasePlanVarianceDto(plan.Code, plan.ProjectCode, lines));
+        }
+
+        return result;
+    }
+
+    private static PurchasePlanVarianceLineDto ToVarianceLine(
+        PurchasePlan plan, PurchasePlanLine line, DateOnly today)
+    {
+        var planned = line.Quantity;
+        var ordered = line.OrderedQty;
+        var received = line.ReceivedQty;
+        var remaining = line.RemainingOrderableQty;
+
+        var varianceOrderedPct = planned <= 0
+            ? 0m
+            : Math.Round(ordered / planned * 100m, 2);
+        var varianceReceivedPct = planned <= 0
+            ? 0m
+            : Math.Round(received / planned * 100m, 2);
+
+        var status = ResolveVarianceStatus(line, planned, ordered, received, today);
+
+        return new PurchasePlanVarianceLineDto(
+            plan.Code,
+            plan.ProjectCode,
+            line.MaterialCode,
+            line.ProductName,
+            planned,
+            ordered,
+            received,
+            remaining,
+            varianceOrderedPct,
+            varianceReceivedPct,
+            status);
+    }
+
+    private static string ResolveVarianceStatus(
+        PurchasePlanLine line,
+        decimal planned,
+        decimal ordered,
+        decimal received,
+        DateOnly today)
+    {
+        if (received > planned)
+            return PurchasePlanVarianceStatuses.OverReceived;
+
+        var remainingToReceive = Math.Max(0m, planned - received);
+        if (line.ExpectedDeliveryDate is DateOnly expected
+            && expected < today
+            && remainingToReceive > 0)
+            return PurchasePlanVarianceStatuses.Delayed;
+
+        if (ordered < planned)
+            return PurchasePlanVarianceStatuses.UnderOrdered;
+
+        return PurchasePlanVarianceStatuses.OnTrack;
     }
 
     private async Task<decimal> SumPaidTotalForPlanAsync(string planCode, CancellationToken ct)
