@@ -12,7 +12,8 @@ namespace NamViet.ERP.Api.Controllers.Wms;
 [Authorize]
 public class ExportReturnsController(
     IExportReturnApplicationService exportReturns,
-    IValidator<CreateExportReturnDto> createValidator) : ControllerBase
+    IValidator<CreateExportReturnDto> createValidator,
+    NamViet.ERP.Api.Services.Storage.IFileStorage fileStorage) : ControllerBase
 {
     [HttpGet]
     [RequirePermission("wms.export_returns.view:all")]
@@ -87,4 +88,62 @@ public class ExportReturnsController(
     [RequirePermission("wms.export_returns.create")]
     public Task<IActionResult> Delete(string id, CancellationToken ct) =>
         WmsVoucherControllerResponses.ExecuteDeleteAsync(() => exportReturns.DeleteAsync(id, ct), ct);
+
+    [HttpPost("{id}/attachments")]
+    [RequirePermission("wms.export_returns.create")]
+    [RequestSizeLimit(10 * 1024 * 1024 + 1024)]
+    public async Task<ActionResult<ImportAttachmentDto>> UploadAttachment(
+        string id,
+        IFormFile file,
+        [FromForm] string? kind,
+        CancellationToken ct)
+    {
+        if (file is null || file.Length == 0)
+            return BadRequest("Vui lòng chọn file.");
+        if (file.Length > 10 * 1024 * 1024)
+            return BadRequest("File vượt quá 10MB.");
+
+        try
+        {
+            await using var stream = file.OpenReadStream();
+            var created = await exportReturns.UploadAttachmentAsync(
+                id,
+                kind ?? "photo",
+                file.FileName,
+                file.ContentType ?? "application/octet-stream",
+                stream,
+                ct);
+            return created is null ? NotFound() : Ok(created);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+    }
+
+    [HttpDelete("{id}/attachments/{attachmentId:guid}")]
+    [RequirePermission("wms.export_returns.create")]
+    public async Task<IActionResult> DeleteAttachment(string id, Guid attachmentId, CancellationToken ct)
+    {
+        try
+        {
+            var ok = await exportReturns.DeleteAttachmentAsync(id, attachmentId, ct);
+            return ok ? NoContent() : NotFound();
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+    }
+
+    [HttpGet("{id}/attachments/{attachmentId:guid}/download")]
+    [RequirePermission("wms.export_returns.view:all")]
+    public async Task<IActionResult> DownloadAttachment(string id, Guid attachmentId, CancellationToken ct)
+    {
+        var dto = await exportReturns.GetAttachmentAsync(id, attachmentId, ct);
+        if (dto is null) return NotFound();
+        var stored = fileStorage.Get(dto.StorageKey);
+        if (stored is null) return NotFound();
+        return PhysicalFile(stored.FullPath, "application/octet-stream", dto.FileName);
+    }
 }

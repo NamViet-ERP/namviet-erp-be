@@ -164,7 +164,8 @@ public static class WmsMapper
         WarehouseTransaction t,
         string sourceExportId,
         string sourceExportCode,
-        string? projectName = null) =>
+        string? projectName = null,
+        List<ImportAttachmentDto>? attachments = null) =>
         new(t.Id.ToString(), t.TicketCode, FormatDate(t.CreatedAt),
             sourceExportId, sourceExportCode,
             t.ProjectCode ?? t.BeneficiaryProjectCode,
@@ -175,7 +176,8 @@ public static class WmsMapper
                 i.Quantity, TransactionItemHelper.ResolveUnit(i))).ToList(),
             ToClientApprovalStatus(t.ApprovalStatus),
             t.CreatedByName, t.Notes ?? "", t.ApprovedByName, FormatApprovedAt(t.ApprovedAt),
-            FormatCreatedAt(t.CreatedAt));
+            FormatCreatedAt(t.CreatedAt),
+            attachments);
 
     private static bool IsCrossProjectTransferEntity(WarehouseTransaction t) =>
         !string.IsNullOrWhiteSpace(t.ProjectCode)

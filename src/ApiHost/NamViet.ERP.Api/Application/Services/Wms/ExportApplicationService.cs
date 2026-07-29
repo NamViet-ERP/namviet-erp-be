@@ -25,7 +25,8 @@ public sealed class ExportApplicationService(
     WarehouseDbContext db,
     IInventoryDomainService inventory,
     IStocktakeFreezeGuard stocktakeFreeze,
-    ICurrentUser currentUser) : IExportApplicationService
+    ICurrentUser currentUser,
+    IWmsCatalogQueryService catalog) : IExportApplicationService
 {
     public async Task<List<ExportDto>> ListAsync(DateOnly? dateFrom = null, DateOnly? dateTo = null, CancellationToken ct = default)
     {
@@ -281,5 +282,12 @@ public sealed class ExportApplicationService(
             db, list.Select(i => i.MaterialCode), ct);
         TransactionItemHelper.EnsureActiveMaterials(list.Select(i => i.MaterialCode), materials);
         await TransactionItemHelper.ApplySnapshotsAsync(db, list, ct);
+
+        // Giá xuất = WAC nhập đã duyệt trong 12 tháng gần nhất (cùng công thức tồn kho).
+        foreach (var item in list)
+        {
+            if (item.UnitPrice > 0) continue;
+            item.UnitPrice = await catalog.GetLatestPriceAsync(item.MaterialCode, ct);
+        }
     }
 }

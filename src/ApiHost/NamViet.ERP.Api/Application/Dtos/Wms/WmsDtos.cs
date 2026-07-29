@@ -38,7 +38,7 @@ public record ImportDto(
 public record ApproveImportRequest(bool ConfirmOverBudget = false);
 public record UpdateImportReceiptEvaluationRequest(string? Evaluation);
 
-public record ImportBudgetExceededResponse(
+public record ImportBudgetExceededDto(
     string Code,
     string Message,
     string ProjectCode,
@@ -102,7 +102,8 @@ public record ExportReturnDto(
     string Id, string VoucherCode, string Date, string SourceExportId, string SourceExportCode,
     string? Project, string? ProjectName, List<ExportReturnItemDto> Items,
     string Status, string CreatedBy, string Note, string? ApprovedBy, string? ApprovedAt,
-    string CreatedAt);
+    string CreatedAt,
+    List<ImportAttachmentDto>? Attachments = null);
 public record CreateExportReturnDto(
     string VoucherCode, string Date, string SourceExportId,
     List<ExportReturnItemDto> Items, string Status, string? CreatedBy, string Note, string? Project);

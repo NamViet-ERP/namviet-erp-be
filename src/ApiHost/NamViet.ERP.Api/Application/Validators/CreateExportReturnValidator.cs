@@ -8,6 +8,10 @@ public sealed class CreateExportReturnValidator : AbstractValidator<CreateExport
     public CreateExportReturnValidator()
     {
         RuleFor(x => x.SourceExportId).NotEmpty().WithMessage("Vui lòng chọn phiếu xuất nguồn.");
+        RuleFor(x => x.Note)
+            .NotEmpty().WithMessage("Vui lòng nhập lý do hoàn trả.")
+            .MinimumLength(3).WithMessage("Lý do hoàn trả phải có ít nhất 3 ký tự.")
+            .MaximumLength(1000).WithMessage("Lý do hoàn trả tối đa 1000 ký tự.");
         RuleFor(x => x.Items).NotEmpty().WithMessage("Phiếu hoàn trả phải có ít nhất một dòng vật tư.");
         RuleForEach(x => x.Items).ChildRules(item =>
         {

@@ -105,11 +105,14 @@ public class ImportsController(
 
     [HttpGet("from-po/{poCode}/preview")]
     [RequirePermission("wms.imports.create")]
-    public async Task<ActionResult<PoImportPreviewDto>> PreviewFromPurchaseOrder(string poCode, CancellationToken ct)
+    public async Task<ActionResult<PoImportPreviewDto>> PreviewFromPurchaseOrder(
+        string poCode,
+        [FromQuery] string? excludeTicketCode,
+        CancellationToken ct)
     {
         try
         {
-            var preview = await imports.PreviewImportFromPurchaseOrderAsync(poCode, ct);
+            var preview = await imports.PreviewImportFromPurchaseOrderAsync(poCode, excludeTicketCode, ct);
             await projectAccess.EnsureCanOperateOnProjectAsync(preview.ProjectCode, ct);
             return Ok(MaskPoImportPrices(preview));
         }
@@ -132,7 +135,7 @@ public class ImportsController(
     {
         try
         {
-            var preview = await imports.PreviewImportFromPurchaseOrderAsync(poCode, ct);
+            var preview = await imports.PreviewImportFromPurchaseOrderAsync(poCode, ct: ct);
             await projectAccess.EnsureCanOperateOnProjectAsync(preview.ProjectCode, ct);
             var created = await imports.CreateDraftFromPurchaseOrderAsync(poCode, request, ct);
             return Ok(created);
@@ -167,6 +170,8 @@ public class ImportsController(
 
     [HttpPost("{id}/approve")]
     [RequirePermission("wms.imports.approve")]
+    [ProducesResponseType(typeof(ImportDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ImportBudgetExceededDto), StatusCodes.Status409Conflict)]
     public async Task<ActionResult<ImportDto>> Approve(
         string id,
         [FromBody] ApproveImportRequest? request,
@@ -180,7 +185,7 @@ public class ImportsController(
         }
         catch (ImportBudgetExceededException ex)
         {
-            return Conflict(new ImportBudgetExceededResponse(
+            return Conflict(new ImportBudgetExceededDto(
                 "IMPORT_BUDGET_EXCEEDED",
                 ex.Message,
                 ex.ProjectCode,

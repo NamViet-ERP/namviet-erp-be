@@ -29,6 +29,7 @@ public interface IImportApplicationService
         CancellationToken ct = default);
     Task<PoImportPreviewDto> PreviewImportFromPurchaseOrderAsync(
         string poCode,
+        string? excludeTicketCode = null,
         CancellationToken ct = default);
     Task<ImportDto?> UpdateReceiptEvaluationAsync(
         string id,
@@ -297,8 +298,9 @@ public sealed class ImportApplicationService(
 
     public async Task<PoImportPreviewDto> PreviewImportFromPurchaseOrderAsync(
         string poCode,
+        string? excludeTicketCode = null,
         CancellationToken ct = default) =>
-        await poReceipt.PreviewImportFromPoAsync(poCode, excludeTicketCode: null, ct);
+        await poReceipt.PreviewImportFromPoAsync(poCode, excludeTicketCode, ct);
 
     public async Task<ImportDto> CreateDraftFromPurchaseOrderAsync(
         string poCode,
@@ -329,8 +331,11 @@ public sealed class ImportApplicationService(
     {
         var t = await FindImportAsync(id, ct);
         if (t is null) return false;
-        if (t.ApprovalStatus == ApprovalStatus.Approved)
-            throw new InvalidOperationException("Phiếu đã duyệt, không thể xóa.");
+        if (t.ApprovalStatus != ApprovalStatus.Draft)
+            throw new InvalidOperationException(
+                t.ApprovalStatus == ApprovalStatus.Approved
+                    ? "Phiếu đã duyệt, không thể xóa."
+                    : "Chỉ phiếu nháp mới được xóa. Phiếu chờ duyệt không thể xóa.");
 
         await using var tx = await db.Database.BeginTransactionAsync(ct);
         if (HasPlannedInventory(t.ApprovalStatus))

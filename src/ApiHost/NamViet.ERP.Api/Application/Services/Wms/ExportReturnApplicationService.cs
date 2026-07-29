@@ -23,13 +23,18 @@ public interface IExportReturnApplicationService
     Task<ExportReturnDto?> ApproveAsync(string id, CancellationToken ct = default);
     Task<ExportReturnDto?> SubmitAsync(string id, CancellationToken ct = default);
     Task<bool> DeleteAsync(string id, CancellationToken ct = default);
+    Task<ImportAttachmentDto?> UploadAttachmentAsync(
+        string id, string kind, string fileName, string contentType, Stream content, CancellationToken ct = default);
+    Task<ImportAttachmentDto?> GetAttachmentAsync(string id, Guid attachmentId, CancellationToken ct = default);
+    Task<bool> DeleteAttachmentAsync(string id, Guid attachmentId, CancellationToken ct = default);
 }
 
 public sealed class ExportReturnApplicationService(
     WarehouseDbContext db,
     IInventoryDomainService inventory,
     IStocktakeFreezeGuard stocktakeFreeze,
-    ICurrentUser currentUser) : IExportReturnApplicationService
+    ICurrentUser currentUser,
+    NamViet.ERP.Api.Services.Storage.IFileStorage fileStorage) : IExportReturnApplicationService
 {
     private static readonly ApprovalStatus[] ActiveReturnStatuses =
     [
@@ -287,6 +292,10 @@ public sealed class ExportReturnApplicationService(
         if (t is null) return null;
         if (t.ApprovalStatus != ApprovalStatus.Draft)
             throw new InvalidOperationException("Chỉ phiếu nháp mới được PM chốt.");
+        if (string.IsNullOrWhiteSpace(t.Notes) || t.Notes.Trim().Length < 3)
+            throw new InvalidOperationException("Vui lòng nhập lý do hoàn trả trước khi gửi.");
+        if (!t.Attachments.Any(a => a.Kind == "photo"))
+            throw new InvalidOperationException("Vui lòng đính kèm ít nhất một ảnh hoàn trả trước khi gửi.");
 
         await stocktakeFreeze.EnsureProjectsNotFrozenAsync(
             [t.ProjectCode ?? t.BeneficiaryProjectCode], ct);
@@ -296,6 +305,92 @@ public sealed class ExportReturnApplicationService(
         await db.SaveChangesAsync(ct);
 
         return await MapReturnResponseAsync(t, ct);
+    }
+
+    public async Task<ImportAttachmentDto?> UploadAttachmentAsync(
+        string id,
+        string kind,
+        string fileName,
+        string contentType,
+        Stream content,
+        CancellationToken ct = default)
+    {
+        var t = await FindAsync(id, ct);
+        if (t is null) return null;
+        if (t.ApprovalStatus == ApprovalStatus.Approved)
+            throw new InvalidOperationException("Phiếu đã duyệt, không thể thêm file.");
+
+        var normalizedKind = string.Equals(kind?.Trim(), "photo", StringComparison.OrdinalIgnoreCase)
+            ? "photo"
+            : "document";
+        var safeFileName = Path.GetFileName(fileName).Trim();
+        var ext = Path.GetExtension(safeFileName).ToLowerInvariant();
+        EnsureAllowedAttachmentExtension(ext, normalizedKind);
+
+        var relative = $"wms/export-returns/{t.TicketCode}/{normalizedKind}/{Guid.NewGuid():N}{ext}";
+        var stored = await fileStorage.SaveAsync(content, relative, contentType, ct);
+
+        var attachment = new WarehouseTransactionAttachment
+        {
+            Id = Guid.NewGuid(),
+            TicketCode = t.TicketCode,
+            Kind = normalizedKind,
+            FileName = safeFileName,
+            StorageKey = stored.StorageKey,
+            UploadedAt = DateTime.UtcNow,
+        };
+        db.WarehouseTransactionAttachments.Add(attachment);
+        t.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
+        return new ImportAttachmentDto(
+            attachment.Id,
+            attachment.Kind,
+            attachment.FileName,
+            attachment.StorageKey,
+            WmsMapper.FormatCreatedAt(attachment.UploadedAt));
+    }
+
+    public async Task<ImportAttachmentDto?> GetAttachmentAsync(
+        string id, Guid attachmentId, CancellationToken ct = default)
+    {
+        var t = await FindAsync(id, ct);
+        if (t is null) return null;
+        var attachment = t.Attachments.FirstOrDefault(a => a.Id == attachmentId);
+        if (attachment is null) return null;
+        return new ImportAttachmentDto(
+            attachment.Id,
+            attachment.Kind,
+            attachment.FileName,
+            attachment.StorageKey,
+            WmsMapper.FormatCreatedAt(attachment.UploadedAt));
+    }
+
+    public async Task<bool> DeleteAttachmentAsync(
+        string id, Guid attachmentId, CancellationToken ct = default)
+    {
+        var t = await FindAsync(id, ct);
+        if (t is null) return false;
+        if (t.ApprovalStatus == ApprovalStatus.Approved)
+            throw new InvalidOperationException("Phiếu đã duyệt, không thể xóa file.");
+        var attachment = t.Attachments.FirstOrDefault(a => a.Id == attachmentId);
+        if (attachment is null) return false;
+        db.WarehouseTransactionAttachments.Remove(attachment);
+        t.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
+        return true;
+    }
+
+    private static void EnsureAllowedAttachmentExtension(string ext, string kind)
+    {
+        if (kind == "photo")
+        {
+            if (ext is not (".jpg" or ".jpeg" or ".png" or ".webp"))
+                throw new InvalidOperationException("Ảnh hoàn trả chỉ chấp nhận JPG, PNG, WEBP.");
+            return;
+        }
+
+        if (ext is not (".pdf" or ".doc" or ".docx" or ".xls" or ".xlsx" or ".jpg" or ".jpeg" or ".png" or ".webp"))
+            throw new InvalidOperationException("File chứng từ không hợp lệ.");
     }
 
     public async Task<bool> DeleteAsync(string id, CancellationToken ct = default)
@@ -534,6 +629,7 @@ public sealed class ExportReturnApplicationService(
     private IQueryable<WarehouseTransaction> Query() =>
         db.WarehouseTransactions
             .Include(t => t.Items).ThenInclude(i => i.Material)
+            .Include(t => t.Attachments)
             .Where(t => t.TransactionType == TransactionType.ExportReturn);
 
     private async Task<WarehouseTransaction?> FindAsync(string id, CancellationToken ct)
@@ -565,7 +661,16 @@ public sealed class ExportReturnApplicationService(
             t,
             source?.Id.ToString() ?? "",
             source?.TicketCode ?? t.LinkedTicketCode ?? "",
-            projectName);
+            projectName,
+            t.Attachments
+                .OrderBy(a => a.UploadedAt)
+                .Select(a => new ImportAttachmentDto(
+                    a.Id,
+                    a.Kind,
+                    a.FileName,
+                    a.StorageKey,
+                    WmsMapper.FormatCreatedAt(a.UploadedAt)))
+                .ToList());
     }
 
     private async Task<Dictionary<string, string>> GetProjectNamesAsync(
