@@ -37,6 +37,8 @@ Repo BE cần có `Dockerfile` ở root (đã thêm). FE đã ở: https://namvi
 | `Cors__AllowedOrigins` | `https://namviet-erp-fe.vercel.app` |
 | `AuthCookies__Secure` | `true` |
 | `AuthCookies__SameSite` | `None` |
+| `DOTNET_HOSTBUILDER_RELOADCONFIGONCHANGE` | `false` |
+| `DOTNET_USE_POLLING_FILE_WATCHER` | `1` |
 
 > Cookie SameSite=`None` + Secure=`true` cần khi FE (Vercel) và API (Render) **khác domain**. Nếu login cookie bị browser chặn, báo mình để chỉnh FE gọi absolute API URL.
 

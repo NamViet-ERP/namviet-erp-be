@@ -14,6 +14,9 @@ WORKDIR /app
 # Render injects PORT; default 8080 for local docker runs.
 ENV ASPNETCORE_URLS=http://0.0.0.0:8080
 ENV PORT=8080
+# Avoid FileSystemWatcher/inotify exhaustion on small container hosts.
+ENV DOTNET_HOSTBUILDER_RELOADCONFIGONCHANGE=false
+ENV DOTNET_USE_POLLING_FILE_WATCHER=1
 EXPOSE 8080
 COPY --from=build /app/publish .
 # Shell form so $PORT from Render is applied at runtime.

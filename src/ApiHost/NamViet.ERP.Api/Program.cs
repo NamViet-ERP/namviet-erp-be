@@ -19,6 +19,13 @@ using Serilog;
 using System.Text.Json.Serialization;
 using System.Threading.RateLimiting;
 
+// Container hosts (Render Free) often hit inotify limits when ASP.NET watches appsettings.
+// Disable config file reload-on-change before WebApplication.CreateBuilder attaches watchers.
+if (string.IsNullOrEmpty(Environment.GetEnvironmentVariable("DOTNET_HOSTBUILDER_RELOADCONFIGONCHANGE")))
+{
+    Environment.SetEnvironmentVariable("DOTNET_HOSTBUILDER_RELOADCONFIGONCHANGE", "false");
+}
+
 var builder = WebApplication.CreateBuilder(args);
 
 ConfigurationSecurityValidator.Validate(builder.Configuration, builder.Environment);
