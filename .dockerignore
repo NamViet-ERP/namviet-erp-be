@@ -1,0 +1,16 @@
+**/.git
+**/.vs
+**/bin
+**/obj
+**/_tmp_build*
+**/tmp-*
+**/.env
+**/.env.*
+!**/.env.example
+!**/.env.production.example
+**/artifacts
+**/publish
+**/node_modules
+**/*.user
+**/*.suo
+**/TestResults

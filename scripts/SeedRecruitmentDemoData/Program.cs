@@ -69,26 +69,51 @@ if (force)
     await db.SaveChangesAsync();
 }
 
-var positions = await db.RecruitmentPositions
-    .AsNoTracking()
-    .Where(p => p.DeletedAt == null && p.IsActive)
-    .OrderBy(p => p.Id)
-    .ToListAsync();
-if (positions.Count == 0)
-{
-    Console.Error.WriteLine("Chưa có vị trí tuyển dụng. Tạo ít nhất 1 vị trí trong Thiết lập tuyển dụng trước.");
-    return 1;
-}
-
 var department = await db.Departments
-    .AsNoTracking()
     .Where(d => d.DeletedAt == null)
     .OrderBy(d => d.Id)
     .FirstOrDefaultAsync();
 if (department is null)
 {
-    Console.Error.WriteLine("Chưa có phòng ban trong HR. Cần ít nhất 1 phòng ban.");
-    return 1;
+    department = new Department
+    {
+        Code = "HCNS",
+        Name = "Hành chính nhân sự",
+        Block = "HCNS",
+        IsActive = true,
+    };
+    db.Departments.Add(department);
+    await db.SaveChangesAsync();
+    Console.WriteLine("  Created department HCNS (demo bootstrap).");
+}
+
+var positions = await db.RecruitmentPositions
+    .Where(p => p.DeletedAt == null && p.IsActive)
+    .OrderBy(p => p.Id)
+    .ToListAsync();
+if (positions.Count == 0)
+{
+    db.RecruitmentPositions.AddRange(
+        new RecruitmentPosition
+        {
+            Name = "Nhân viên Kho",
+            DepartmentId = department.Id,
+            JobDescription = "Vận hành nhập/xuất kho, kiểm kê (demo seed).",
+            IsActive = true,
+        },
+        new RecruitmentPosition
+        {
+            Name = "Nhân viên Mua hàng",
+            DepartmentId = department.Id,
+            JobDescription = "Theo dõi KHMH / PO / NCC (demo seed).",
+            IsActive = true,
+        });
+    await db.SaveChangesAsync();
+    positions = await db.RecruitmentPositions
+        .Where(p => p.DeletedAt == null && p.IsActive)
+        .OrderBy(p => p.Id)
+        .ToListAsync();
+    Console.WriteLine("  Created 2 recruitment positions (demo bootstrap).");
 }
 
 var hrResponsible = await db.Employees

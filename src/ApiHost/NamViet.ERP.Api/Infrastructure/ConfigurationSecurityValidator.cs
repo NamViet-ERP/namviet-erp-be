@@ -18,10 +18,17 @@ public static class ConfigurationSecurityValidator
         "change_me_strong",
     ];
 
+    private static readonly string[] CorsPlaceholderMarkers =
+    [
+        "your-frontend-domain.com",
+        "localhost",
+    ];
+
     public static void Validate(IConfiguration configuration, IHostEnvironment environment)
     {
         ValidateJwtSigningKey(configuration);
         ValidateConnectionString(configuration, environment);
+        ValidateCorsOrigins(configuration, environment);
     }
 
     private static void ValidateJwtSigningKey(IConfiguration configuration)
@@ -68,6 +75,31 @@ public static class ConfigurationSecurityValidator
             {
                 throw new InvalidOperationException(
                     "Connection string uses a known default password. Use a strong password outside Development.");
+            }
+        }
+    }
+
+    private static void ValidateCorsOrigins(IConfiguration configuration, IHostEnvironment environment)
+    {
+        // Development may use localhost origins from appsettings / .env.
+        if (environment.IsDevelopment())
+            return;
+
+        var raw = configuration["Cors:AllowedOrigins"]?.Trim();
+        if (string.IsNullOrEmpty(raw))
+        {
+            throw new InvalidOperationException(
+                "Cors:AllowedOrigins is required outside Development. Set Cors__AllowedOrigins to the real frontend origin(s).");
+        }
+
+        var lower = raw.ToLowerInvariant();
+        foreach (var marker in CorsPlaceholderMarkers)
+        {
+            if (lower.Contains(marker, StringComparison.Ordinal))
+            {
+                throw new InvalidOperationException(
+                    "Cors:AllowedOrigins must not use placeholder or localhost origins outside Development. " +
+                    "Set Cors__AllowedOrigins to the real HTTPS frontend origin(s).");
             }
         }
     }

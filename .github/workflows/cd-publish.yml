@@ -1,0 +1,36 @@
+# Manual publish helper — does not deploy to a host.
+# Migrate stays on database-migrate.yml. After hosting is chosen, add copy/SSH steps here.
+name: CD publish API
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'GitHub Environment name (secrets/protection)'
+        required: true
+        default: production
+
+jobs:
+  publish:
+    name: Publish API artifact
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '8.0.x'
+
+      - run: dotnet restore
+      - run: dotnet build --no-restore -c Release
+      - name: Publish API
+        run: dotnet publish src/ApiHost/NamViet.ERP.Api -c Release -o ./publish --no-build
+
+      - name: Upload deployable publish folder
+        uses: actions/upload-artifact@v4
+        with:
+          name: be-publish-${{ inputs.environment }}
+          path: publish/
+          if-no-files-found: error
+          retention-days: 14

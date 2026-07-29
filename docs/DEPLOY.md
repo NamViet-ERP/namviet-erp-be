@@ -28,7 +28,12 @@ Migration `SeedMaterialCategoryTree` là **no-op** — dữ liệu cây vật t�
 
 ## 2. Biến môi trường / cấu hình
 
-Tham chiếu `.env.example` (Docker) và override cho API:
+Tham chiếu:
+
+- `.env.example` — Docker / local  
+- **`.env.production.example`** — template Production (JWT, CORS, cookies, forwarded headers)
+
+Override cho API:
 
 | Key | Bắt buộc | Ghi chú |
 |-----|----------|---------|
@@ -44,7 +49,8 @@ Tham chiếu `.env.example` (Docker) và override cho API:
 
 - Thiếu connection string hoặc JWT key  
 - JWT key quá ngắn hoặc chứa chuỗi placeholder  
-- Production: connection string chứa password yếu đã biết (`change_me_strong`, …)
+- Production: connection string chứa password yếu đã biết (`change_me_strong`, …)  
+- Production: thiếu `Cors:AllowedOrigins`, hoặc còn placeholder (`your-frontend-domain.com`) / `localhost`
 
 ### Ví dụ set env (Linux)
 
@@ -173,11 +179,16 @@ Tạo lại SQL từ JSON: `node scripts/generate-material-category-tree-sql.mjs
 
 ## 8. GitHub Actions (BE)
 
-Workflow: `.github/workflows/ci.yml` — `dotnet build` + `dotnet test` trên branch **`production`** (push và PR).
+| Workflow | Khi chạy | Việc |
+|----------|----------|------|
+| `.github/workflows/ci.yml` | push/PR → `production`, `feature/purchasing` | restore, build, test, publish artifact `be-publish` |
+| `.github/workflows/cd-publish.yml` | **workflow_dispatch** + Environment | Publish artifact `be-publish-<env>` (chưa SSH) |
+| `.github/workflows/database-migrate.yml` | **workflow_dispatch** | Migrator với secret `DATABASE_CONNECTION_STRING` |
 
-Migration production chỉ chạy thủ công qua `.github/workflows/database-migrate.yml` (`workflow_dispatch`).
-Tạo protected environment (ví dụ `production`), bật required reviewers và thêm environment secret
-`DATABASE_CONNECTION_STRING`. Workflow migration có concurrency lock; PR CI không migrate.
+Tạo protected environment (ví dụ `production`), bật required reviewers.  
+Environment secrets (tên gợi ý): `DATABASE_CONNECTION_STRING`, và trên host/API process: `Jwt__SigningKey`, `Cors__AllowedOrigins`, `ConnectionStrings__Default` (không commit).
+
+PR CI **không** migrate. Copy `publish/` lên host vẫn thủ công cho đến khi chốt hosting.
 
 ---
 
@@ -215,7 +226,8 @@ Tóm tắt: login/refresh (`auth`), onboard & apply (`public-write`), upload HR 
 | Jwt:SigningKey required | Chưa set env |
 | ConnectionStrings:Default required | Chưa set env |
 | Lỗi migrator | DB không reachable, thiếu quyền DDL, hoặc thiếu `ConnectionStrings:Default` |
-| CORS từ FE | Thiếu origin trong `Cors:AllowedOrigins` |
+| CORS từ FE | Thiếu origin / còn placeholder trong `Cors:AllowedOrigins` (Production fail-fast) |
+| Cors:AllowedOrigins required | Chưa set `Cors__AllowedOrigins` khi `ASPNETCORE_ENVIRONMENT=Production` |
 | `/health/ready` 503 | DB unreachable / password sai, hoặc `FileStorage` không ghi được |
 
 ---
