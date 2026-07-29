@@ -27,13 +27,19 @@ function Invoke-Api {
 }
 
 try {
+    $username = $env:SMOKE_API_USERNAME
+    $password = $env:SMOKE_API_PASSWORD
+    if (-not $username -or -not $password) {
+        throw 'Set SMOKE_API_USERNAME and SMOKE_API_PASSWORD (no hardcoded credentials).'
+    }
     $login = Invoke-RestMethod -Method POST -Uri "$base/api/auth/login" -ContentType 'application/json' -Body (@{
-        username = 'admin@namviet.vn'; password = 'Test@123'; rememberMe = $false
+        username = $username; password = $password; rememberMe = $false
     } | ConvertTo-Json)
     $script:token = $login.token
-    Record 'Auth' 'Login admin' ($null -ne $script:token) "user=$($login.user.email)"
+    if (-not $script:token -and $login.accessToken) { $script:token = $login.accessToken }
+    Record 'Auth' 'Login' ($null -ne $script:token) "user=$($login.user.email)"
 } catch {
-    Record 'Auth' 'Login admin' $false $_.Exception.Message
+    Record 'Auth' 'Login' $false $_.Exception.Message
     $results | Format-Table -AutoSize
     exit 1
 }

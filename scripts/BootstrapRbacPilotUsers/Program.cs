@@ -15,10 +15,69 @@ using NamViet.ERP.Modules.Warehouse.Infrastructure;
 using NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence;
 using NamViet.ERP.SharedKernel.Authorization;
 
-// Identity: min 8 chars, digit, uppercase.
-const string DefaultPassword = "Test@123";
+// Identity: min 8 chars, digit, uppercase — password MUST come from CLI (no hardcoded default).
 const string EmployeeCodePrefix = "NV-";
 const int EmployeeCodeDigits = 4;
+
+static void PrintUsage()
+{
+    Console.Error.WriteLine("""
+        BootstrapRbacPilotUsers — DEMO / local only. Does not run at API startup.
+
+        Required:
+          env ALLOW_DEMO_BOOTSTRAP=1
+          --password <Pwd>     Shared password for newly created pilot users (Identity complexity rules)
+
+        Optional:
+          --force-reset        Also reset password for existing pilot emails (default: skip reset)
+
+        Example:
+          $env:ALLOW_DEMO_BOOTSTRAP='1'
+          $env:ConnectionStrings__Default='Host=localhost;...'
+          dotnet run -- --password 'YourStrong1Pass'
+        """);
+}
+
+var argsList = args.ToList();
+if (argsList.Exists(a => a is "-h" or "--help"))
+{
+    PrintUsage();
+    return 0;
+}
+
+var allowBootstrap = string.Equals(
+    Environment.GetEnvironmentVariable("ALLOW_DEMO_BOOTSTRAP"),
+    "1",
+    StringComparison.Ordinal);
+if (!allowBootstrap)
+{
+    Console.Error.WriteLine("Refusing to run: set ALLOW_DEMO_BOOTSTRAP=1 (demo/local only).");
+    PrintUsage();
+    return 1;
+}
+
+string? password = null;
+var forceReset = false;
+for (var i = 0; i < argsList.Count; i++)
+{
+    if (argsList[i] == "--password" && i + 1 < argsList.Count)
+    {
+        password = argsList[++i];
+        continue;
+    }
+    if (argsList[i] == "--force-reset")
+    {
+        forceReset = true;
+        continue;
+    }
+}
+
+if (string.IsNullOrWhiteSpace(password) || password.Length < 8)
+{
+    Console.Error.WriteLine("Missing or weak --password (min 8 chars; must meet Identity rules).");
+    PrintUsage();
+    return 1;
+}
 
 // Admin ×2; mỗi vai trò khác ×10. Tên thật để test RBAC / UI chính xác.
 var pilotUsers = new[]
@@ -172,8 +231,9 @@ foreach (var roleName in RolePermissionTemplates.ByIdentityRoleName.Keys
 var departmentId = await EnsurePilotDepartmentAsync(hrDb);
 var positionIds = await EnsurePilotPositionsAsync(hrDb, departmentId, pilotUsers);
 
-Console.WriteLine("RBAC pilot test users (dev only):");
-Console.WriteLine($"Password for all: {DefaultPassword}");
+Console.WriteLine("RBAC pilot test users (demo/local only):");
+Console.WriteLine($"Password: (from --password; not echoed)");
+Console.WriteLine($"Force reset existing: {forceReset}");
 Console.WriteLine($"Mã NV chuẩn: {EmployeeCodePrefix}XXXX (VD: NV-0001)");
 Console.WriteLine();
 
@@ -195,7 +255,7 @@ foreach (var spec in pilotUsers)
             IsActive = true,
         };
 
-        var create = await userManager.CreateAsync(user, DefaultPassword);
+        var create = await userManager.CreateAsync(user, password);
         if (!create.Succeeded)
         {
             Console.Error.WriteLine($"Failed to create {spec.Email}: {FormatErrors(create.Errors)}");
@@ -206,13 +266,21 @@ foreach (var spec in pilotUsers)
     }
     else
     {
-        Console.WriteLine($"User {spec.Email} already exists — resetting password.");
-        var token = await userManager.GeneratePasswordResetTokenAsync(user);
-        var reset = await userManager.ResetPasswordAsync(user, token, DefaultPassword);
-        if (!reset.Succeeded)
+        Console.WriteLine($"User {spec.Email} already exists.");
+        if (forceReset)
         {
-            Console.Error.WriteLine($"Failed to reset password for {spec.Email}: {FormatErrors(reset.Errors)}");
-            return 1;
+            Console.WriteLine($"  → --force-reset: resetting password.");
+            var token = await userManager.GeneratePasswordResetTokenAsync(user);
+            var reset = await userManager.ResetPasswordAsync(user, token, password);
+            if (!reset.Succeeded)
+            {
+                Console.Error.WriteLine($"Failed to reset password for {spec.Email}: {FormatErrors(reset.Errors)}");
+                return 1;
+            }
+        }
+        else
+        {
+            Console.WriteLine("  → skipping password reset (pass --force-reset to override).");
         }
 
         if (!string.Equals(user.Name, spec.Name, StringComparison.Ordinal))
@@ -343,7 +411,7 @@ foreach (var spec in pilotUsers)
         Console.WriteLine($"  → updated identity code → {spec.EmployeeCode}");
     }
 
-    Console.WriteLine($"  Login: {spec.Email} / {DefaultPassword} / role={spec.Role}");
+    Console.WriteLine($"  Login: {spec.Email} / (password from --password) / role={spec.Role}");
     Console.WriteLine();
 }
 
