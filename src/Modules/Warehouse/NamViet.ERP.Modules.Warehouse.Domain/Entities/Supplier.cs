@@ -9,7 +9,11 @@ public class Supplier : BaseEntity
     public string SupplierName { get; set; } = string.Empty;
     public string? ContactPhone { get; set; }
     public int MaxDebtDays { get; set; } = 30;
-    public string Rating { get; set; } = "A";                  // A, B, C
+    public string? PaymentTerms { get; set; }
+    public string Rating { get; set; } = "A";                  // A..H
 
     public ICollection<WarehouseTransaction> Transactions { get; set; } = [];
+    public ICollection<SupplierGroupMember> GroupMemberships { get; set; } = [];
+    public ICollection<SupplierContact> Contacts { get; set; } = [];
+    public ICollection<SupplierEvaluation> Evaluations { get; set; } = [];
 }

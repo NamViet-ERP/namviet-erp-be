@@ -41,6 +41,10 @@ public class WarehouseDbContext(DbContextOptions<WarehouseDbContext> options) : 
     public DbSet<MaterialUnit> MaterialUnits => Set<MaterialUnit>();
     public DbSet<InventoryReservation> InventoryReservations => Set<InventoryReservation>();
     public DbSet<Supplier> Suppliers => Set<Supplier>();
+    public DbSet<SupplierGroup> SupplierGroups => Set<SupplierGroup>();
+    public DbSet<SupplierGroupMember> SupplierGroupMembers => Set<SupplierGroupMember>();
+    public DbSet<SupplierContact> SupplierContacts => Set<SupplierContact>();
+    public DbSet<SupplierEvaluation> SupplierEvaluations => Set<SupplierEvaluation>();
     public DbSet<Project> Projects => Set<Project>();
     public DbSet<ProjectWarehouseKeeper> ProjectWarehouseKeepers => Set<ProjectWarehouseKeeper>();
     public DbSet<ProjectInventory> ProjectInventories => Set<ProjectInventory>();
@@ -59,6 +63,7 @@ public class WarehouseDbContext(DbContextOptions<WarehouseDbContext> options) : 
     public DbSet<PurchasePlanLineQuote> PurchasePlanLineQuotes => Set<PurchasePlanLineQuote>();
     public DbSet<PurchaseOrder> PurchaseOrders => Set<PurchaseOrder>();
     public DbSet<PurchaseOrderItem> PurchaseOrderItems => Set<PurchaseOrderItem>();
+    public DbSet<PurchaseOrderAttachment> PurchaseOrderAttachments => Set<PurchaseOrderAttachment>();
     public DbSet<PurchaseDefect> PurchaseDefects => Set<PurchaseDefect>();
     public DbSet<PurchaseDefectItem> PurchaseDefectItems => Set<PurchaseDefectItem>();
     public DbSet<PurchaseDefectAttachment> PurchaseDefectAttachments => Set<PurchaseDefectAttachment>();
@@ -143,8 +148,68 @@ public class WarehouseDbContext(DbContextOptions<WarehouseDbContext> options) : 
             e.HasIndex(s => s.SupplierCode).IsUnique();
             e.Property(s => s.SupplierName).HasMaxLength(255).IsRequired();
             e.Property(s => s.ContactPhone).HasMaxLength(50);
+            e.Property(s => s.PaymentTerms).HasMaxLength(500);
             e.Property(s => s.Rating).HasMaxLength(10).HasDefaultValue("A");
             e.HasQueryFilter(s => s.DeletedAt == null);
+        });
+
+        model.Entity<SupplierGroup>(e =>
+        {
+            e.ToTable("supplier_groups");
+            e.HasKey(g => g.Id);
+            e.Property(g => g.Name).HasMaxLength(255).IsRequired();
+            e.Property(g => g.Description).HasMaxLength(1000);
+            // Soft delete: chỉ ràng buộc trùng tên trên bản ghi còn hiệu lực.
+            e.HasIndex(g => g.Name).IsUnique().HasFilter("\"DeletedAt\" IS NULL");
+            e.HasQueryFilter(g => g.DeletedAt == null);
+        });
+
+        model.Entity<SupplierGroupMember>(e =>
+        {
+            e.ToTable("supplier_group_members");
+            e.HasKey(m => m.Id);
+            e.HasIndex(m => new { m.SupplierGroupId, m.SupplierId }).IsUnique();
+            e.HasIndex(m => m.SupplierId);
+            e.HasOne(m => m.Group).WithMany(g => g.Members)
+             .HasForeignKey(m => m.SupplierGroupId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(m => m.Supplier).WithMany(s => s.GroupMemberships)
+             .HasForeignKey(m => m.SupplierId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        model.Entity<SupplierContact>(e =>
+        {
+            e.ToTable("supplier_contacts");
+            e.HasKey(c => c.Id);
+            e.Property(c => c.FullName).HasMaxLength(255).IsRequired();
+            e.Property(c => c.Position).HasMaxLength(150);
+            e.Property(c => c.Phone).HasMaxLength(50);
+            e.Property(c => c.Email).HasMaxLength(255);
+            e.Property(c => c.Note).HasMaxLength(1000);
+            e.HasIndex(c => c.SupplierId);
+            e.HasOne(c => c.Supplier).WithMany(s => s.Contacts)
+             .HasForeignKey(c => c.SupplierId).OnDelete(DeleteBehavior.Cascade);
+            e.HasQueryFilter(c => c.DeletedAt == null);
+        });
+
+        model.Entity<SupplierEvaluation>(e =>
+        {
+            e.ToTable("supplier_evaluations");
+            e.HasKey(v => v.Id);
+            e.Property(v => v.SupplierNameSnapshot).HasMaxLength(255);
+            e.Property(v => v.Period).HasMaxLength(30).IsRequired();
+            e.Property(v => v.Score).HasColumnType("numeric(5,2)");
+            e.Property(v => v.OnTimeDeliveryRate).HasColumnType("numeric(5,2)");
+            e.Property(v => v.DefectRate).HasColumnType("numeric(5,2)");
+            e.Property(v => v.WarrantyCompletionRate).HasColumnType("numeric(5,2)");
+            e.Property(v => v.Grade).HasMaxLength(10).IsRequired();
+            e.Property(v => v.Note).HasMaxLength(2000);
+            e.Property(v => v.EvaluatedByName).HasMaxLength(200);
+            e.HasIndex(v => new { v.SupplierId, v.Period })
+             .IsUnique().HasFilter("\"DeletedAt\" IS NULL");
+            e.HasIndex(v => v.EvaluatedAt);
+            e.HasOne(v => v.Supplier).WithMany(s => s.Evaluations)
+             .HasForeignKey(v => v.SupplierId).OnDelete(DeleteBehavior.Cascade);
+            e.HasQueryFilter(v => v.DeletedAt == null);
         });
 
         model.Entity<Project>(e =>
@@ -484,25 +549,48 @@ public class WarehouseDbContext(DbContextOptions<WarehouseDbContext> options) : 
              .HasForeignKey(i => i.MaterialCode).OnDelete(DeleteBehavior.Restrict).IsRequired(false);
         });
 
+        model.Entity<PurchaseOrderAttachment>(e =>
+        {
+            e.ToTable("purchase_order_attachments");
+            e.HasKey(a => a.Id);
+            e.Property(a => a.PoCode).HasMaxLength(50).IsRequired();
+            e.Property(a => a.DocType).HasMaxLength(20).IsRequired();
+            e.Property(a => a.StorageKey).HasMaxLength(500).IsRequired();
+            e.Property(a => a.FileName).HasMaxLength(255).IsRequired();
+            e.Property(a => a.UploadedByName).HasMaxLength(200);
+            e.HasIndex(a => a.PoCode);
+            e.HasIndex(a => new { a.PoCode, a.DocType });
+            e.HasOne(a => a.PurchaseOrder).WithMany(p => p.Attachments)
+             .HasForeignKey(a => a.PoCode).OnDelete(DeleteBehavior.Cascade);
+        });
+
         model.Entity<PurchaseDefect>(e =>
         {
             e.ToTable("purchase_defects");
             e.HasKey(d => d.TicketCode);
             e.HasIndex(d => d.Id).IsUnique();
             e.Property(d => d.TicketCode).HasMaxLength(50);
-            e.Property(d => d.PoCode).HasMaxLength(50).IsRequired();
+            e.Property(d => d.SourceType).HasMaxLength(20).IsRequired();
+            e.Property(d => d.PoCode).HasMaxLength(50);
             e.Property(d => d.PlanCode).HasMaxLength(50);
             e.Property(d => d.ProjectCode).HasMaxLength(50);
             e.Property(d => d.SupplierName).HasMaxLength(255);
             e.Property(d => d.Status).HasMaxLength(20).IsRequired();
             e.Property(d => d.Reason).HasMaxLength(2000);
             e.Property(d => d.Note).HasMaxLength(2000);
+            e.Property(d => d.CauseSource).HasMaxLength(30);
+            e.Property(d => d.SupplierFeedback).HasMaxLength(4000);
+            e.Property(d => d.HandlingMethod).HasMaxLength(40);
             e.Property(d => d.CreatedByName).HasMaxLength(255);
             e.Property(d => d.ApprovedByName).HasMaxLength(255);
+            e.Property(d => d.ProcessedByName).HasMaxLength(255);
             e.HasIndex(d => d.PoCode);
             e.HasIndex(d => d.Status);
+            e.HasIndex(d => d.SourceType);
             e.HasOne(d => d.PurchaseOrder).WithMany()
-             .HasForeignKey(d => d.PoCode).OnDelete(DeleteBehavior.Restrict);
+             .HasForeignKey(d => d.PoCode)
+             .IsRequired(false)
+             .OnDelete(DeleteBehavior.Restrict);
             e.HasQueryFilter(d => d.DeletedAt == null);
         });
 
