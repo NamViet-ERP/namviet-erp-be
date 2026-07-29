@@ -83,6 +83,7 @@ public class StocktakesController(
             }).ToList(),
         };
         foreach (var item in s.Items) item.StocktakeId = s.Id;
+        await EnsureProjectWarehouseAsync(projectCode, project.ProjectName, ct);
         db.Stocktakes.Add(s);
         await db.SaveChangesAsync(ct);
         return Ok(WmsMapper.ToStocktake(s));
@@ -106,6 +107,7 @@ public class StocktakesController(
                 .FirstOrDefaultAsync(p => p.ProjectCode == dto.WarehouseId && p.DeletedAt == null, ct);
             if (project is null)
                 return BadRequest($"Không tìm thấy kho dự án '{dto.WarehouseId}'.");
+            await EnsureProjectWarehouseAsync(dto.WarehouseId, project.ProjectName, ct);
             s.WarehouseId = dto.WarehouseId;
             s.WarehouseName = string.IsNullOrWhiteSpace(dto.WarehouseName) ? project.ProjectName : dto.WarehouseName;
         }
@@ -165,4 +167,27 @@ public class StocktakesController(
     private async Task<Stocktake?> FindAsync(string id, CancellationToken ct) =>
         await db.Stocktakes.Include(s => s.Items)
             .FirstOrDefaultAsync(s => s.Id == id && s.DeletedAt == null, ct);
+
+    /// <summary>
+    /// Stocktake.WarehouseId stores project code (app convention) but EF FK targets warehouses.Id.
+    /// Ensure a mirror row exists so SaveChanges succeeds for projects without demo warehouse seed.
+    /// </summary>
+    private async Task EnsureProjectWarehouseAsync(string projectCode, string projectName, CancellationToken ct)
+    {
+        var exists = await db.WmsWarehouses.AnyAsync(w => w.Id == projectCode, ct);
+        if (exists) return;
+
+        db.WmsWarehouses.Add(new WmsWarehouse
+        {
+            Id = projectCode,
+            Code = projectCode,
+            Name = string.IsNullOrWhiteSpace(projectName) ? projectCode : projectName,
+            Group = "Kho dự án",
+            Address = "",
+            Branch = "",
+            Manager = "",
+            Status = "active",
+        });
+        await db.SaveChangesAsync(ct);
+    }
 }
