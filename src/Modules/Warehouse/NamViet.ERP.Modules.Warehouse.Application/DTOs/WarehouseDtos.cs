@@ -16,11 +16,26 @@ public record UpsertMaterialRequest(
 // ── Suppliers ─────────────────────────────────────────────────────────────
 public record SupplierDto(
     int Id, string SupplierCode, string SupplierName,
-    string? ContactPhone, int MaxDebtDays, string Rating);
+    string? ContactPhone,
+    int MaxDebtDays,
+    string? PaymentTerms,
+    string Rating,
+    decimal PurchasedRevenue,
+    IReadOnlyList<string> IndustryGroups,
+    SupplierLatestEvaluationDto? LatestEvaluation);
+
+public record SupplierLatestEvaluationDto(
+    string Period,
+    decimal Score,
+    string Grade,
+    DateOnly EvaluatedAt,
+    decimal OnTimeDeliveryRate,
+    decimal DefectRate,
+    decimal WarrantyCompletionRate);
 
 public record UpsertSupplierRequest(
     string SupplierCode, string SupplierName,
-    string? ContactPhone, int MaxDebtDays = 30, string Rating = "A");
+    string? ContactPhone, int MaxDebtDays = 30, string? PaymentTerms = null, string Rating = "A");
 
 // ── Projects ──────────────────────────────────────────────────────────────
 public record ProjectWarehouseKeeperDto(Guid UserId, string DisplayName);

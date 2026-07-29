@@ -45,6 +45,9 @@ public static class ActivityActions
     public const string ImportCreated = "import.created";
     public const string ImportApproved = "import.approved";
     public const string PaymentCreated = "payment.created";
+    public const string PaymentSubmitted = "payment.submitted";
+    public const string PaymentPaid = "payment.paid";
+    public const string PaymentCancelled = "payment.cancelled";
 }
 
 public static class ActivityCategories
