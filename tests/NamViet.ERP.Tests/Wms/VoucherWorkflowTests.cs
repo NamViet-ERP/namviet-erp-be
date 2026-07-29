@@ -15,6 +15,7 @@ public class VoucherWorkflowTests : IDisposable
         var created = await _ctx.Imports.CreateAsync(NewPendingImport(25m));
         Assert.Equal("pending", created.Status);
 
+        await _ctx.SeedImportApprovalEvidenceAsync(created.Id);
         var approved = await _ctx.Imports.ApproveAsync(created.Id);
         Assert.NotNull(approved);
         Assert.Equal("approved", approved.Status);

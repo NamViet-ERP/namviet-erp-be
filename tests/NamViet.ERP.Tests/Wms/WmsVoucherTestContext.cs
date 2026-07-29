@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using NamViet.ERP.Api.Application.Dtos.Wms;
 using NamViet.ERP.Api.Application.Services.Purchasing;
+using NamViet.ERP.Api.Application.Services.Shared;
 using NamViet.ERP.Api.Application.Services.Wms;
 using NamViet.ERP.Api.Services.Storage;
 using NamViet.ERP.Modules.Warehouse.Domain;
@@ -56,6 +57,29 @@ internal sealed class FakeFileStorage : IFileStorage
         Task.FromResult(0);
 }
 
+internal sealed class FakeActivityEventWriter : IActivityEventWriter
+{
+    public Task WriteAsync(ActivityEventWriteRequest request, CancellationToken ct = default) =>
+        Task.CompletedTask;
+}
+
+internal sealed class FakeWmsCatalogQueryService : IWmsCatalogQueryService
+{
+    public Task<decimal> GetLatestPriceAsync(string materialCode, CancellationToken ct = default) =>
+        Task.FromResult(0m);
+
+    public Task<decimal> GetLatestPriceForSupplierAsync(
+        string materialCode, int supplierId, CancellationToken ct = default) =>
+        Task.FromResult(0m);
+
+    public Task<(int totalStock, decimal totalValue)> GetWarehouseTotalsAsync(
+        string warehouseId, CancellationToken ct = default) =>
+        Task.FromResult((0, 0m));
+
+    public Task<decimal> GetTotalInventoryValueAsync(CancellationToken ct = default) =>
+        Task.FromResult(0m);
+}
+
 internal sealed class WmsVoucherTestContext : IDisposable
 {
     public WarehouseDbContext Db { get; }
@@ -75,12 +99,15 @@ internal sealed class WmsVoucherTestContext : IDisposable
         Db = new WarehouseDbContext(options);
         Inventory = new InventoryDomainService(Db);
         var stocktakeFreeze = new StocktakeFreezeGuard(Db);
+        var fileStorage = new FakeFileStorage();
         Imports = new ImportApplicationService(
             Db, Inventory, new FakeProjectBudgetService(), stocktakeFreeze, CurrentUser,
-            new PurchaseOrderReceiptService(Db), new FakeFileStorage());
-        Exports = new ExportApplicationService(Db, Inventory, stocktakeFreeze, CurrentUser);
+            new PurchaseOrderReceiptService(Db), fileStorage, new FakeActivityEventWriter());
+        Exports = new ExportApplicationService(
+            Db, Inventory, stocktakeFreeze, CurrentUser, new FakeWmsCatalogQueryService());
         Transfers = new TransferApplicationService(Db, Inventory, stocktakeFreeze, CurrentUser);
-        ExportReturns = new ExportReturnApplicationService(Db, Inventory, stocktakeFreeze, CurrentUser);
+        ExportReturns = new ExportReturnApplicationService(
+            Db, Inventory, stocktakeFreeze, CurrentUser, fileStorage);
         SeedBaseline();
     }
 
@@ -176,6 +203,21 @@ internal sealed class WmsVoucherTestContext : IDisposable
 
     public static ExportReturnItemDto ExportReturnLine(decimal qty) =>
         new("MAT-001", "MAT-001", "Vật tư test", qty, "Cái");
+
+    /** Seeds receipt evaluation + photo + document required before import approve. */
+    public async Task SeedImportApprovalEvidenceAsync(string importId, CancellationToken ct = default)
+    {
+        await Imports.UpdateReceiptEvaluationAsync(importId, "Hàng đúng số lượng, OK", ct);
+        await using (var photo = new MemoryStream([0xFF, 0xD8, 0xFF, 0xD9]))
+        {
+            await Imports.UploadAttachmentAsync(importId, "photo", "receipt.jpg", "image/jpeg", photo, ct);
+        }
+
+        await using (var doc = new MemoryStream([0x25, 0x50, 0x44, 0x46]))
+        {
+            await Imports.UploadAttachmentAsync(importId, "document", "invoice.pdf", "application/pdf", doc, ct);
+        }
+    }
 
     public void Dispose() => Db.Dispose();
 }

@@ -159,12 +159,19 @@ public class RecruitmentP1P2Tests
     [Fact]
     public void Legacy_specialist_roles_receive_replacement_permissions()
     {
+        // Accountant / Procurement are view-WMS (+ purchasing); warehouse CUD stays on Keeper/PM.
         Assert.Contains(
-            "wms.transactions.approve",
+            "purchasing.plans.view",
             RolePermissionTemplates.ForIdentityRole(RolePermissionTemplates.AccountantRole));
         Assert.Contains(
-            "wms.transactions.create",
+            "wms.prices.view",
+            RolePermissionTemplates.ForIdentityRole(RolePermissionTemplates.AccountantRole));
+        Assert.Contains(
+            "purchasing.orders.create",
             RolePermissionTemplates.ForIdentityRole(RolePermissionTemplates.ProcurementRole));
+        Assert.DoesNotContain(
+            "wms.transactions.approve",
+            RolePermissionTemplates.ForIdentityRole(RolePermissionTemplates.AccountantRole));
         Assert.Contains(
             "hrm.leaves.approve",
             RolePermissionTemplates.ForIdentityRole(RolePermissionTemplates.BodRole));
