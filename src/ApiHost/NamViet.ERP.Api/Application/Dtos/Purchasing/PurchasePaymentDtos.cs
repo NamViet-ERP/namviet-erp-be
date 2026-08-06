@@ -3,6 +3,7 @@ namespace NamViet.ERP.Api.Application.Dtos.Purchasing;
 public record PurchasePaymentDto(
     string Code,
     string PoCode,
+    int StageNumber,
     int? SupplierId,
     string? SupplierName,
     string? InvoiceNo,

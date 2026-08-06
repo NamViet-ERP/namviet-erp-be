@@ -58,6 +58,7 @@ public sealed class ImportApplicationService(
     IStocktakeFreezeGuard stocktakeFreeze,
     ICurrentUser currentUser,
     IPurchaseOrderReceiptService poReceipt,
+    ISupplierDeliveryEvaluationService deliveryEvaluations,
     IFileStorage fileStorage,
     IActivityEventWriter activity) : IImportApplicationService
 {
@@ -148,16 +149,33 @@ public sealed class ImportApplicationService(
         t.ApprovalStatus = nextStatus;
         t.UpdatedAt = DateTime.UtcNow;
 
+        var preservePrices = !currentUser.HasPermission("wms.prices.view");
+        var previousPrices = preservePrices
+            ? t.Items
+                .GroupBy(i => $"{i.MaterialCode}|{i.Notes ?? ""}", StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(g => g.Key, g => g.First().UnitPrice, StringComparer.OrdinalIgnoreCase)
+            : null;
+
         db.WarehouseTransactionItems.RemoveRange(t.Items);
-        t.Items = dto.Items.Select(i => new WarehouseTransactionItem
+        t.Items = dto.Items.Select(i =>
         {
-            TicketCode = t.TicketCode,
-            MaterialCode = string.IsNullOrEmpty(i.Sku) ? i.ProductId : i.Sku,
-            Quantity = i.Qty,
-            UnitPrice = i.UnitPrice,
-            SupplierId = i.SupplierId,
-            SupplierName = ResolveLineSupplierName(i, dto.Supplier),
-            Notes = i.Notes,
+            var materialCode = string.IsNullOrEmpty(i.Sku) ? i.ProductId : i.Sku;
+            var key = $"{materialCode}|{i.Notes ?? ""}";
+            var unitPrice = preservePrices
+                && previousPrices is not null
+                && previousPrices.TryGetValue(key, out var kept)
+                    ? kept
+                    : i.UnitPrice;
+            return new WarehouseTransactionItem
+            {
+                TicketCode = t.TicketCode,
+                MaterialCode = materialCode,
+                Quantity = i.Qty,
+                UnitPrice = unitPrice,
+                SupplierId = i.SupplierId,
+                SupplierName = ResolveLineSupplierName(i, dto.Supplier),
+                Notes = i.Notes,
+            };
         }).ToList();
         await ValidateAndSnapshotItemsAsync(t.Items, ct);
 
@@ -194,6 +212,7 @@ public sealed class ImportApplicationService(
 
         await inventory.ApplyApprovedImportAsync(t, ct);
         await poReceipt.ApplyApprovedImportReceiptAsync(t, ct);
+        await deliveryEvaluations.EnsurePendingFromApprovedImportAsync(t, ct);
         await db.SaveChangesAsync(ct);
         await tx.CommitAsync(ct);
 

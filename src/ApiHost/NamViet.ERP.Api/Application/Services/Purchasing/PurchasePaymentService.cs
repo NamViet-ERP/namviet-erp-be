@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using NamViet.ERP.Api.Application.Dtos.Purchasing;
 using NamViet.ERP.Api.Application.Mappers.Purchasing;
@@ -19,6 +20,7 @@ public interface IPurchasePaymentService
         CancellationToken ct = default);
 
     Task<PurchasePaymentDto?> GetByCodeAsync(string code, CancellationToken ct = default);
+    Task<PurchasePaymentNextStageDto?> GetNextStageAsync(string poCode, CancellationToken ct = default);
     Task<PurchasePaymentDto> CreateFromPoAsync(CreatePurchasePaymentRequest request, CancellationToken ct = default);
     Task<PurchasePaymentDto> SubmitAsync(string code, CancellationToken ct = default);
     Task<PurchasePaymentDto> MarkPaidAsync(string code, CancellationToken ct = default);
@@ -78,6 +80,33 @@ public sealed class PurchasePaymentService(
         return item is null ? null : PurchasingMapper.ToPaymentDto(item);
     }
 
+    public async Task<PurchasePaymentNextStageDto?> GetNextStageAsync(string poCode, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(poCode))
+            return null;
+
+        var code = poCode.Trim();
+        var order = await db.PurchaseOrders.AsNoTracking()
+            .Include(o => o.Installments)
+                .ThenInclude(i => i.Documents)
+            .FirstOrDefaultAsync(o => o.Code == code, ct);
+        if (order is null)
+            return null;
+
+        var next = await ResolveNextStageAsync(order, ct);
+        if (next is null)
+            return null;
+
+        return new PurchasePaymentNextStageDto(
+            order.Code,
+            next.StageNumber,
+            order.Installments.Count,
+            next.Percent,
+            StageAmount(order.TotalAmount, next.Percent),
+            order.TotalAmount,
+            GetMissingRequiredDocs(next));
+    }
+
     public async Task<PurchasePaymentDto> CreateFromPoAsync(
         CreatePurchasePaymentRequest request, CancellationToken ct = default)
     {
@@ -89,17 +118,31 @@ public sealed class PurchasePaymentService(
         var poCode = request.PoCode.Trim();
         var order = await db.PurchaseOrders
             .Include(o => o.Supplier)
+            .Include(o => o.Installments)
+                .ThenInclude(i => i.Documents)
             .FirstOrDefaultAsync(o => o.Code == poCode, ct)
             ?? throw new PurchasingConflictException($"Không tìm thấy PO '{poCode}'.");
 
-        var existing = await db.PurchasePayments
-            .AnyAsync(p => p.PoCode == poCode, ct);
-        if (existing)
-            throw new PurchasingConflictException($"PO '{poCode}' đã có đề nghị thanh toán.");
+        if (!string.Equals(order.ApprovalStatus, PurchaseOrderApprovalStatuses.Approved, StringComparison.OrdinalIgnoreCase))
+            throw new PurchasingConflictException("Chỉ tạo DNTT cho PO đã duyệt.");
 
-        var amount = request.Amount ?? order.TotalAmount;
-        if (amount <= 0)
-            throw new PurchasingConflictException("Số tiền DNTT phải > 0.");
+        if (order.Installments.Count == 0)
+            throw new PurchasingConflictException("PO chưa có đợt thanh toán — không thể tạo DNTT.");
+
+        var stage = await ResolveNextStageAsync(order, ct)
+            ?? throw new PurchasingConflictException(
+                $"PO '{poCode}' không còn đợt nào cần tạo DNTT (đã đủ hoặc đang chờ thanh toán đợt hiện tại).");
+
+        var missingDocs = GetMissingRequiredDocs(stage);
+        if (missingDocs.Count > 0)
+            throw new PurchasingConflictException(
+                $"Chưa đủ chứng từ bắt buộc cho đợt {stage.StageNumber}: {string.Join(", ", missingDocs)}.");
+
+        var stageAmount = StageAmount(order.TotalAmount, stage.Percent);
+        if (stageAmount <= 0)
+            throw new PurchasingConflictException("Số tiền đợt thanh toán phải > 0.");
+        // Luôn theo % đợt × tổng PO (không cho nhập lệch tổng PO).
+        var amount = stageAmount;
 
         var code = await codeGenerator.NextAsync(ct);
         var now = DateTime.UtcNow;
@@ -107,6 +150,7 @@ public sealed class PurchasePaymentService(
         {
             Code = code,
             PoCode = poCode,
+            StageNumber = stage.StageNumber,
             SupplierId = order.SupplierId,
             SupplierNameSnapshot = order.SupplierNameSnapshot ?? order.Supplier?.SupplierName,
             InvoiceNo = string.IsNullOrWhiteSpace(request.InvoiceNo) ? null : request.InvoiceNo.Trim(),
@@ -126,7 +170,7 @@ public sealed class PurchasePaymentService(
         await activity.WriteAsync(new ActivityEventWriteRequest(
             ActivityModules.Purchasing,
             ActivityActions.PaymentCreated,
-            $"Tạo đề nghị thanh toán [{code}] cho {poCode}",
+            $"Tạo đề nghị thanh toán [{code}] đợt {stage.StageNumber}/{order.Installments.Count} cho {poCode}",
             ActivityCategories.Payment,
             EntityType: "purchase_payment",
             EntityCode: code), ct);
@@ -147,7 +191,7 @@ public sealed class PurchasePaymentService(
         await activity.WriteAsync(new ActivityEventWriteRequest(
             ActivityModules.Purchasing,
             ActivityActions.PaymentSubmitted,
-            $"Gửi đề nghị thanh toán [{payment.Code}]",
+            $"Gửi đề nghị thanh toán [{payment.Code}] đợt {payment.StageNumber}",
             ActivityCategories.Payment,
             EntityType: "purchase_payment",
             EntityCode: payment.Code), ct);
@@ -164,12 +208,12 @@ public sealed class PurchasePaymentService(
         payment.Status = PurchasePaymentStatuses.Paid;
         payment.UpdatedAt = DateTime.UtcNow;
 
-        var order = await db.PurchaseOrders.FirstOrDefaultAsync(o => o.Code == payment.PoCode, ct);
+        var order = await db.PurchaseOrders
+            .Include(o => o.Installments)
+            .FirstOrDefaultAsync(o => o.Code == payment.PoCode, ct);
         if (order is not null)
         {
-            // Một PO hiện chỉ có một DNTT; khi DNTT paid → PO paid.
-            order.PaymentStatus = PurchaseOrderPaymentStatuses.Paid;
-            order.PaymentWarning = false;
+            await SyncPoPaymentStatusAsync(order, ct);
             order.UpdatedAt = DateTime.UtcNow;
         }
 
@@ -178,7 +222,7 @@ public sealed class PurchasePaymentService(
         await activity.WriteAsync(new ActivityEventWriteRequest(
             ActivityModules.Purchasing,
             ActivityActions.PaymentPaid,
-            $"Xác nhận đã thanh toán [{payment.Code}]",
+            $"Xác nhận đã thanh toán [{payment.Code}] đợt {payment.StageNumber}",
             ActivityCategories.Payment,
             EntityType: "purchase_payment",
             EntityCode: payment.Code), ct);
@@ -196,17 +240,117 @@ public sealed class PurchasePaymentService(
 
         payment.Status = PurchasePaymentStatuses.Cancelled;
         payment.UpdatedAt = DateTime.UtcNow;
+
+        var order = await db.PurchaseOrders
+            .Include(o => o.Installments)
+            .FirstOrDefaultAsync(o => o.Code == payment.PoCode, ct);
+        if (order is not null)
+        {
+            await SyncPoPaymentStatusAsync(order, ct);
+            order.UpdatedAt = DateTime.UtcNow;
+        }
+
         await db.SaveChangesAsync(ct);
 
         await activity.WriteAsync(new ActivityEventWriteRequest(
             ActivityModules.Purchasing,
             ActivityActions.PaymentCancelled,
-            $"Hủy đề nghị thanh toán [{payment.Code}]",
+            $"Hủy đề nghị thanh toán [{payment.Code}] đợt {payment.StageNumber}",
             ActivityCategories.Payment,
             EntityType: "purchase_payment",
             EntityCode: payment.Code), ct);
 
         return PurchasingMapper.ToPaymentDto(payment);
+    }
+
+    /// <summary>
+    /// Đợt tiếp theo = đợt nhỏ nhất chưa có DNTT paid, và không có DNTT draft/submitted đang mở cho đợt đó.
+    /// Tuần tự: mọi đợt trước phải đã paid.
+    /// </summary>
+    private async Task<PurchaseOrderInstallment?> ResolveNextStageAsync(PurchaseOrder order, CancellationToken ct)
+    {
+        var stages = order.Installments.OrderBy(i => i.StageNumber).ToList();
+        if (stages.Count == 0)
+            return null;
+
+        var payments = await db.PurchasePayments.AsNoTracking()
+            .Where(p => p.PoCode == order.Code
+                        && !string.Equals(p.Status, PurchasePaymentStatuses.Cancelled))
+            .ToListAsync(ct);
+
+        foreach (var stage in stages)
+        {
+            var stagePayments = payments.Where(p => p.StageNumber == stage.StageNumber).ToList();
+            if (stagePayments.Any(p => string.Equals(p.Status, PurchasePaymentStatuses.Paid, StringComparison.OrdinalIgnoreCase)))
+                continue;
+
+            if (stagePayments.Any(p =>
+                    string.Equals(p.Status, PurchasePaymentStatuses.Draft, StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(p.Status, PurchasePaymentStatuses.Submitted, StringComparison.OrdinalIgnoreCase)))
+                return null; // đang chờ xử lý DNTT đợt hiện tại
+
+            // Mọi đợt trước phải paid
+            var priorOk = stages
+                .Where(s => s.StageNumber < stage.StageNumber)
+                .All(s => payments.Any(p =>
+                    p.StageNumber == s.StageNumber
+                    && string.Equals(p.Status, PurchasePaymentStatuses.Paid, StringComparison.OrdinalIgnoreCase)));
+            if (!priorOk)
+                return null;
+
+            return stage;
+        }
+
+        return null;
+    }
+
+    private async Task SyncPoPaymentStatusAsync(PurchaseOrder order, CancellationToken ct)
+    {
+        var stageCount = order.Installments.Count;
+        if (stageCount == 0)
+        {
+            order.PaymentStatus = PurchaseOrderPaymentStatuses.Unpaid;
+            order.PaymentWarning = false;
+            return;
+        }
+
+        var paidStages = await db.PurchasePayments
+            .AsNoTracking()
+            .Where(p => p.PoCode == order.Code
+                        && p.Status == PurchasePaymentStatuses.Paid)
+            .Select(p => p.StageNumber)
+            .Distinct()
+            .CountAsync(ct);
+
+        if (paidStages <= 0)
+            order.PaymentStatus = PurchaseOrderPaymentStatuses.Unpaid;
+        else if (paidStages >= stageCount)
+            order.PaymentStatus = PurchaseOrderPaymentStatuses.Paid;
+        else
+            order.PaymentStatus = PurchaseOrderPaymentStatuses.Partial;
+
+        order.PaymentWarning = false;
+    }
+
+    private static decimal StageAmount(decimal poTotal, decimal percent) =>
+        Math.Round(poTotal * percent / 100m, 2);
+
+    private static List<string> GetMissingRequiredDocs(PurchaseOrderInstallment stage)
+    {
+        List<string> required;
+        try
+        {
+            required = JsonSerializer.Deserialize<List<string>>(stage.RequiredDocTypes) ?? [];
+        }
+        catch (JsonException)
+        {
+            return [];
+        }
+
+        var uploaded = stage.Documents
+            .Select(d => d.DocType)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        return required.Where(t => !uploaded.Contains(t)).ToList();
     }
 
     private async Task<PurchasePayment> FindTrackedAsync(string code, CancellationToken ct)

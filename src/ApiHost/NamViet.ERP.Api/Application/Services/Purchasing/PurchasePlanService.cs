@@ -19,6 +19,7 @@ public interface IPurchasePlanService
         string? search,
         DateOnly? dateFrom,
         DateOnly? dateTo,
+        string? kind = null,
         CancellationToken ct = default);
 
     Task<PurchasePlanDetailDto?> GetByCodeAsync(string code, CancellationToken ct = default);
@@ -26,6 +27,11 @@ public interface IPurchasePlanService
     Task<PurchasePlanDetailDto?> UpdateAsync(string code, UpdatePurchasePlanRequest request, CancellationToken ct = default);
     Task<bool> DeleteAsync(string code, CancellationToken ct = default);
     Task<PurchasePlanDetailDto> ConfirmImportAsync(ConfirmPurchasePlanImportRequest request, CancellationToken ct = default);
+    Task<PurchasePlanDetailDto?> SubmitAsync(string code, CancellationToken ct = default);
+    Task<PurchasePlanDetailDto?> ApproveL1Async(string code, CancellationToken ct = default);
+    Task<PurchasePlanDetailDto?> ApproveL2Async(string code, CancellationToken ct = default);
+    Task<PurchasePlanDetailDto?> RejectAsync(string code, RejectPurchasePlanRequest request, CancellationToken ct = default);
+    Task<PurchasePlanDetailDto> RemakeAsync(string code, CancellationToken ct = default);
     void RecalcTotals(PurchasePlan plan);
     /// <summary>Đồng bộ cột Tổng chi (PaidTotal) từ các PO đã thanh toán.</summary>
     Task SyncPaidTotalAsync(string planCode, CancellationToken ct = default);
@@ -51,12 +57,21 @@ public sealed class PurchasePlanService(
         string? search,
         DateOnly? dateFrom,
         DateOnly? dateTo,
+        string? kind = null,
         CancellationToken ct = default)
     {
         page = Math.Max(1, page);
         pageSize = Math.Clamp(pageSize, 1, 200);
 
         var q = db.PurchasePlans.AsNoTracking().Include(p => p.Project).AsQueryable();
+
+        if (!string.IsNullOrWhiteSpace(kind))
+        {
+            var k = kind.Trim();
+            if (!PurchasePlanKinds.IsValid(k))
+                throw new PurchasingConflictException($"Loại phiếu không hợp lệ: {k}.");
+            q = q.Where(p => p.Kind == k);
+        }
 
         if (!string.IsNullOrWhiteSpace(code))
             q = q.Where(p => p.Code.Contains(code.Trim()));
@@ -120,12 +135,19 @@ public sealed class PurchasePlanService(
         if (!projectExists)
             throw new KeyNotFoundException($"Không tìm thấy dự án {projectCode}.");
 
-        var code = await codeGenerator.NextAsync(ct);
+        var kind = string.IsNullOrWhiteSpace(request.Kind)
+            ? PurchasePlanKinds.Plan
+            : request.Kind.Trim();
+        if (!PurchasePlanKinds.IsValid(kind))
+            throw new PurchasingConflictException($"Loại phiếu không hợp lệ: {kind}.");
+
+        var code = await codeGenerator.NextAsync(kind, ct);
         var now = DateTime.UtcNow;
         var plan = new PurchasePlan
         {
             Code = code,
             ProjectCode = projectCode,
+            Kind = kind,
             Status = PurchasePlanStatuses.Draft,
             Note = string.IsNullOrWhiteSpace(request.Note) ? null : request.Note.Trim(),
             CreatedById = currentUser.IsAuthenticated ? currentUser.Id : null,
@@ -175,13 +197,18 @@ public sealed class PurchasePlanService(
             : await db.PurchasePlans.FirstOrDefaultAsync(p => p.Code == code, ct);
         if (plan is null) return null;
 
-        if (!PurchasePlanStatuses.IsEditable(plan.Status))
-            throw new PurchasingConflictException("Kế hoạch đã đóng, không thể chỉnh sửa.");
+        var isStatusOnly =
+            request.Lines is null
+            && request.Note is null
+            && !string.IsNullOrWhiteSpace(request.Status);
+
+        if (!isStatusOnly && !PurchasePlanStatuses.IsEditable(plan.Status))
+            throw new PurchasingConflictException("Chỉ chỉnh sửa nội dung được khi phiếu ở trạng thái nháp.");
 
         if (request.Lines is not null)
         {
             if (!string.Equals(plan.Status, PurchasePlanStatuses.Draft, StringComparison.OrdinalIgnoreCase))
-                throw new PurchasingConflictException("Chỉ thay thế dòng khi kế hoạch ở trạng thái draft.");
+                throw new PurchasingConflictException("Chỉ thay thế dòng khi phiếu ở trạng thái nháp.");
 
             db.PurchasePlanLines.RemoveRange(plan.Lines);
             plan.Lines.Clear();
@@ -201,14 +228,34 @@ public sealed class PurchasePlanService(
         }
 
         if (request.Note is not null)
+        {
+            if (!PurchasePlanStatuses.IsEditable(plan.Status))
+                throw new PurchasingConflictException("Chỉ sửa ghi chú khi phiếu ở trạng thái nháp.");
             plan.Note = string.IsNullOrWhiteSpace(request.Note) ? null : request.Note.Trim();
+        }
 
         if (!string.IsNullOrWhiteSpace(request.Status))
         {
             var status = request.Status.Trim();
-            if (!PurchasePlanStatuses.All.Contains(status))
-                throw new PurchasingConflictException($"Trạng thái không hợp lệ: {status}.");
-            plan.Status = status;
+            // Chỉ cho đóng / mở lại từ approved ↔ closed qua update status.
+            if (string.Equals(status, PurchasePlanStatuses.Closed, StringComparison.OrdinalIgnoreCase))
+            {
+                if (!PurchasePlanStatuses.CanClose(plan.Status)
+                    && !string.Equals(plan.Status, PurchasePlanStatuses.Closed, StringComparison.OrdinalIgnoreCase))
+                    throw new PurchasingConflictException("Chỉ đóng được phiếu đã duyệt.");
+                plan.Status = PurchasePlanStatuses.Closed;
+            }
+            else if (string.Equals(status, PurchasePlanStatuses.Approved, StringComparison.OrdinalIgnoreCase))
+            {
+                if (!string.Equals(plan.Status, PurchasePlanStatuses.Closed, StringComparison.OrdinalIgnoreCase))
+                    throw new PurchasingConflictException("Chỉ mở lại từ trạng thái đã đóng.");
+                plan.Status = PurchasePlanStatuses.Approved;
+            }
+            else
+            {
+                throw new PurchasingConflictException(
+                    "Không đổi trạng thái duyệt qua API sửa. Dùng gửi duyệt / duyệt cấp 1 / cấp 2 / từ chối / lập phiếu mới.");
+            }
         }
 
         plan.UpdatedAt = DateTime.UtcNow;
@@ -263,13 +310,14 @@ public sealed class PurchasePlanService(
 
         await using var tx = await db.Database.BeginTransactionAsync(ct);
 
-        var code = await codeGenerator.NextAsync(ct);
+        var code = await codeGenerator.NextAsync(PurchasePlanKinds.Plan, ct);
         var now = DateTime.UtcNow;
         var plan = new PurchasePlan
         {
             Code = code,
             ProjectCode = projectCode,
-            Status = PurchasePlanStatuses.Active,
+            Kind = PurchasePlanKinds.Plan,
+            Status = PurchasePlanStatuses.Draft,
             Note = string.IsNullOrWhiteSpace(request.Note) ? null : request.Note.Trim(),
             CreatedById = currentUser.IsAuthenticated ? currentUser.Id : null,
             CreatedByName = currentUser.IsAuthenticated ? currentUser.Name : null,
@@ -300,6 +348,230 @@ public sealed class PurchasePlanService(
             EntityCode: code), ct);
 
         return (await GetByCodeAsync(code, ct))!;
+    }
+
+    public async Task<PurchasePlanDetailDto?> SubmitAsync(string code, CancellationToken ct = default)
+    {
+        var plan = await db.PurchasePlans.Include(p => p.Lines).FirstOrDefaultAsync(p => p.Code == code, ct);
+        if (plan is null) return null;
+        if (!string.Equals(plan.Status, PurchasePlanStatuses.Draft, StringComparison.OrdinalIgnoreCase))
+            throw new PurchasingConflictException("Chỉ gửi duyệt được phiếu nháp.");
+        if (plan.Lines.Count == 0)
+            throw new PurchasingConflictException("Phiếu chưa có dòng vật tư, không thể gửi duyệt.");
+
+        var now = DateTime.UtcNow;
+        plan.Status = PurchasePlanStatuses.PendingL1;
+        plan.SubmittedAt = now;
+        plan.RejectedById = null;
+        plan.RejectedByName = null;
+        plan.RejectedAt = null;
+        plan.RejectReason = null;
+        plan.UpdatedAt = now;
+        await db.SaveChangesAsync(ct);
+
+        await activity.WriteAsync(new ActivityEventWriteRequest(
+            ActivityModules.Purchasing,
+            ActivityActions.PlanUpdated,
+            $"Gửi duyệt [{code}]",
+            ActivityCategories.Plan,
+            EntityType: "purchase_plan",
+            EntityCode: code), ct);
+
+        return await GetByCodeAsync(code, ct);
+    }
+
+    public async Task<PurchasePlanDetailDto?> ApproveL1Async(string code, CancellationToken ct = default)
+    {
+        var plan = await db.PurchasePlans.FirstOrDefaultAsync(p => p.Code == code, ct);
+        if (plan is null) return null;
+        if (!string.Equals(plan.Status, PurchasePlanStatuses.PendingL1, StringComparison.OrdinalIgnoreCase))
+            throw new PurchasingConflictException("Phiếu không đang chờ duyệt cấp 1.");
+
+        var now = DateTime.UtcNow;
+        plan.Status = PurchasePlanStatuses.PendingL2;
+        plan.L1ApprovedById = currentUser.IsAuthenticated ? currentUser.Id : null;
+        plan.L1ApprovedByName = currentUser.IsAuthenticated ? currentUser.Name : null;
+        plan.L1ApprovedAt = now;
+        plan.UpdatedAt = now;
+        await db.SaveChangesAsync(ct);
+
+        await activity.WriteAsync(new ActivityEventWriteRequest(
+            ActivityModules.Purchasing,
+            ActivityActions.PlanUpdated,
+            $"Duyệt cấp 1 [{code}]",
+            ActivityCategories.Plan,
+            EntityType: "purchase_plan",
+            EntityCode: code), ct);
+
+        return await GetByCodeAsync(code, ct);
+    }
+
+    public async Task<PurchasePlanDetailDto?> ApproveL2Async(string code, CancellationToken ct = default)
+    {
+        var plan = await db.PurchasePlans.FirstOrDefaultAsync(p => p.Code == code, ct);
+        if (plan is null) return null;
+        if (!string.Equals(plan.Status, PurchasePlanStatuses.PendingL2, StringComparison.OrdinalIgnoreCase))
+            throw new PurchasingConflictException("Phiếu không đang chờ duyệt cấp 2.");
+
+        var now = DateTime.UtcNow;
+        plan.Status = PurchasePlanStatuses.Approved;
+        plan.L2ApprovedById = currentUser.IsAuthenticated ? currentUser.Id : null;
+        plan.L2ApprovedByName = currentUser.IsAuthenticated ? currentUser.Name : null;
+        plan.L2ApprovedAt = now;
+        plan.UpdatedAt = now;
+        await db.SaveChangesAsync(ct);
+
+        await activity.WriteAsync(new ActivityEventWriteRequest(
+            ActivityModules.Purchasing,
+            ActivityActions.PlanUpdated,
+            $"Duyệt cấp 2 [{code}]",
+            ActivityCategories.Plan,
+            EntityType: "purchase_plan",
+            EntityCode: code), ct);
+
+        return await GetByCodeAsync(code, ct);
+    }
+
+    public async Task<PurchasePlanDetailDto?> RejectAsync(
+        string code, RejectPurchasePlanRequest request, CancellationToken ct = default)
+    {
+        var plan = await db.PurchasePlans.FirstOrDefaultAsync(p => p.Code == code, ct);
+        if (plan is null) return null;
+        if (!string.Equals(plan.Status, PurchasePlanStatuses.PendingL1, StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(plan.Status, PurchasePlanStatuses.PendingL2, StringComparison.OrdinalIgnoreCase))
+            throw new PurchasingConflictException("Chỉ từ chối được phiếu đang chờ duyệt.");
+
+        var now = DateTime.UtcNow;
+        plan.Status = PurchasePlanStatuses.Rejected;
+        plan.RejectedById = currentUser.IsAuthenticated ? currentUser.Id : null;
+        plan.RejectedByName = currentUser.IsAuthenticated ? currentUser.Name : null;
+        plan.RejectedAt = now;
+        plan.RejectReason = string.IsNullOrWhiteSpace(request.Reason) ? null : request.Reason.Trim();
+        plan.UpdatedAt = now;
+        await db.SaveChangesAsync(ct);
+
+        await activity.WriteAsync(new ActivityEventWriteRequest(
+            ActivityModules.Purchasing,
+            ActivityActions.PlanUpdated,
+            $"Từ chối duyệt [{code}]",
+            ActivityCategories.Plan,
+            EntityType: "purchase_plan",
+            EntityCode: code), ct);
+
+        return await GetByCodeAsync(code, ct);
+    }
+
+    public async Task<PurchasePlanDetailDto> RemakeAsync(string code, CancellationToken ct = default)
+    {
+        var source = await db.PurchasePlans
+            .Include(p => p.Lines)
+                .ThenInclude(l => l.Quotes)
+            .FirstOrDefaultAsync(p => p.Code == code, ct)
+            ?? throw new KeyNotFoundException($"Không tìm thấy phiếu {code}.");
+
+        if (!string.Equals(source.Status, PurchasePlanStatuses.Rejected, StringComparison.OrdinalIgnoreCase))
+            throw new PurchasingConflictException("Chỉ lập phiếu mới từ phiếu bị từ chối.");
+
+        var newCode = await codeGenerator.NextAsync(source.Kind, ct);
+        var now = DateTime.UtcNow;
+        var clone = new PurchasePlan
+        {
+            Code = newCode,
+            ProjectCode = source.ProjectCode,
+            Kind = source.Kind,
+            Status = PurchasePlanStatuses.Draft,
+            Note = source.Note,
+            RemadeFromCode = source.Code,
+            CreatedById = currentUser.IsAuthenticated ? currentUser.Id : null,
+            CreatedByName = currentUser.IsAuthenticated ? currentUser.Name : null,
+            CreatedAt = now,
+            UpdatedAt = now,
+            BudgetTotal = source.BudgetTotal,
+            ProposalTotal = source.ProposalTotal,
+            PurchaseTotal = source.PurchaseTotal,
+            PaidTotal = 0,
+        };
+
+        foreach (var line in source.Lines.OrderBy(l => l.LineNo))
+        {
+            var clonedLine = CloneLine(line, newCode);
+            clone.Lines.Add(clonedLine);
+        }
+
+        source.RemadeToCode = newCode;
+        source.UpdatedAt = now;
+
+        db.PurchasePlans.Add(clone);
+        await db.SaveChangesAsync(ct);
+
+        await activity.WriteAsync(new ActivityEventWriteRequest(
+            ActivityModules.Purchasing,
+            ActivityActions.PlanCreated,
+            $"Lập phiếu mới [{newCode}] từ phiếu từ chối [{code}]",
+            ActivityCategories.Plan,
+            EntityType: "purchase_plan",
+            EntityCode: newCode), ct);
+
+        return (await GetByCodeAsync(newCode, ct))!;
+    }
+
+    private static PurchasePlanLine CloneLine(PurchasePlanLine src, string planCode)
+    {
+        var line = new PurchasePlanLine
+        {
+            PlanCode = planCode,
+            LineNo = src.LineNo,
+            SystemName = src.SystemName,
+            Category = src.Category,
+            MaterialCode = src.MaterialCode,
+            ProductName = src.ProductName,
+            Spec = src.Spec,
+            Unit = src.Unit,
+            Quantity = src.Quantity,
+            KgPerUnit = src.KgPerUnit,
+            LineNote = src.LineNote,
+            PurchaseStatus = src.PurchaseStatus,
+            StatusNote = src.StatusNote,
+            BudgetUnitPrice = src.BudgetUnitPrice,
+            BudgetAmount = src.BudgetAmount,
+            ProposalKgPerUnit = src.ProposalKgPerUnit,
+            ProposalUnitPrice = src.ProposalUnitPrice,
+            ProposalAmount = src.ProposalAmount,
+            ProposalSupplierName = src.ProposalSupplierName,
+            ProposalNote = src.ProposalNote,
+            ProposalStatus = src.ProposalStatus,
+            RequiredDate = src.RequiredDate,
+            OrderedDate = null,
+            ExpectedDeliveryDate = src.ExpectedDeliveryDate,
+            ActualReceiptDate = null,
+            DeliveryNote = src.DeliveryNote,
+            PurchaseKgPerUnit = src.PurchaseKgPerUnit,
+            PurchaseUnitPrice = src.PurchaseUnitPrice,
+            PurchaseAmount = src.PurchaseAmount,
+            PurchaseSupplierName = src.PurchaseSupplierName,
+            PurchaseNote = src.PurchaseNote,
+            SelectedUnitPrice = src.SelectedUnitPrice,
+            SelectedAmount = src.SelectedAmount,
+            SelectedSupplierName = src.SelectedSupplierName,
+            SelectionReason = src.SelectionReason,
+            OrderedQty = 0,
+            ReceivedQty = 0,
+            DefectQty = 0,
+        };
+        foreach (var q in src.Quotes.OrderBy(x => x.SortOrder))
+        {
+            line.Quotes.Add(new PurchasePlanLineQuote
+            {
+                SortOrder = q.SortOrder,
+                KgPerUnit = q.KgPerUnit,
+                UnitPrice = q.UnitPrice,
+                Amount = q.Amount,
+                SupplierName = q.SupplierName,
+                Note = q.Note,
+                Status = q.Status,
+            });
+        }
+        return line;
     }
 
     public void RecalcTotals(PurchasePlan plan)

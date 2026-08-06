@@ -198,7 +198,9 @@ public class ProjectsController(
             PmName = request.PmName,
             StartDate = request.StartDate,
             EndDate = request.EndDate,
-            MaterialBudget = request.MaterialBudget
+            MaterialBudget = request.MaterialBudget,
+            ClientName = NormalizeOptional(request.ClientName),
+            ScMembers = NormalizeOptional(request.ScMembers),
         };
         db.Projects.Add(project);
         await ReplaceKeepersAsync(project.ProjectCode, request.WarehouseKeepers, ct);
@@ -223,6 +225,8 @@ public class ProjectsController(
         p.EndDate = request.EndDate;
         p.MaterialBudget = request.MaterialBudget;
         p.Status = request.Status;
+        p.ClientName = NormalizeOptional(request.ClientName);
+        p.ScMembers = NormalizeOptional(request.ScMembers);
         p.UpdatedAt = DateTime.UtcNow;
         await ReplaceKeepersAsync(code, request.WarehouseKeepers, ct);
         await db.SaveChangesAsync(ct);
@@ -277,6 +281,7 @@ public class ProjectsController(
             return new ProjectDto(
                 p.ProjectCode, p.ProjectName, p.ProjectType.ToString(),
                 p.PmId, p.PmName, p.StartDate, p.EndDate, p.MaterialBudget, p.Status.ToString(),
+                p.ClientName, p.ScMembers,
                 stock?.StockActualQty ?? 0,
                 stock?.StockPlannedQty ?? 0,
                 stock?.StockReservedQty ?? 0,
@@ -286,6 +291,9 @@ public class ProjectsController(
                 projectKeepers ?? []);
         }).ToList();
     }
+
+    private static string? NormalizeOptional(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
     private static ProjectLedgerEntryDto MapLedgerEntry(WarehouseTransaction t)
     {

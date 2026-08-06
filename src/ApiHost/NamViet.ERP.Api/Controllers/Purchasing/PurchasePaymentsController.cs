@@ -22,6 +22,17 @@ public class PurchasePaymentsController(IPurchasePaymentService payments) : Cont
         CancellationToken ct = default) =>
         Ok(await payments.ListAsync(page, pageSize, poCode, status, search, ct));
 
+    /// <summary>Đợt tiếp theo cần tạo DNTT (tuần tự, không chọn đợt).</summary>
+    [HttpGet("next-stage")]
+    [RequirePermission("purchasing.payments.view")]
+    public async Task<ActionResult<PurchasePaymentNextStageDto>> GetNextStage(
+        [FromQuery] string poCode,
+        CancellationToken ct)
+    {
+        var item = await payments.GetNextStageAsync(poCode, ct);
+        return item is null ? NotFound() : Ok(item);
+    }
+
     [HttpGet("{code}")]
     [RequirePermission("purchasing.payments.view")]
     public async Task<ActionResult<PurchasePaymentDto>> GetByCode(string code, CancellationToken ct)

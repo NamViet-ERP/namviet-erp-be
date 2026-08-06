@@ -146,7 +146,7 @@ var pilotUsers = new[]
     new PilotUser("acc09@namviet.vn", "Ngô Thị Hạnh", RolePermissionTemplates.AccountantRole, "NV-0099", "Tài chính", "Hà Nội", "Kế toán", Gender.Female),
     new PilotUser("acc10@namviet.vn", "Đỗ Văn Hải", RolePermissionTemplates.AccountantRole, "NV-0100", "Tài chính", "Đà Nẵng", "Kế toán", Gender.Male),
 
-    // Procurement (10)
+    // Procurement (10) — nhân viên cung ứng
     new PilotUser("proc01@namviet.vn", "Nguyễn Minh Châu", RolePermissionTemplates.ProcurementRole, "NV-0111", "Mua hàng", "Hà Nội", "Nhân viên cung ứng", Gender.Female),
     new PilotUser("proc02@namviet.vn", "Trần Quốc Hưng", RolePermissionTemplates.ProcurementRole, "NV-0112", "Mua hàng", "Hà Nội", "Nhân viên cung ứng", Gender.Male),
     new PilotUser("proc03@namviet.vn", "Lê Thị Mỹ Dung", RolePermissionTemplates.ProcurementRole, "NV-0113", "Mua hàng", "TP.HCM", "Nhân viên cung ứng", Gender.Female),
@@ -157,6 +157,14 @@ var pilotUsers = new[]
     new PilotUser("proc08@namviet.vn", "Bùi Văn Khoa", RolePermissionTemplates.ProcurementRole, "NV-0118", "Mua hàng", "TP.HCM", "Nhân viên cung ứng", Gender.Male),
     new PilotUser("proc09@namviet.vn", "Ngô Thị Kim Chi", RolePermissionTemplates.ProcurementRole, "NV-0119", "Mua hàng", "Đà Nẵng", "Nhân viên cung ứng", Gender.Female),
     new PilotUser("proc10@namviet.vn", "Đỗ Minh Triết", RolePermissionTemplates.ProcurementRole, "NV-0120", "Mua hàng", "Hà Nội", "Nhân viên cung ứng", Gender.Male),
+
+    // Procurement_Lead — Trưởng cung ứng (duyệt L1)
+    new PilotUser("proclead01@namviet.vn", "Nguyễn Thị Trưởng Cung", RolePermissionTemplates.ProcurementLeadRole, "NV-0121", "Mua hàng", "Hà Nội", "Trưởng cung ứng", Gender.Female),
+    new PilotUser("proclead02@namviet.vn", "Trần Văn Trưởng Cung", RolePermissionTemplates.ProcurementLeadRole, "NV-0122", "Mua hàng", "TP.HCM", "Trưởng cung ứng", Gender.Male),
+
+    // Procurement_Boss — Sếp (duyệt L2)
+    new PilotUser("procboss01@namviet.vn", "Lê Hoàng Sếp Cung", RolePermissionTemplates.ProcurementBossRole, "NV-0123", "Mua hàng", "Hà Nội", "Sếp cung ứng", Gender.Male),
+    new PilotUser("procboss02@namviet.vn", "Phạm Thị Sếp Cung", RolePermissionTemplates.ProcurementBossRole, "NV-0124", "Mua hàng", "TP.HCM", "Sếp cung ứng", Gender.Female),
 
     // BOD (10)
     new PilotUser("bod01@namviet.vn", "Nguyễn Văn Thành", RolePermissionTemplates.BodRole, "NV-0131", "Ban lãnh đạo", "Hà Nội", "Ban giám đốc", Gender.Male),

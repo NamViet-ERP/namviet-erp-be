@@ -163,11 +163,13 @@ builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Purchasing.IPurc
 builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Purchasing.IPurchaseOrderService, NamViet.ERP.Api.Application.Services.Purchasing.PurchaseOrderService>();
 builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Purchasing.IPurchasePaymentCodeGenerator, NamViet.ERP.Api.Application.Services.Purchasing.PurchasePaymentCodeGenerator>();
 builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Purchasing.IPurchasePaymentService, NamViet.ERP.Api.Application.Services.Purchasing.PurchasePaymentService>();
+builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Purchasing.IPurchasePaymentPlanService, NamViet.ERP.Api.Application.Services.Purchasing.PurchasePaymentPlanService>();
 builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Purchasing.IPurchasingDashboardService, NamViet.ERP.Api.Application.Services.Purchasing.PurchasingDashboardService>();
 builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Purchasing.ISupplierModuleSettingsService, NamViet.ERP.Api.Application.Services.Purchasing.SupplierModuleSettingsService>();
 builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Purchasing.ISupplierGroupService, NamViet.ERP.Api.Application.Services.Purchasing.SupplierGroupService>();
 builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Purchasing.ISupplierContactService, NamViet.ERP.Api.Application.Services.Purchasing.SupplierContactService>();
 builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Purchasing.ISupplierEvaluationService, NamViet.ERP.Api.Application.Services.Purchasing.SupplierEvaluationService>();
+builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Purchasing.ISupplierDeliveryEvaluationService, NamViet.ERP.Api.Application.Services.Purchasing.SupplierDeliveryEvaluationService>();
 builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Purchasing.ISuppliersDashboardService, NamViet.ERP.Api.Application.Services.Purchasing.SuppliersDashboardService>();
 builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Shared.IActivityEventWriter, NamViet.ERP.Api.Application.Services.Shared.ActivityEventWriter>();
 builder.Services.AddScoped<IAdminUserQueryService, AdminUserQueryService>();

@@ -43,7 +43,7 @@ public record ProjectWarehouseKeeperDto(Guid UserId, string DisplayName);
 public record ProjectDto(
     string ProjectCode, string ProjectName, string ProjectType,
     Guid PmId, string PmName, DateOnly StartDate, DateOnly? EndDate,
-    decimal MaterialBudget, string Status,
+    decimal MaterialBudget, string Status, string? ClientName, string? ScMembers,
     decimal StockActualQty = 0,
     decimal StockPlannedQty = 0,
     decimal StockReservedQty = 0,
@@ -56,12 +56,16 @@ public record CreateProjectRequest(
     string ProjectCode, string ProjectName, ProjectType ProjectType,
     Guid PmId, string PmName, DateOnly StartDate, DateOnly? EndDate,
     decimal MaterialBudget = 0m,
-    IReadOnlyList<ProjectWarehouseKeeperDto>? WarehouseKeepers = null);
+    IReadOnlyList<ProjectWarehouseKeeperDto>? WarehouseKeepers = null,
+    string? ClientName = null,
+    string? ScMembers = null);
 
 public record UpdateProjectRequest(
     string ProjectName, Guid PmId, string PmName,
     DateOnly? EndDate, decimal MaterialBudget, ProjectStatus Status,
-    IReadOnlyList<ProjectWarehouseKeeperDto>? WarehouseKeepers = null);
+    IReadOnlyList<ProjectWarehouseKeeperDto>? WarehouseKeepers = null,
+    string? ClientName = null,
+    string? ScMembers = null);
 
 // ── Project Inventory ─────────────────────────────────────────────────────
 public record ProjectInventoryDto(

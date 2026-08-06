@@ -6,6 +6,7 @@ using NamViet.ERP.Api.Services.Storage;
 using NamViet.ERP.Modules.Warehouse.Domain.Entities;
 using NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence;
 using NamViet.ERP.SharedKernel.Interfaces;
+using System.Text.Json;
 
 namespace NamViet.ERP.Api.Application.Services.Purchasing;
 
@@ -41,6 +42,17 @@ public interface IPurchaseOrderService
         CancellationToken ct = default);
     Task<PurchaseOrderAttachmentDto?> GetAttachmentAsync(string code, Guid attachmentId, CancellationToken ct = default);
     Task<bool> DeleteAttachmentAsync(string code, Guid attachmentId, CancellationToken ct = default);
+    Task<IReadOnlyList<PurchaseOrderInstallmentDocumentDto>?> ListInstallmentDocumentsAsync(
+        string code, int stageNumber, CancellationToken ct = default);
+    Task<PurchaseOrderInstallmentDocumentDto?> UploadInstallmentDocumentAsync(
+        string code, int stageNumber, string docType, string fileName, string contentType,
+        Stream content, CancellationToken ct = default);
+    Task<PurchaseOrderInstallmentDocumentDto?> GetInstallmentDocumentAsync(
+        string code, int stageNumber, int documentId, CancellationToken ct = default);
+    Task<bool> DeleteInstallmentDocumentAsync(
+        string code, int stageNumber, int documentId, CancellationToken ct = default);
+    Task<PurchaseOrderInstallmentDto?> CompleteInstallmentAsync(
+        string code, int stageNumber, CancellationToken ct = default);
 }
 
 public sealed class PurchaseOrderService(
@@ -120,6 +132,7 @@ public sealed class PurchaseOrderService(
     {
         if (request.Lines is null || request.Lines.Count == 0)
             throw new PurchasingConflictException("PO phải có ít nhất một dòng.");
+        var installmentSpecs = BuildInstallmentSpecs(request.InstallmentCount, request.Installments);
 
         var planCode = request.PlanCode?.Trim()
             ?? throw new PurchasingConflictException("PlanCode là bắt buộc.");
@@ -128,6 +141,10 @@ public sealed class PurchaseOrderService(
             .Include(p => p.Lines)
             .FirstOrDefaultAsync(p => p.Code == planCode, ct)
             ?? throw new KeyNotFoundException($"Không tìm thấy KHMH {planCode}.");
+
+        if (!PurchasePlanStatuses.CanCreatePurchaseOrder(plan.Status))
+            throw new PurchasingConflictException(
+                "Chỉ tạo PO từ phiếu đã duyệt đủ 2 cấp (Trưởng cung ứng → Sếp).");
 
         if (string.Equals(plan.Status, PurchasePlanStatuses.Closed, StringComparison.OrdinalIgnoreCase))
             throw new PurchasingConflictException("KHMH đã đóng, không thể tạo PO.");
@@ -209,6 +226,20 @@ public sealed class PurchaseOrderService(
             });
         }
 
+        foreach (var spec in installmentSpecs)
+        {
+            order.Installments.Add(new PurchaseOrderInstallment
+            {
+                PoCode = code,
+                StageNumber = spec.StageNumber,
+                Percent = spec.Percent,
+                Status = spec.StageNumber == 1
+                    ? PurchaseOrderInstallmentStatuses.Open
+                    : PurchaseOrderInstallmentStatuses.Locked,
+                RequiredDocTypes = JsonSerializer.Serialize(spec.RequiredDocTypes),
+            });
+        }
+
         order.TotalAmount = Math.Round(order.Items.Sum(i => i.Ordered * i.PoPrice), 2);
         db.PurchaseOrders.Add(order);
         await db.SaveChangesAsync(ct);
@@ -230,6 +261,8 @@ public sealed class PurchaseOrderService(
     {
         var order = await db.PurchaseOrders
             .Include(o => o.Items)
+            .Include(o => o.Installments)
+                .ThenInclude(i => i.Documents)
             .Include(o => o.Plan)
                 .ThenInclude(p => p!.Lines)
             .FirstOrDefaultAsync(o => o.Code == code, ct);
@@ -240,6 +273,15 @@ public sealed class PurchaseOrderService(
 
         if (request.Lines is null || request.Lines.Count == 0)
             throw new PurchasingConflictException("PO phải có ít nhất một dòng.");
+        var replaceInstallments = request.InstallmentCount is not null || request.Installments is not null;
+        var installmentSpecs = replaceInstallments
+            ? BuildInstallmentSpecs(request.InstallmentCount, request.Installments)
+            : [];
+        if (replaceInstallments && order.Installments.Any(i =>
+                i.Documents.Count > 0 ||
+                string.Equals(i.Status, PurchaseOrderInstallmentStatuses.Completed, StringComparison.OrdinalIgnoreCase)))
+            throw new PurchasingConflictException(
+                "Không thể thay đổi lịch thanh toán đã có tài liệu hoặc đợt đã hoàn tất.");
 
         var supplier = order.SupplierId is int sid
             ? await db.Suppliers.FirstOrDefaultAsync(s => s.Id == sid, ct)
@@ -301,6 +343,25 @@ public sealed class PurchaseOrderService(
                 ExpectedDeliveryDate = reqLine.ExpectedDeliveryDate,
                 Note = string.IsNullOrWhiteSpace(reqLine.Note) ? null : reqLine.Note.Trim(),
             });
+        }
+
+        if (replaceInstallments)
+        {
+            db.PurchaseOrderInstallments.RemoveRange(order.Installments);
+            order.Installments.Clear();
+            foreach (var spec in installmentSpecs)
+            {
+                order.Installments.Add(new PurchaseOrderInstallment
+                {
+                    PoCode = order.Code,
+                    StageNumber = spec.StageNumber,
+                    Percent = spec.Percent,
+                    Status = spec.StageNumber == 1
+                        ? PurchaseOrderInstallmentStatuses.Open
+                        : PurchaseOrderInstallmentStatuses.Locked,
+                    RequiredDocTypes = JsonSerializer.Serialize(spec.RequiredDocTypes),
+                });
+            }
         }
 
         order.TotalAmount = Math.Round(order.Items.Sum(i => i.Ordered * i.PoPrice), 2);
@@ -536,8 +597,163 @@ public sealed class PurchaseOrderService(
         return true;
     }
 
+    public async Task<IReadOnlyList<PurchaseOrderInstallmentDocumentDto>?> ListInstallmentDocumentsAsync(
+        string code, int stageNumber, CancellationToken ct = default)
+    {
+        var installment = await FindInstallmentAsync(code, stageNumber, asTracking: false, ct);
+        if (installment is null) return null;
+        return installment.Documents
+            .OrderByDescending(d => d.UploadedAt)
+            .Select(ToInstallmentDocumentDto)
+            .ToList();
+    }
+
+    public async Task<PurchaseOrderInstallmentDocumentDto?> UploadInstallmentDocumentAsync(
+        string code,
+        int stageNumber,
+        string docType,
+        string fileName,
+        string contentType,
+        Stream content,
+        CancellationToken ct = default)
+    {
+        var installment = await FindInstallmentAsync(code, stageNumber, asTracking: true, ct);
+        if (installment is null) return null;
+        EnsureInstallmentEditable(installment);
+
+        var normalizedDocType = NormalizeInstallmentDocType(docType);
+        var required = DeserializeRequiredDocTypes(installment.RequiredDocTypes);
+        if (required.Count > 0
+            && !required.Contains(normalizedDocType, StringComparer.OrdinalIgnoreCase))
+            throw new PurchasingConflictException(
+                $"Loại chứng từ '{normalizedDocType}' không thuộc danh sách bắt buộc của đợt {stageNumber}.");
+        EnsureAllowedExtension(fileName);
+        var ext = Path.GetExtension(fileName);
+        var relative =
+            $"purchasing/orders/{installment.PoCode}/installments/{stageNumber}/{normalizedDocType}/{Guid.NewGuid():N}{ext}";
+        var stored = await fileStorage.SaveAsync(content, relative, contentType, ct);
+        var document = new PurchaseOrderInstallmentDocument
+        {
+            InstallmentId = installment.Id,
+            DocType = normalizedDocType,
+            FileName = Path.GetFileName(fileName),
+            ContentType = string.IsNullOrWhiteSpace(contentType)
+                ? "application/octet-stream"
+                : contentType.Trim(),
+            StoragePath = stored.StorageKey,
+            UploadedAt = DateTime.UtcNow,
+            UploadedByName = currentUser.IsAuthenticated ? currentUser.Name : null,
+        };
+        installment.Documents.Add(document);
+        installment.PurchaseOrder.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
+        return ToInstallmentDocumentDto(document);
+    }
+
+    public async Task<PurchaseOrderInstallmentDocumentDto?> GetInstallmentDocumentAsync(
+        string code, int stageNumber, int documentId, CancellationToken ct = default)
+    {
+        var poCode = code.Trim();
+        var document = await db.PurchaseOrderInstallmentDocuments.AsNoTracking()
+            .Include(d => d.Installment)
+            .FirstOrDefaultAsync(d =>
+                d.Id == documentId &&
+                d.Installment.PoCode == poCode &&
+                d.Installment.StageNumber == stageNumber, ct);
+        return document is null ? null : ToInstallmentDocumentDto(document);
+    }
+
+    public async Task<bool> DeleteInstallmentDocumentAsync(
+        string code, int stageNumber, int documentId, CancellationToken ct = default)
+    {
+        var installment = await FindInstallmentAsync(code, stageNumber, asTracking: true, ct);
+        if (installment is null) return false;
+        EnsureInstallmentEditable(installment);
+        var document = installment.Documents.FirstOrDefault(d => d.Id == documentId);
+        if (document is null) return false;
+
+        db.PurchaseOrderInstallmentDocuments.Remove(document);
+        installment.PurchaseOrder.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
+        return true;
+    }
+
+    public async Task<PurchaseOrderInstallmentDto?> CompleteInstallmentAsync(
+        string code, int stageNumber, CancellationToken ct = default)
+    {
+        var poCode = code.Trim();
+        var installments = await db.PurchaseOrderInstallments
+            .Include(i => i.Documents)
+            .Include(i => i.PurchaseOrder)
+            .Where(i => i.PoCode == poCode)
+            .OrderBy(i => i.StageNumber)
+            .ToListAsync(ct);
+        var installment = installments.FirstOrDefault(i => i.StageNumber == stageNumber);
+        if (installment is null) return null;
+        EnsureInstallmentEditable(installment);
+
+        var required = DeserializeRequiredDocTypes(installment.RequiredDocTypes);
+        var uploaded = installment.Documents
+            .Select(d => d.DocType)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var missing = required.Where(t => !uploaded.Contains(t)).ToList();
+        if (missing.Count > 0)
+            throw new PurchasingConflictException(
+                $"Chưa đủ tài liệu bắt buộc cho đợt {stageNumber}: {string.Join(", ", missing)}.");
+
+        installment.Status = PurchaseOrderInstallmentStatuses.Completed;
+        var next = installments.FirstOrDefault(i => i.StageNumber == stageNumber + 1);
+        if (next is not null)
+            next.Status = PurchaseOrderInstallmentStatuses.Open;
+        installment.PurchaseOrder.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
+        return PurchasingMapper.ToInstallmentDto(installment);
+    }
+
     private static PurchaseOrderAttachmentDto ToAttachmentDto(PurchaseOrderAttachment a) => new(
         a.Id, a.PoCode, a.DocType, a.FileName, a.StorageKey, a.UploadedAt, a.UploadedByName);
+
+    private async Task<PurchaseOrderInstallment?> FindInstallmentAsync(
+        string code, int stageNumber, bool asTracking, CancellationToken ct)
+    {
+        var query = db.PurchaseOrderInstallments
+            .Include(i => i.Documents)
+            .Include(i => i.PurchaseOrder)
+            .AsQueryable();
+        if (!asTracking)
+            query = query.AsNoTracking();
+        return await query.FirstOrDefaultAsync(
+            i => i.PoCode == code.Trim() && i.StageNumber == stageNumber, ct);
+    }
+
+    private static PurchaseOrderInstallmentDocumentDto ToInstallmentDocumentDto(
+        PurchaseOrderInstallmentDocument document) => new(
+        document.Id,
+        document.InstallmentId,
+        document.DocType,
+        document.FileName,
+        document.ContentType,
+        document.StoragePath,
+        document.UploadedAt,
+        document.UploadedByName);
+
+    private static void EnsureInstallmentEditable(PurchaseOrderInstallment installment)
+    {
+        if (!string.Equals(
+                installment.Status,
+                PurchaseOrderInstallmentStatuses.Open,
+                StringComparison.OrdinalIgnoreCase))
+            throw new PurchasingConflictException(
+                $"Đợt thanh toán {installment.StageNumber} đang ở trạng thái '{installment.Status}', không thể chỉnh sửa.");
+    }
+
+    private static string NormalizeInstallmentDocType(string docType)
+    {
+        var normalized = (docType ?? string.Empty).Trim().ToUpperInvariant();
+        if (string.IsNullOrWhiteSpace(normalized) || normalized.Length > 50)
+            throw new PurchasingConflictException("DocType phải có từ 1 đến 50 ký tự.");
+        return normalized;
+    }
 
     private static string NormalizeDocType(string docType)
     {
@@ -564,6 +780,66 @@ public sealed class PurchaseOrderService(
         if (!allowed.Contains(ext))
             throw new PurchasingConflictException(
                 $"Định dạng file không hỗ trợ: {ext}. Cho phép ảnh, PDF và file Microsoft Office (Word/Excel/PowerPoint).");
+    }
+
+    private static List<PurchaseOrderInstallmentRequest> BuildInstallmentSpecs(
+        int? installmentCount,
+        List<PurchaseOrderInstallmentRequest>? installments)
+    {
+        if (installmentCount is not null && installments is not null)
+            throw new PurchasingConflictException(
+                "Chỉ truyền installmentCount hoặc installments, không truyền đồng thời.");
+
+        if (installments is null && installmentCount is null)
+            throw new PurchasingConflictException("PO phải có ít nhất một đợt thanh toán.");
+
+        if (installmentCount is int count)
+        {
+            if (count is < 1 or > 4)
+                throw new PurchasingConflictException("InstallmentCount phải từ 1 đến 4.");
+            throw new PurchasingConflictException(
+                "Phải gửi installments kèm requiredDocTypes (mỗi đợt ≥ 1 loại chứng từ). Không dùng installmentCount thuần.");
+        }
+
+        if (installments is null || installments.Count is < 1 or > 4)
+            throw new PurchasingConflictException("Installments phải có từ 1 đến 4 đợt.");
+
+        var ordered = installments.OrderBy(i => i.StageNumber).ToList();
+        var expectedStages = Enumerable.Range(1, ordered.Count).ToArray();
+        if (!ordered.Select(i => i.StageNumber).SequenceEqual(expectedStages))
+            throw new PurchasingConflictException(
+                "StageNumber phải liên tục, không trùng, bắt đầu từ 1.");
+        if (ordered.Any(i => i.Percent <= 0 || i.Percent > 100))
+            throw new PurchasingConflictException("Percent của mỗi đợt phải lớn hơn 0 và không vượt quá 100.");
+        if (Math.Abs(ordered.Sum(i => i.Percent) - 100m) > 0.01m)
+            throw new PurchasingConflictException("Tổng Percent các đợt phải bằng 100.");
+
+        var normalized = ordered.Select(i => new PurchaseOrderInstallmentRequest(
+                i.StageNumber,
+                i.Percent,
+                (i.RequiredDocTypes ?? [])
+                    .Select(NormalizeInstallmentDocType)
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList()))
+            .ToList();
+
+        if (normalized.Any(i => i.RequiredDocTypes.Count == 0))
+            throw new PurchasingConflictException(
+                "Mỗi đợt thanh toán phải có ít nhất một loại chứng từ bắt buộc.");
+
+        return normalized;
+    }
+
+    private static List<string> DeserializeRequiredDocTypes(string json)
+    {
+        try
+        {
+            return JsonSerializer.Deserialize<List<string>>(json) ?? [];
+        }
+        catch (JsonException)
+        {
+            throw new PurchasingConflictException("Danh sách tài liệu bắt buộc của đợt thanh toán không hợp lệ.");
+        }
     }
 
     private static (Dictionary<string, Material> ByName, Dictionary<string, Material> ByCode) BuildMaterialLookups(
@@ -663,5 +939,7 @@ public sealed class PurchaseOrderService(
             .Include(o => o.Project)
             .Include(o => o.Supplier)
             .Include(o => o.Items)
+            .Include(o => o.Installments)
+                .ThenInclude(i => i.Documents)
             .FirstOrDefaultAsync(o => o.Code == code, ct);
 }

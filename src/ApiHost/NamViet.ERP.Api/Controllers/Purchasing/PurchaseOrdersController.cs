@@ -135,6 +135,71 @@ public class PurchaseOrdersController(
         return ok ? NoContent() : NotFound();
     }
 
+    [HttpGet("{code}/installments/{stageNumber:int}/documents")]
+    [RequirePermission("purchasing.orders.view")]
+    public async Task<ActionResult<IReadOnlyList<PurchaseOrderInstallmentDocumentDto>>> ListInstallmentDocuments(
+        string code, int stageNumber, CancellationToken ct)
+    {
+        var items = await orders.ListInstallmentDocumentsAsync(code, stageNumber, ct);
+        return items is null ? NotFound() : Ok(items);
+    }
+
+    [HttpPut("{code}/installments/{stageNumber:int}/documents")]
+    [RequirePermission("purchasing.orders.update")]
+    [RequestSizeLimit(20 * 1024 * 1024)]
+    public async Task<ActionResult<PurchaseOrderInstallmentDocumentDto>> UploadInstallmentDocument(
+        string code,
+        int stageNumber,
+        IFormFile file,
+        [FromForm] string docType,
+        CancellationToken ct = default)
+    {
+        if (file is null || file.Length == 0)
+            return BadRequest("File trống.");
+
+        await using var stream = file.OpenReadStream();
+        var dto = await orders.UploadInstallmentDocumentAsync(
+            code,
+            stageNumber,
+            docType,
+            file.FileName,
+            file.ContentType ?? "application/octet-stream",
+            stream,
+            ct);
+        return dto is null ? NotFound() : Ok(dto);
+    }
+
+    [HttpGet("{code}/installments/{stageNumber:int}/documents/{documentId:int}/download")]
+    [RequirePermission("purchasing.orders.view")]
+    public async Task<IActionResult> DownloadInstallmentDocument(
+        string code, int stageNumber, int documentId, CancellationToken ct)
+    {
+        var dto = await orders.GetInstallmentDocumentAsync(code, stageNumber, documentId, ct);
+        if (dto is null) return NotFound();
+
+        var stored = fileStorage.Get(dto.StoragePath);
+        if (stored is null) return NotFound();
+        return PhysicalFile(stored.FullPath, dto.ContentType, dto.FileName);
+    }
+
+    [HttpDelete("{code}/installments/{stageNumber:int}/documents/{documentId:int}")]
+    [RequirePermission("purchasing.orders.update")]
+    public async Task<IActionResult> DeleteInstallmentDocument(
+        string code, int stageNumber, int documentId, CancellationToken ct)
+    {
+        var ok = await orders.DeleteInstallmentDocumentAsync(code, stageNumber, documentId, ct);
+        return ok ? NoContent() : NotFound();
+    }
+
+    [HttpPost("{code}/installments/{stageNumber:int}/complete")]
+    [RequirePermission("purchasing.orders.update")]
+    public async Task<ActionResult<PurchaseOrderInstallmentDto>> CompleteInstallment(
+        string code, int stageNumber, CancellationToken ct)
+    {
+        var dto = await orders.CompleteInstallmentAsync(code, stageNumber, ct);
+        return dto is null ? NotFound() : Ok(dto);
+    }
+
     private static string GuessContentType(string fileName)
     {
         var ext = Path.GetExtension(fileName).ToLowerInvariant();

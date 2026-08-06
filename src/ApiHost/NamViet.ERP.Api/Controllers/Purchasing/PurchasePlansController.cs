@@ -24,8 +24,9 @@ public class PurchasePlansController(
         [FromQuery] string? search = null,
         [FromQuery] DateOnly? dateFrom = null,
         [FromQuery] DateOnly? dateTo = null,
+        [FromQuery] string? kind = null,
         CancellationToken ct = default) =>
-        Ok(await plans.ListAsync(page, pageSize, code, projectCode, status, search, dateFrom, dateTo, ct));
+        Ok(await plans.ListAsync(page, pageSize, code, projectCode, status, search, dateFrom, dateTo, kind, ct));
 
     [HttpGet("variance")]
     [RequirePermission("purchasing.plans.view")]
@@ -67,6 +68,47 @@ public class PurchasePlansController(
     {
         var deleted = await plans.DeleteAsync(code, ct);
         return deleted ? NoContent() : NotFound();
+    }
+
+    [HttpPost("{code}/submit")]
+    [RequirePermission("purchasing.plans.submit")]
+    public async Task<ActionResult<PurchasePlanDetailDto>> Submit(string code, CancellationToken ct)
+    {
+        var item = await plans.SubmitAsync(code, ct);
+        return item is null ? NotFound() : Ok(item);
+    }
+
+    [HttpPost("{code}/approve-l1")]
+    [RequirePermission("purchasing.plans.approve_l1")]
+    public async Task<ActionResult<PurchasePlanDetailDto>> ApproveL1(string code, CancellationToken ct)
+    {
+        var item = await plans.ApproveL1Async(code, ct);
+        return item is null ? NotFound() : Ok(item);
+    }
+
+    [HttpPost("{code}/approve-l2")]
+    [RequirePermission("purchasing.plans.approve_l2")]
+    public async Task<ActionResult<PurchasePlanDetailDto>> ApproveL2(string code, CancellationToken ct)
+    {
+        var item = await plans.ApproveL2Async(code, ct);
+        return item is null ? NotFound() : Ok(item);
+    }
+
+    [HttpPost("{code}/reject")]
+    [RequirePermission("purchasing.plans.reject")]
+    public async Task<ActionResult<PurchasePlanDetailDto>> Reject(
+        string code, [FromBody] RejectPurchasePlanRequest? request, CancellationToken ct)
+    {
+        var item = await plans.RejectAsync(code, request ?? new RejectPurchasePlanRequest(null), ct);
+        return item is null ? NotFound() : Ok(item);
+    }
+
+    [HttpPost("{code}/remake")]
+    [RequirePermission("purchasing.plans.remake")]
+    public async Task<ActionResult<PurchasePlanDetailDto>> Remake(string code, CancellationToken ct)
+    {
+        var created = await plans.RemakeAsync(code, ct);
+        return CreatedAtAction(nameof(GetByCode), new { code = created.Code }, created);
     }
 
     [HttpGet("import/template")]

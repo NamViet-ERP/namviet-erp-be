@@ -82,6 +82,41 @@ public record UpsertSupplierEvaluationRequest(
     DateOnly? EvaluatedAt,
     string? Note);
 
+/// <summary>Đánh giá NCC theo lần nhận hàng (sau duyệt phiếu NK gắn PO).</summary>
+public record SupplierDeliveryEvaluationDto(
+    int Id,
+    int SupplierId,
+    string SupplierName,
+    string PoCode,
+    string ImportTicketCode,
+    DateTime ReceivedAt,
+    DateTime DueAt,
+    string Status,
+    bool IsOverdue,
+    decimal? Score,
+    string? Grade,
+    decimal? OnTimeDeliveryRate,
+    decimal? DefectRate,
+    decimal? WarrantyCompletionRate,
+    string? Note,
+    string? EvaluatedByName,
+    DateOnly? EvaluatedAt);
+
+public record SupplierDeliveryEvaluationPagedResponse(
+    IReadOnlyList<SupplierDeliveryEvaluationDto> Items,
+    int TotalCount,
+    int Page,
+    int PageSize,
+    int TotalPages);
+
+public record CompleteSupplierDeliveryEvaluationRequest(
+    decimal Score,
+    decimal OnTimeDeliveryRate,
+    decimal DefectRate,
+    decimal WarrantyCompletionRate,
+    DateOnly? EvaluatedAt,
+    string? Note);
+
 public record SupplierModuleSettingsDto(
     decimal GradeAMinScore,
     decimal GradeBMinScore,

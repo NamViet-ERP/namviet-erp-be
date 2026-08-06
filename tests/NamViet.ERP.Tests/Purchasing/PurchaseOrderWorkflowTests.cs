@@ -124,6 +124,64 @@ public class PurchaseOrderWorkflowTests : IDisposable
         Assert.Contains("draft", ex.Message, StringComparison.OrdinalIgnoreCase);
     }
 
+    [Fact]
+    public async Task Create_PersistsInstallmentsAndValidatesTotalPercent()
+    {
+        var plan = await SeedPlanWithLineAsync(supplierName: "NCC Alpha", qty: 10);
+        var lines = new List<CreatePurchaseOrderLineRequest>
+        {
+            new(plan.Lines[0].Id, 2, 1000, null, null),
+        };
+
+        var ex = await Assert.ThrowsAsync<PurchasingConflictException>(() =>
+            _orders.CreateAsync(new CreatePurchaseOrderRequest(
+                plan.Code, 1, null, null, lines,
+                Installments:
+                [
+                    new(1, 60, ["CO"]),
+                    new(2, 30, ["CQ"]),
+                ])));
+        Assert.Contains("100", ex.Message);
+
+        var order = await _orders.CreateAsync(new CreatePurchaseOrderRequest(
+            plan.Code, 1, null, null, lines,
+            Installments:
+            [
+                new(1, 60, ["CO"]),
+                new(2, 40, ["CQ"]),
+            ]));
+
+        Assert.Equal(2, order.Installments.Count);
+        Assert.Equal(PurchaseOrderInstallmentStatuses.Open, order.Installments[0].Status);
+        Assert.Equal(PurchaseOrderInstallmentStatuses.Locked, order.Installments[1].Status);
+    }
+
+    [Fact]
+    public async Task CompleteInstallment_RequiresDocumentsAndUnlocksNextStage()
+    {
+        var plan = await SeedPlanWithLineAsync(supplierName: "NCC Alpha", qty: 10);
+        var order = await _orders.CreateAsync(new CreatePurchaseOrderRequest(
+            plan.Code, 1, null, null,
+            [new CreatePurchaseOrderLineRequest(plan.Lines[0].Id, 2, 1000, null, null)],
+            Installments:
+            [
+                new(1, 50, ["CO"]),
+                new(2, 50, []),
+            ]));
+
+        await Assert.ThrowsAsync<PurchasingConflictException>(() =>
+            _orders.CompleteInstallmentAsync(order.Code, 1));
+
+        await using var content = new MemoryStream([1, 2, 3]);
+        await _orders.UploadInstallmentDocumentAsync(
+            order.Code, 1, "co", "certificate.pdf", "application/pdf", content);
+        var completed = await _orders.CompleteInstallmentAsync(order.Code, 1);
+
+        Assert.Equal(PurchaseOrderInstallmentStatuses.Completed, completed!.Status);
+        var refreshed = await _orders.GetByCodeAsync(order.Code);
+        Assert.Equal(PurchaseOrderInstallmentStatuses.Open, refreshed!.Installments[1].Status);
+    }
+
     private async Task<PurchasePlanDetailDto> SeedPlanWithLineAsync(string supplierName, decimal qty)
     {
         var created = await _plans.CreateAsync(new CreatePurchasePlanRequest("DA-TEST", "test"), CancellationToken.None);
@@ -144,6 +202,9 @@ public class PurchaseOrderWorkflowTests : IDisposable
         });
         _plans.RecalcTotals(plan);
         await _db.SaveChangesAsync();
+        await _plans.SubmitAsync(plan.Code, CancellationToken.None);
+        await _plans.ApproveL1Async(plan.Code, CancellationToken.None);
+        await _plans.ApproveL2Async(plan.Code, CancellationToken.None);
         return (await _plans.GetByCodeAsync(plan.Code))!;
     }
 

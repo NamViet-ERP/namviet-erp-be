@@ -45,6 +45,7 @@ public class WarehouseDbContext(DbContextOptions<WarehouseDbContext> options) : 
     public DbSet<SupplierGroupMember> SupplierGroupMembers => Set<SupplierGroupMember>();
     public DbSet<SupplierContact> SupplierContacts => Set<SupplierContact>();
     public DbSet<SupplierEvaluation> SupplierEvaluations => Set<SupplierEvaluation>();
+    public DbSet<SupplierDeliveryEvaluation> SupplierDeliveryEvaluations => Set<SupplierDeliveryEvaluation>();
     public DbSet<Project> Projects => Set<Project>();
     public DbSet<ProjectWarehouseKeeper> ProjectWarehouseKeepers => Set<ProjectWarehouseKeeper>();
     public DbSet<ProjectInventory> ProjectInventories => Set<ProjectInventory>();
@@ -64,6 +65,8 @@ public class WarehouseDbContext(DbContextOptions<WarehouseDbContext> options) : 
     public DbSet<PurchaseOrder> PurchaseOrders => Set<PurchaseOrder>();
     public DbSet<PurchaseOrderItem> PurchaseOrderItems => Set<PurchaseOrderItem>();
     public DbSet<PurchaseOrderAttachment> PurchaseOrderAttachments => Set<PurchaseOrderAttachment>();
+    public DbSet<PurchaseOrderInstallment> PurchaseOrderInstallments => Set<PurchaseOrderInstallment>();
+    public DbSet<PurchaseOrderInstallmentDocument> PurchaseOrderInstallmentDocuments => Set<PurchaseOrderInstallmentDocument>();
     public DbSet<PurchaseDefect> PurchaseDefects => Set<PurchaseDefect>();
     public DbSet<PurchaseDefectItem> PurchaseDefectItems => Set<PurchaseDefectItem>();
     public DbSet<PurchaseDefectAttachment> PurchaseDefectAttachments => Set<PurchaseDefectAttachment>();
@@ -212,6 +215,31 @@ public class WarehouseDbContext(DbContextOptions<WarehouseDbContext> options) : 
             e.HasQueryFilter(v => v.DeletedAt == null);
         });
 
+        model.Entity<SupplierDeliveryEvaluation>(e =>
+        {
+            e.ToTable("supplier_delivery_evaluations");
+            e.HasKey(v => v.Id);
+            e.Property(v => v.SupplierNameSnapshot).HasMaxLength(255);
+            e.Property(v => v.PoCode).HasMaxLength(50).IsRequired();
+            e.Property(v => v.ImportTicketCode).HasMaxLength(50).IsRequired();
+            e.Property(v => v.Status).HasMaxLength(20).IsRequired();
+            e.Property(v => v.Score).HasColumnType("numeric(5,2)");
+            e.Property(v => v.OnTimeDeliveryRate).HasColumnType("numeric(5,2)");
+            e.Property(v => v.DefectRate).HasColumnType("numeric(5,2)");
+            e.Property(v => v.WarrantyCompletionRate).HasColumnType("numeric(5,2)");
+            e.Property(v => v.Grade).HasMaxLength(10);
+            e.Property(v => v.Note).HasMaxLength(2000);
+            e.Property(v => v.EvaluatedByName).HasMaxLength(200);
+            e.HasIndex(v => v.ImportTicketCode)
+             .IsUnique().HasFilter("\"DeletedAt\" IS NULL");
+            e.HasIndex(v => v.PoCode);
+            e.HasIndex(v => new { v.Status, v.DueAt });
+            e.HasIndex(v => v.SupplierId);
+            e.HasOne(v => v.Supplier).WithMany(s => s.DeliveryEvaluations)
+             .HasForeignKey(v => v.SupplierId).OnDelete(DeleteBehavior.Cascade);
+            e.HasQueryFilter(v => v.DeletedAt == null);
+        });
+
         model.Entity<Project>(e =>
         {
             e.ToTable("projects");
@@ -224,6 +252,8 @@ public class WarehouseDbContext(DbContextOptions<WarehouseDbContext> options) : 
             e.Property(p => p.PmName).HasMaxLength(255);
             e.Property(p => p.ClientProjectId).HasMaxLength(50);
             e.Property(p => p.Stage).HasMaxLength(50);
+            e.Property(p => p.ClientName).HasMaxLength(200);
+            e.Property(p => p.ScMembers).HasMaxLength(500);
             e.HasQueryFilter(p => p.DeletedAt == null);
             e.HasMany(p => p.WarehouseKeepers).WithOne(k => k.Project)
              .HasForeignKey(k => k.ProjectCode).OnDelete(DeleteBehavior.Cascade);
@@ -564,6 +594,34 @@ public class WarehouseDbContext(DbContextOptions<WarehouseDbContext> options) : 
              .HasForeignKey(a => a.PoCode).OnDelete(DeleteBehavior.Cascade);
         });
 
+        model.Entity<PurchaseOrderInstallment>(e =>
+        {
+            e.ToTable("purchase_order_installments");
+            e.HasKey(i => i.Id);
+            e.Property(i => i.PoCode).HasMaxLength(50).IsRequired();
+            e.Property(i => i.Percent).HasColumnType("numeric(5,2)").IsRequired();
+            e.Property(i => i.Status).HasMaxLength(20).IsRequired();
+            e.Property(i => i.RequiredDocTypes).HasColumnType("jsonb").IsRequired();
+            e.HasIndex(i => new { i.PoCode, i.StageNumber }).IsUnique();
+            e.HasOne(i => i.PurchaseOrder).WithMany(p => p.Installments)
+             .HasForeignKey(i => i.PoCode).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        model.Entity<PurchaseOrderInstallmentDocument>(e =>
+        {
+            e.ToTable("purchase_order_installment_documents");
+            e.HasKey(d => d.Id);
+            e.Property(d => d.DocType).HasMaxLength(50).IsRequired();
+            e.Property(d => d.FileName).HasMaxLength(255).IsRequired();
+            e.Property(d => d.ContentType).HasMaxLength(200).IsRequired();
+            e.Property(d => d.StoragePath).HasMaxLength(500).IsRequired();
+            e.Property(d => d.UploadedByName).HasMaxLength(200);
+            e.HasIndex(d => d.InstallmentId);
+            e.HasIndex(d => new { d.InstallmentId, d.DocType });
+            e.HasOne(d => d.Installment).WithMany(i => i.Documents)
+             .HasForeignKey(d => d.InstallmentId).OnDelete(DeleteBehavior.Cascade);
+        });
+
         model.Entity<PurchaseDefect>(e =>
         {
             e.ToTable("purchase_defects");
@@ -628,6 +686,7 @@ public class WarehouseDbContext(DbContextOptions<WarehouseDbContext> options) : 
             e.HasKey(p => p.Code);
             e.Property(p => p.Code).HasMaxLength(50);
             e.Property(p => p.PoCode).HasMaxLength(50).IsRequired();
+            e.Property(p => p.StageNumber).IsRequired();
             e.Property(p => p.SupplierNameSnapshot).HasMaxLength(300);
             e.Property(p => p.InvoiceNo).HasMaxLength(100);
             e.Property(p => p.Amount).HasColumnType("numeric(18,2)");
@@ -638,7 +697,11 @@ public class WarehouseDbContext(DbContextOptions<WarehouseDbContext> options) : 
              .HasForeignKey(p => p.PoCode).OnDelete(DeleteBehavior.Restrict);
             e.HasOne(p => p.Supplier).WithMany()
              .HasForeignKey(p => p.SupplierId).OnDelete(DeleteBehavior.SetNull).IsRequired(false);
-            e.HasIndex(p => p.PoCode).IsUnique();
+            e.HasIndex(p => p.PoCode);
+            // Một đợt chỉ có 1 DNTT đang hiệu lực (không tính cancelled / soft-delete).
+            e.HasIndex(p => new { p.PoCode, p.StageNumber })
+                .IsUnique()
+                .HasFilter("\"DeletedAt\" IS NULL AND lower(\"Status\") <> 'cancelled'");
             e.HasIndex(p => p.Status);
             e.HasIndex(p => p.DueDate);
             e.HasQueryFilter(p => p.DeletedAt == null);

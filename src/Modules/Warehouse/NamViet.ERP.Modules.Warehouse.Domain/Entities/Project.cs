@@ -18,6 +18,8 @@ public class Project : BaseEntity
     /// <summary>Client-facing project identifier (e.g. proj-xxx from UI). Falls back to <see cref="ProjectCode"/> when null.</summary>
     public string? ClientProjectId { get; set; }
     public string? Stage { get; set; }
+    public string? ClientName { get; set; }
+    public string? ScMembers { get; set; }
 
     public ICollection<ProjectInventory> Inventories { get; set; } = [];
     public ICollection<WarehouseTransaction> Transactions { get; set; } = [];

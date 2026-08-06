@@ -16,4 +16,5 @@ public class Supplier : BaseEntity
     public ICollection<SupplierGroupMember> GroupMemberships { get; set; } = [];
     public ICollection<SupplierContact> Contacts { get; set; } = [];
     public ICollection<SupplierEvaluation> Evaluations { get; set; } = [];
+    public ICollection<SupplierDeliveryEvaluation> DeliveryEvaluations { get; set; } = [];
 }

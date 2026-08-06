@@ -10,8 +10,16 @@ public record PurchasePlanDto(
     decimal PurchaseTotal,
     decimal PaidTotal,
     string Status,
+    string Kind,
     string? Note,
-    string? CreatedByName);
+    string? CreatedByName,
+    string? RejectReason = null,
+    string? RemadeFromCode = null,
+    string? RemadeToCode = null,
+    string? L1ApprovedByName = null,
+    DateTime? L1ApprovedAt = null,
+    string? L2ApprovedByName = null,
+    DateTime? L2ApprovedAt = null);
 
 public record PurchasePlanDetailDto(
     string Code,
@@ -24,9 +32,20 @@ public record PurchasePlanDetailDto(
     decimal PurchaseTotal,
     decimal PaidTotal,
     string Status,
+    string Kind,
     string? Note,
     string? CreatedByName,
-    List<PurchasePlanLineDto> Lines);
+    List<PurchasePlanLineDto> Lines,
+    DateTime? SubmittedAt = null,
+    string? L1ApprovedByName = null,
+    DateTime? L1ApprovedAt = null,
+    string? L2ApprovedByName = null,
+    DateTime? L2ApprovedAt = null,
+    string? RejectedByName = null,
+    DateTime? RejectedAt = null,
+    string? RejectReason = null,
+    string? RemadeFromCode = null,
+    string? RemadeToCode = null);
 
 public record PurchasePlanLineDto(
     int Id,
@@ -135,12 +154,15 @@ public record CreatePurchasePlanLineRequest(
 public record CreatePurchasePlanRequest(
     string ProjectCode,
     string? Note,
+    string Kind = "plan",
     List<CreatePurchasePlanLineRequest>? Lines = null);
 
 public record UpdatePurchasePlanRequest(
     string? Note,
     string? Status,
     List<CreatePurchasePlanLineRequest>? Lines = null);
+
+public record RejectPurchasePlanRequest(string? Reason);
 
 public record PurchasePlanImportPreviewDto(
     string ProjectCode,

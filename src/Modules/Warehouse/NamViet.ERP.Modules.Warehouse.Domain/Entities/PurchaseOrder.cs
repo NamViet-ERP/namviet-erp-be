@@ -38,6 +38,7 @@ public class PurchaseOrder : BaseEntity
     public Supplier? Supplier { get; set; }
     public ICollection<PurchaseOrderItem> Items { get; set; } = [];
     public ICollection<PurchaseOrderAttachment> Attachments { get; set; } = [];
+    public ICollection<PurchaseOrderInstallment> Installments { get; set; } = [];
 }
 
 public class PurchaseOrderItem
@@ -112,4 +113,39 @@ public static class PurchaseOrderAttachmentDocTypes
     {
         "contract", "invoice", "co", "cq", "bbgh", "bbnt", "other",
     };
+}
+
+public class PurchaseOrderInstallment
+{
+    public int Id { get; set; }
+    public string PoCode { get; set; } = string.Empty;
+    public int StageNumber { get; set; }
+    public decimal Percent { get; set; }
+    public string Status { get; set; } = PurchaseOrderInstallmentStatuses.Locked;
+    public string RequiredDocTypes { get; set; } = "[]";
+
+    public PurchaseOrder PurchaseOrder { get; set; } = null!;
+    public ICollection<PurchaseOrderInstallmentDocument> Documents { get; set; } = [];
+}
+
+public class PurchaseOrderInstallmentDocument
+{
+    public int Id { get; set; }
+    public int InstallmentId { get; set; }
+    public string DocType { get; set; } = string.Empty;
+    public string FileName { get; set; } = string.Empty;
+    public string ContentType { get; set; } = "application/octet-stream";
+    public string StoragePath { get; set; } = string.Empty;
+    public DateTime UploadedAt { get; set; } = DateTime.UtcNow;
+    public string? UploadedByName { get; set; }
+
+    public PurchaseOrderInstallment Installment { get; set; } = null!;
+}
+
+public static class PurchaseOrderInstallmentStatuses
+{
+    public const string Pending = "pending";
+    public const string Open = "open";
+    public const string Completed = "completed";
+    public const string Locked = "locked";
 }

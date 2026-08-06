@@ -27,15 +27,18 @@ public class ImportsController(
     public async Task<ActionResult<List<ImportDto>>> List(
         [FromQuery] DateOnly? dateFrom,
         [FromQuery] DateOnly? dateTo,
-        CancellationToken ct) =>
-        Ok(await imports.ListAsync(dateFrom, dateTo, ct));
+        CancellationToken ct)
+    {
+        var rows = await imports.ListAsync(dateFrom, dateTo, ct);
+        return Ok(rows.Select(MaskImportPrices).ToList());
+    }
 
     [HttpGet("{id}")]
     [RequirePermission("wms.imports.view:all")]
     public async Task<ActionResult<ImportDto>> GetById(string id, CancellationToken ct)
     {
         var item = await imports.GetByIdAsync(id, ct);
-        return item is null ? NotFound() : Ok(item);
+        return item is null ? NotFound() : Ok(MaskImportPrices(item));
     }
 
     [HttpPost]
@@ -49,7 +52,7 @@ public class ImportsController(
         {
             if (!string.IsNullOrWhiteSpace(dto.Project))
                 await projectAccess.EnsureCanOperateOnProjectAsync(dto.Project, ct);
-            return Ok(await imports.CreateAsync(dto, ct));
+            return Ok(MaskImportPrices(await imports.CreateAsync(dto, ct)));
         }
         catch (UnauthorizedAccessException ex)
         {
@@ -68,7 +71,13 @@ public class ImportsController(
         {
             if (!string.IsNullOrWhiteSpace(dto.Project))
                 await projectAccess.EnsureCanOperateOnProjectAsync(dto.Project, ct);
-            return await WmsVoucherControllerResponses.ExecuteAsync(() => imports.UpdateAsync(id, dto, ct), ct);
+            return await WmsVoucherControllerResponses.ExecuteAsync(
+                async () =>
+                {
+                    var updated = await imports.UpdateAsync(id, dto, ct);
+                    return updated is null ? null : MaskImportPrices(updated);
+                },
+                ct);
         }
         catch (UnauthorizedAccessException ex)
         {
@@ -86,7 +95,7 @@ public class ImportsController(
         CancellationToken ct = default)
     {
         var items = WmsVoucherExportFilters.FilterRows(
-            await imports.ListAsync(dateFrom, dateTo, ct),
+            (await imports.ListAsync(dateFrom, dateTo, ct)).Select(MaskImportPrices).ToList(),
             status,
             search,
             row => row.Status,
@@ -138,7 +147,7 @@ public class ImportsController(
             var preview = await imports.PreviewImportFromPurchaseOrderAsync(poCode, ct: ct);
             await projectAccess.EnsureCanOperateOnProjectAsync(preview.ProjectCode, ct);
             var created = await imports.CreateDraftFromPurchaseOrderAsync(poCode, request, ct);
-            return Ok(created);
+            return Ok(MaskImportPrices(created));
         }
         catch (UnauthorizedAccessException ex)
         {
@@ -154,10 +163,13 @@ public class ImportsController(
         }
     }
 
+    private bool CanViewPrices =>
+        User.IsInRole("Admin") || User.HasClaim(PermissionCatalog.ClaimType, "wms.prices.view");
+
     private PoImportPreviewDto MaskPoImportPrices(PoImportPreviewDto preview)
     {
         // Prices stripped on FE too; BE hides when claim missing (Admin has all via catalog).
-        if (User.IsInRole("Admin") || User.HasClaim(PermissionCatalog.ClaimType, "wms.prices.view"))
+        if (CanViewPrices)
             return preview;
 
         return preview with
@@ -165,6 +177,21 @@ public class ImportsController(
             Lines = preview.Lines
                 .Select(l => l with { UnitPrice = 0m })
                 .ToList(),
+        };
+    }
+
+    private ImportDto MaskImportPrices(ImportDto dto)
+    {
+        if (CanViewPrices)
+            return dto;
+
+        var maskedItems = dto.Items
+            .Select(i => i with { UnitPrice = 0m })
+            .ToList();
+        return dto with
+        {
+            TotalValue = 0m,
+            Items = maskedItems,
         };
     }
 
@@ -181,7 +208,7 @@ public class ImportsController(
         try
         {
             var item = await imports.ApproveAsync(id, confirmOverBudget, ct);
-            return item is null ? NotFound() : Ok(item);
+            return item is null ? NotFound() : Ok(MaskImportPrices(item));
         }
         catch (ImportBudgetExceededException ex)
         {
@@ -214,7 +241,7 @@ public class ImportsController(
         try
         {
             var item = await imports.UpdateReceiptEvaluationAsync(id, request.Evaluation, ct);
-            return item is null ? NotFound() : Ok(item);
+            return item is null ? NotFound() : Ok(MaskImportPrices(item));
         }
         catch (InvalidOperationException ex)
         {
@@ -287,12 +314,18 @@ public class ImportsController(
     }
 
     [HttpPost("{id}/submit")]
-    [RequirePermission("wms.imports.update")]
+    [RequirePermission("wms.imports.create")]
     public Task<ActionResult<ImportDto>> Submit(string id, CancellationToken ct) =>
-        WmsVoucherControllerResponses.ExecuteAsync(() => imports.SubmitAsync(id, ct), ct);
+        WmsVoucherControllerResponses.ExecuteAsync(
+            async () =>
+            {
+                var submitted = await imports.SubmitAsync(id, ct);
+                return submitted is null ? null : MaskImportPrices(submitted);
+            },
+            ct);
 
     [HttpDelete("{id}")]
-    [RequirePermission("wms.imports.update")]
+    [RequirePermission("wms.imports.create")]
     public Task<IActionResult> Delete(string id, CancellationToken ct) =>
         WmsVoucherControllerResponses.ExecuteDeleteAsync(() => imports.DeleteAsync(id, ct), ct);
 

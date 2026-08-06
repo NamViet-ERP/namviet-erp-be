@@ -484,6 +484,10 @@ namespace NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence.Migrations
                         .HasMaxLength(50)
                         .HasColumnType("character varying(50)");
 
+                    b.Property<string>("ClientName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
                     b.Property<string>("ClientProjectId")
                         .HasMaxLength(50)
                         .HasColumnType("character varying(50)");
@@ -519,6 +523,10 @@ namespace NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasMaxLength(30)
                         .HasColumnType("character varying(30)");
+
+                    b.Property<string>("ScMembers")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
 
                     b.Property<string>("Stage")
                         .HasMaxLength(50)
@@ -1060,6 +1068,131 @@ namespace NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence.Migrations
                     b.ToTable("purchase_orders", "warehouse");
                 });
 
+            modelBuilder.Entity("NamViet.ERP.Modules.Warehouse.Domain.Entities.PurchaseOrderAttachment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("DocType")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("FileName")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<string>("PoCode")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<string>("StorageKey")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<DateTime>("UploadedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("UploadedByName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PoCode");
+
+                    b.HasIndex("PoCode", "DocType");
+
+                    b.ToTable("purchase_order_attachments", "warehouse");
+                });
+
+            modelBuilder.Entity("NamViet.ERP.Modules.Warehouse.Domain.Entities.PurchaseOrderInstallment", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<decimal>("Percent")
+                        .HasColumnType("numeric(5,2)");
+
+                    b.Property<string>("PoCode")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<string>("RequiredDocTypes")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<int>("StageNumber")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PoCode", "StageNumber")
+                        .IsUnique();
+
+                    b.ToTable("purchase_order_installments", "warehouse");
+                });
+
+            modelBuilder.Entity("NamViet.ERP.Modules.Warehouse.Domain.Entities.PurchaseOrderInstallmentDocument", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("ContentType")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("DocType")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<string>("FileName")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<int>("InstallmentId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("StoragePath")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<DateTime>("UploadedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("UploadedByName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("InstallmentId");
+
+                    b.HasIndex("InstallmentId", "DocType");
+
+                    b.ToTable("purchase_order_installment_documents", "warehouse");
+                });
+
             modelBuilder.Entity("NamViet.ERP.Modules.Warehouse.Domain.Entities.PurchaseOrderItem", b =>
                 {
                     b.Property<int>("Id")
@@ -1222,6 +1355,33 @@ namespace NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence.Migrations
                     b.Property<DateTime?>("DeletedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasDefaultValue("plan");
+
+                    b.Property<DateTime?>("L1ApprovedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("L1ApprovedById")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("L1ApprovedByName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<DateTime?>("L2ApprovedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("L2ApprovedById")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("L2ApprovedByName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
                     b.Property<string>("Note")
                         .HasMaxLength(2000)
                         .HasColumnType("character varying(2000)");
@@ -1240,10 +1400,35 @@ namespace NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence.Migrations
                     b.Property<decimal>("PurchaseTotal")
                         .HasColumnType("numeric(18,2)");
 
+                    b.Property<string>("RejectReason")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<DateTime?>("RejectedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("RejectedById")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("RejectedByName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("RemadeFromCode")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<string>("RemadeToCode")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(30)
                         .HasColumnType("character varying(30)");
+
+                    b.Property<DateTime?>("SubmittedAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
@@ -1251,6 +1436,8 @@ namespace NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence.Migrations
                     b.HasKey("Code");
 
                     b.HasIndex("CreatedAt");
+
+                    b.HasIndex("Kind");
 
                     b.HasIndex("ProjectCode");
 
@@ -1582,6 +1769,10 @@ namespace NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence.Migrations
                     b.Property<int>("MaxDebtDays")
                         .HasColumnType("integer");
 
+                    b.Property<string>("PaymentTerms")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
                     b.Property<string>("Rating")
                         .IsRequired()
                         .ValueGeneratedOnAdd()
@@ -1672,6 +1863,9 @@ namespace NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<decimal>("DefectRate")
+                        .HasColumnType("numeric(5,2)");
+
                     b.Property<DateTime?>("DeletedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -1694,6 +1888,9 @@ namespace NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence.Migrations
                         .HasMaxLength(2000)
                         .HasColumnType("character varying(2000)");
 
+                    b.Property<decimal>("OnTimeDeliveryRate")
+                        .HasColumnType("numeric(5,2)");
+
                     b.Property<string>("Period")
                         .IsRequired()
                         .HasMaxLength(30)
@@ -1711,6 +1908,9 @@ namespace NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence.Migrations
 
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<decimal>("WarrantyCompletionRate")
+                        .HasColumnType("numeric(5,2)");
 
                     b.HasKey("Id");
 
@@ -2380,6 +2580,39 @@ namespace NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence.Migrations
                     b.Navigation("Supplier");
                 });
 
+            modelBuilder.Entity("NamViet.ERP.Modules.Warehouse.Domain.Entities.PurchaseOrderAttachment", b =>
+                {
+                    b.HasOne("NamViet.ERP.Modules.Warehouse.Domain.Entities.PurchaseOrder", "PurchaseOrder")
+                        .WithMany("Attachments")
+                        .HasForeignKey("PoCode")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("PurchaseOrder");
+                });
+
+            modelBuilder.Entity("NamViet.ERP.Modules.Warehouse.Domain.Entities.PurchaseOrderInstallment", b =>
+                {
+                    b.HasOne("NamViet.ERP.Modules.Warehouse.Domain.Entities.PurchaseOrder", "PurchaseOrder")
+                        .WithMany("Installments")
+                        .HasForeignKey("PoCode")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("PurchaseOrder");
+                });
+
+            modelBuilder.Entity("NamViet.ERP.Modules.Warehouse.Domain.Entities.PurchaseOrderInstallmentDocument", b =>
+                {
+                    b.HasOne("NamViet.ERP.Modules.Warehouse.Domain.Entities.PurchaseOrderInstallment", "Installment")
+                        .WithMany("Documents")
+                        .HasForeignKey("InstallmentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Installment");
+                });
+
             modelBuilder.Entity("NamViet.ERP.Modules.Warehouse.Domain.Entities.PurchaseOrderItem", b =>
                 {
                     b.HasOne("NamViet.ERP.Modules.Warehouse.Domain.Entities.Material", "Material")
@@ -2642,7 +2875,16 @@ namespace NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("NamViet.ERP.Modules.Warehouse.Domain.Entities.PurchaseOrder", b =>
                 {
+                    b.Navigation("Attachments");
+
+                    b.Navigation("Installments");
+
                     b.Navigation("Items");
+                });
+
+            modelBuilder.Entity("NamViet.ERP.Modules.Warehouse.Domain.Entities.PurchaseOrderInstallment", b =>
+                {
+                    b.Navigation("Documents");
                 });
 
             modelBuilder.Entity("NamViet.ERP.Modules.Warehouse.Domain.Entities.PurchasePlan", b =>

@@ -1,5 +1,6 @@
 using NamViet.ERP.Api.Application.Dtos.Purchasing;
 using NamViet.ERP.Modules.Warehouse.Domain.Entities;
+using System.Text.Json;
 
 namespace NamViet.ERP.Api.Application.Mappers.Purchasing;
 
@@ -15,8 +16,16 @@ public static class PurchasingMapper
         plan.PurchaseTotal,
         paidTotal ?? plan.PaidTotal,
         plan.Status,
+        plan.Kind,
         plan.Note,
-        plan.CreatedByName);
+        plan.CreatedByName,
+        plan.RejectReason,
+        plan.RemadeFromCode,
+        plan.RemadeToCode,
+        plan.L1ApprovedByName,
+        plan.L1ApprovedAt,
+        plan.L2ApprovedByName,
+        plan.L2ApprovedAt);
 
     public static PurchasePlanDetailDto ToPlanDetailDto(PurchasePlan plan, decimal? paidTotal = null) => new(
         plan.Code,
@@ -29,12 +38,23 @@ public static class PurchasingMapper
         plan.PurchaseTotal,
         paidTotal ?? plan.PaidTotal,
         plan.Status,
+        plan.Kind,
         plan.Note,
         plan.CreatedByName,
         plan.Lines
             .OrderBy(l => l.LineNo)
             .Select(ToPlanLineDto)
-            .ToList());
+            .ToList(),
+        plan.SubmittedAt,
+        plan.L1ApprovedByName,
+        plan.L1ApprovedAt,
+        plan.L2ApprovedByName,
+        plan.L2ApprovedAt,
+        plan.RejectedByName,
+        plan.RejectedAt,
+        plan.RejectReason,
+        plan.RemadeFromCode,
+        plan.RemadeToCode);
 
     public static PurchasePlanLineDto ToPlanLineDto(PurchasePlanLine line) => new(
         line.Id,
@@ -130,7 +150,30 @@ public static class PurchasingMapper
         order.PlacedByName,
         order.PlacedAt,
         order.CreatedByName,
-        order.Items.Select(ToOrderLineDto).ToList());
+        order.Items.Select(ToOrderLineDto).ToList(),
+        order.Installments
+            .OrderBy(i => i.StageNumber)
+            .Select(ToInstallmentDto)
+            .ToList());
+
+    public static PurchaseOrderInstallmentDto ToInstallmentDto(PurchaseOrderInstallment installment) => new(
+        installment.Id,
+        installment.StageNumber,
+        installment.Percent,
+        installment.Status,
+        DeserializeDocTypes(installment.RequiredDocTypes),
+        installment.Documents
+            .OrderByDescending(d => d.UploadedAt)
+            .Select(d => new PurchaseOrderInstallmentDocumentDto(
+                d.Id,
+                d.InstallmentId,
+                d.DocType,
+                d.FileName,
+                d.ContentType,
+                d.StoragePath,
+                d.UploadedAt,
+                d.UploadedByName))
+            .ToList());
 
     /// <summary>
     /// In-memory only: unpaid/partial/overdue past due date → warning (does not persist).
@@ -169,6 +212,7 @@ public static class PurchasingMapper
     public static PurchasePaymentDto ToPaymentDto(PurchasePayment payment) => new(
         payment.Code,
         payment.PoCode,
+        payment.StageNumber,
         payment.SupplierId,
         payment.SupplierNameSnapshot ?? payment.Supplier?.SupplierName,
         payment.InvoiceNo,
@@ -178,4 +222,16 @@ public static class PurchasingMapper
         payment.Note,
         payment.CreatedAt,
         payment.CreatedByName);
+
+    private static List<string> DeserializeDocTypes(string json)
+    {
+        try
+        {
+            return JsonSerializer.Deserialize<List<string>>(json) ?? [];
+        }
+        catch (JsonException)
+        {
+            return [];
+        }
+    }
 }

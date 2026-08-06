@@ -48,7 +48,8 @@ public record PurchaseOrderDetailDto(
     string? PlacedByName,
     DateTime? PlacedAt,
     string? CreatedByName,
-    List<PurchaseOrderLineDto> Lines);
+    List<PurchaseOrderLineDto> Lines,
+    List<PurchaseOrderInstallmentDto> Installments);
 
 public record PurchaseOrderLineDto(
     int Id,
@@ -78,7 +79,9 @@ public record CreatePurchaseOrderRequest(
     int SupplierId,
     DateOnly? OrderDate,
     string? Note,
-    List<CreatePurchaseOrderLineRequest> Lines);
+    List<CreatePurchaseOrderLineRequest> Lines,
+    int? InstallmentCount = null,
+    List<PurchaseOrderInstallmentRequest>? Installments = null);
 
 public record CreatePurchaseOrderLineRequest(
     int PlanLineId,
@@ -90,7 +93,32 @@ public record CreatePurchaseOrderLineRequest(
 public record UpdatePurchaseOrderRequest(
     string? Note,
     DateOnly? OrderDate,
-    List<CreatePurchaseOrderLineRequest> Lines);
+    List<CreatePurchaseOrderLineRequest> Lines,
+    int? InstallmentCount = null,
+    List<PurchaseOrderInstallmentRequest>? Installments = null);
+
+public record PurchaseOrderInstallmentRequest(
+    int StageNumber,
+    decimal Percent,
+    IReadOnlyList<string> RequiredDocTypes);
+
+public record PurchaseOrderInstallmentDto(
+    int Id,
+    int StageNumber,
+    decimal Percent,
+    string Status,
+    IReadOnlyList<string> RequiredDocTypes,
+    IReadOnlyList<PurchaseOrderInstallmentDocumentDto> Documents);
+
+public record PurchaseOrderInstallmentDocumentDto(
+    int Id,
+    int InstallmentId,
+    string DocType,
+    string FileName,
+    string ContentType,
+    string StoragePath,
+    DateTime UploadedAt,
+    string? UploadedByName);
 
 public record PurchaseOrderAttachmentDto(
     Guid Id,
