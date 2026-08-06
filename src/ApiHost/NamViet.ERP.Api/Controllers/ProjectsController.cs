@@ -9,6 +9,7 @@ using NamViet.ERP.Modules.Warehouse.Application.DTOs;
 using NamViet.ERP.Modules.Warehouse.Domain.Entities;
 using NamViet.ERP.Modules.Warehouse.Domain.Enums;
 using NamViet.ERP.Modules.Warehouse.Domain.Services;
+using NamViet.ERP.Modules.Warehouse.Domain.SupplierEvaluation;
 using NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence;
 using NamViet.ERP.SharedKernel.Common;
 using System.Text.Json;
@@ -126,6 +127,8 @@ public class ProjectsController(
     {
         if (request.MinStockQty < 0)
             return BadRequest("Tồn tối thiểu không được âm.");
+        if (request.MinStockQty > PurchasingMoneyLimits.MaxMinStockQty)
+            return BadRequest($"Tồn tối thiểu không được vượt {PurchasingMoneyLimits.MaxMinStockQty:N0}.");
 
         var row = await db.ProjectInventories
             .FirstOrDefaultAsync(pi => pi.ProjectCode == code && pi.MaterialCode == materialCode, ct);

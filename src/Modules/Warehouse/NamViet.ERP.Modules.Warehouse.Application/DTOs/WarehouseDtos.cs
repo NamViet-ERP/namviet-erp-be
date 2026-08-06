@@ -20,6 +20,10 @@ public record SupplierDto(
     int MaxDebtDays,
     string? PaymentTerms,
     string Rating,
+    bool IsBlacklisted,
+    string? BlacklistReason,
+    DateTime? BlacklistedAt,
+    string? BlacklistedByName,
     decimal PurchasedRevenue,
     IReadOnlyList<string> IndustryGroups,
     SupplierLatestEvaluationDto? LatestEvaluation);
@@ -28,14 +32,12 @@ public record SupplierLatestEvaluationDto(
     string Period,
     decimal Score,
     string Grade,
-    DateOnly EvaluatedAt,
-    decimal OnTimeDeliveryRate,
-    decimal DefectRate,
-    decimal WarrantyCompletionRate);
+    string GradeLabel,
+    DateOnly EvaluatedAt);
 
 public record UpsertSupplierRequest(
     string SupplierCode, string SupplierName,
-    string? ContactPhone, int MaxDebtDays = 30, string? PaymentTerms = null, string Rating = "A");
+    string? ContactPhone, int MaxDebtDays = 30, string? PaymentTerms = null);
 
 // ── Projects ──────────────────────────────────────────────────────────────
 public record ProjectWarehouseKeeperDto(Guid UserId, string DisplayName);

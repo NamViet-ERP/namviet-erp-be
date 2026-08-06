@@ -22,6 +22,11 @@ public class SupplierEvaluationsController(ISupplierEvaluationService evaluation
         CancellationToken ct = default) =>
         Ok(await evaluations.ListAsync(supplierId, period, search, page, pageSize, ct));
 
+    [HttpGet("{id:int}")]
+    [RequirePermission("wms.suppliers.view:all")]
+    public async Task<ActionResult<SupplierEvaluationDto>> GetById(int id, CancellationToken ct) =>
+        Ok(await evaluations.GetByIdAsync(id, ct));
+
     [HttpPost]
     [RequirePermission("wms.suppliers.create")]
     public async Task<ActionResult<SupplierEvaluationDto>> Create(

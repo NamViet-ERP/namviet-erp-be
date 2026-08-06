@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using NamViet.ERP.Api.Application.Dtos.Purchasing;
 using NamViet.ERP.Modules.Warehouse.Domain.Entities;
+using NamViet.ERP.Modules.Warehouse.Domain.SupplierEvaluation;
 using NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence;
 
 namespace NamViet.ERP.Api.Application.Services.Purchasing;
@@ -64,8 +65,8 @@ public sealed class SupplierContactService(WarehouseDbContext db) : ISupplierCon
         {
             SupplierId = supplier.Id,
             FullName = RequireName(request.FullName),
-            Position = Trim(request.Position),
-            Phone = Trim(request.Phone),
+            Position = RequirePosition(request.Position),
+            Phone = NormalizePhone(request.Phone),
             Email = ValidateEmail(request.Email),
             Note = Trim(request.Note),
             IsPrimary = request.IsPrimary,
@@ -90,8 +91,8 @@ public sealed class SupplierContactService(WarehouseDbContext db) : ISupplierCon
 
         contact.SupplierId = supplier.Id;
         contact.FullName = RequireName(request.FullName);
-        contact.Position = Trim(request.Position);
-        contact.Phone = Trim(request.Phone);
+        contact.Position = RequirePosition(request.Position);
+        contact.Phone = NormalizePhone(request.Phone);
         contact.Email = ValidateEmail(request.Email);
         contact.Note = Trim(request.Note);
         contact.IsPrimary = request.IsPrimary;
@@ -141,11 +142,35 @@ public sealed class SupplierContactService(WarehouseDbContext db) : ISupplierCon
         return value;
     }
 
+    private static string? RequirePosition(string? position)
+    {
+        var value = Trim(position);
+        if (value is null)
+            return null;
+        if (value.Length > 150)
+            throw new PurchasingConflictException("Chức vụ tối đa 150 ký tự.");
+        return value;
+    }
+
+    private static string? NormalizePhone(string? phone)
+    {
+        try
+        {
+            return VietnamPhoneRules.NormalizeOptional(phone);
+        }
+        catch (ArgumentException ex)
+        {
+            throw new PurchasingConflictException(ex.Message);
+        }
+    }
+
     private static string? ValidateEmail(string? email)
     {
         var value = Trim(email);
         if (value is null)
             return null;
+        if (value.Length > 255)
+            throw new PurchasingConflictException("Email tối đa 255 ký tự.");
         if (!value.Contains('@') || value.StartsWith('@') || value.EndsWith('@'))
             throw new PurchasingConflictException($"Email '{value}' không hợp lệ.");
         return value;

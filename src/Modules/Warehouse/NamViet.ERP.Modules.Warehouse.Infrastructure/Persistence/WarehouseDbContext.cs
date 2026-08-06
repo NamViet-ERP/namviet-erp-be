@@ -152,7 +152,11 @@ public class WarehouseDbContext(DbContextOptions<WarehouseDbContext> options) : 
             e.Property(s => s.SupplierName).HasMaxLength(255).IsRequired();
             e.Property(s => s.ContactPhone).HasMaxLength(50);
             e.Property(s => s.PaymentTerms).HasMaxLength(500);
-            e.Property(s => s.Rating).HasMaxLength(10).HasDefaultValue("A");
+            e.Property(s => s.Rating).HasMaxLength(10).HasDefaultValue("—");
+            e.Property(s => s.IsBlacklisted).HasDefaultValue(false);
+            e.Property(s => s.BlacklistedByName).HasMaxLength(200);
+            e.Property(s => s.BlacklistReason).HasMaxLength(1000);
+            e.HasIndex(s => s.IsBlacklisted);
             e.HasQueryFilter(s => s.DeletedAt == null);
         });
 
@@ -201,9 +205,7 @@ public class WarehouseDbContext(DbContextOptions<WarehouseDbContext> options) : 
             e.Property(v => v.SupplierNameSnapshot).HasMaxLength(255);
             e.Property(v => v.Period).HasMaxLength(30).IsRequired();
             e.Property(v => v.Score).HasColumnType("numeric(5,2)");
-            e.Property(v => v.OnTimeDeliveryRate).HasColumnType("numeric(5,2)");
-            e.Property(v => v.DefectRate).HasColumnType("numeric(5,2)");
-            e.Property(v => v.WarrantyCompletionRate).HasColumnType("numeric(5,2)");
+            e.Property(v => v.CriteriaScores).HasColumnType("jsonb").IsRequired();
             e.Property(v => v.Grade).HasMaxLength(10).IsRequired();
             e.Property(v => v.Note).HasMaxLength(2000);
             e.Property(v => v.EvaluatedByName).HasMaxLength(200);
@@ -222,11 +224,14 @@ public class WarehouseDbContext(DbContextOptions<WarehouseDbContext> options) : 
             e.Property(v => v.SupplierNameSnapshot).HasMaxLength(255);
             e.Property(v => v.PoCode).HasMaxLength(50).IsRequired();
             e.Property(v => v.ImportTicketCode).HasMaxLength(50).IsRequired();
+            e.Property(v => v.ProjectCode).HasMaxLength(50);
             e.Property(v => v.Status).HasMaxLength(20).IsRequired();
+            e.Property(v => v.Quality).HasColumnType("numeric(4,2)");
+            e.Property(v => v.Delivery).HasColumnType("numeric(4,2)");
+            e.Property(v => v.Price).HasColumnType("numeric(4,2)");
+            e.Property(v => v.Service).HasColumnType("numeric(4,2)");
+            e.Property(v => v.Compliance).HasColumnType("numeric(4,2)");
             e.Property(v => v.Score).HasColumnType("numeric(5,2)");
-            e.Property(v => v.OnTimeDeliveryRate).HasColumnType("numeric(5,2)");
-            e.Property(v => v.DefectRate).HasColumnType("numeric(5,2)");
-            e.Property(v => v.WarrantyCompletionRate).HasColumnType("numeric(5,2)");
             e.Property(v => v.Grade).HasMaxLength(10);
             e.Property(v => v.Note).HasMaxLength(2000);
             e.Property(v => v.EvaluatedByName).HasMaxLength(200);

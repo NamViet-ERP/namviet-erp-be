@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using NamViet.ERP.Api.Application.Dtos.Purchasing;
 using NamViet.ERP.Modules.Warehouse.Domain;
 using NamViet.ERP.Modules.Warehouse.Domain.Entities;
+using NamViet.ERP.Modules.Warehouse.Domain.SupplierEvaluation;
 using NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence;
 
 namespace NamViet.ERP.Api.Application.Services.Purchasing;
@@ -22,14 +23,14 @@ public interface ISupplierModuleSettingsService
 public sealed class SupplierModuleSettingsService(WarehouseDbContext db) : ISupplierModuleSettingsService
 {
     public static readonly SupplierModuleSettingsDto Defaults = new(
-        GradeAMinScore: 90m,
-        GradeBMinScore: 80m,
-        GradeCMinScore: 70m,
-        GradeDMinScore: 60m,
-        GradeEMinScore: 50m,
-        GradeFMinScore: 40m,
-        GradeGMinScore: 30m,
-        GradeHMinScore: 20m,
+        GradeAMinScore: OrderGradeThresholdDefaults.A,
+        GradeBMinScore: OrderGradeThresholdDefaults.B,
+        GradeCMinScore: OrderGradeThresholdDefaults.C,
+        GradeDMinScore: OrderGradeThresholdDefaults.D,
+        GradeEMinScore: OrderGradeThresholdDefaults.E,
+        GradeFMinScore: OrderGradeThresholdDefaults.F,
+        GradeGMinScore: OrderGradeThresholdDefaults.G,
+        GradeHMinScore: OrderGradeThresholdDefaults.H,
         EvaluationCycle: SupplierEvaluationCycles.Quarterly,
         GroupRequired: false);
 
@@ -46,13 +47,24 @@ public sealed class SupplierModuleSettingsService(WarehouseDbContext db) : ISupp
         try
         {
             var parsed = JsonSerializer.Deserialize<SupplierModuleSettingsDto>(row.Value, JsonOptions);
-            return CoalesceLegacy(parsed) ?? Defaults;
+            return NormalizeScale(CoalesceLegacy(parsed)) ?? Defaults;
         }
         catch (JsonException)
         {
             // Giá trị hỏng không được làm sập trang thiết lập.
             return Defaults;
         }
+    }
+
+    /// <summary>
+    /// JSON cũ dùng thang 0–100 — chuyển sang default thang 0–10 khi phát hiện A &gt; 10.
+    /// </summary>
+    private static SupplierModuleSettingsDto? NormalizeScale(SupplierModuleSettingsDto? d)
+    {
+        if (d is null) return null;
+        if (d.GradeAMinScore > 10m)
+            return Defaults;
+        return d;
     }
 
     public async Task<SupplierModuleSettingsDto> UpdateAsync(
@@ -73,8 +85,8 @@ public sealed class SupplierModuleSettingsService(WarehouseDbContext db) : ISupp
             request.GradeGMinScore,
             request.GradeHMinScore,
         };
-        if (thresholds.Any(t => t is < 0 or > 100))
-            throw new PurchasingConflictException("Ngưỡng điểm phải nằm trong khoảng 0–100.");
+        if (thresholds.Any(t => t is < 0 or > 10))
+            throw new PurchasingConflictException("Ngưỡng điểm phải nằm trong khoảng 0–10 (thang đánh giá theo đơn hàng).");
         for (var i = 0; i < thresholds.Length - 1; i++)
         {
             if (thresholds[i] <= thresholds[i + 1])

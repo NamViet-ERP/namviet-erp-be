@@ -50,6 +50,7 @@ public record UpsertSupplierContactRequest(
     string? Note,
     bool IsPrimary);
 
+/// <summary>Đánh giá KPI định kỳ — score/grade do BE tính từ criteriaScores.</summary>
 public record SupplierEvaluationDto(
     int Id,
     int SupplierId,
@@ -57,10 +58,9 @@ public record SupplierEvaluationDto(
     string Period,
     decimal Score,
     string Grade,
+    string GradeLabel,
     DateOnly EvaluatedAt,
-    decimal OnTimeDeliveryRate,
-    decimal DefectRate,
-    decimal WarrantyCompletionRate,
+    IReadOnlyDictionary<string, int> CriteriaScores,
     string? Note,
     string? EvaluatedByName);
 
@@ -71,14 +71,11 @@ public record SupplierEvaluationPagedResponse(
     int PageSize,
     int TotalPages);
 
-/// <summary>Xếp hạng không nhận từ client — luôn suy ra từ Score và ngưỡng trong thiết lập.</summary>
+/// <summary>Client chỉ gửi tiêu chí; Score/Grade không nhận từ client.</summary>
 public record UpsertSupplierEvaluationRequest(
     int SupplierId,
     string Period,
-    decimal Score,
-    decimal OnTimeDeliveryRate,
-    decimal DefectRate,
-    decimal WarrantyCompletionRate,
+    IReadOnlyDictionary<string, int> CriteriaScores,
     DateOnly? EvaluatedAt,
     string? Note);
 
@@ -89,15 +86,19 @@ public record SupplierDeliveryEvaluationDto(
     string SupplierName,
     string PoCode,
     string ImportTicketCode,
+    string? ProjectCode,
     DateTime ReceivedAt,
     DateTime DueAt,
     string Status,
     bool IsOverdue,
+    decimal? Quality,
+    decimal? Delivery,
+    decimal? Price,
+    decimal? Service,
+    decimal? Compliance,
     decimal? Score,
     string? Grade,
-    decimal? OnTimeDeliveryRate,
-    decimal? DefectRate,
-    decimal? WarrantyCompletionRate,
+    string? GradeLabel,
     string? Note,
     string? EvaluatedByName,
     DateOnly? EvaluatedAt);
@@ -109,11 +110,13 @@ public record SupplierDeliveryEvaluationPagedResponse(
     int PageSize,
     int TotalPages);
 
+/// <summary>Hoàn thành đánh giá — chỉ 5 tiêu chí 1–10; Score/Grade do BE tính.</summary>
 public record CompleteSupplierDeliveryEvaluationRequest(
-    decimal Score,
-    decimal OnTimeDeliveryRate,
-    decimal DefectRate,
-    decimal WarrantyCompletionRate,
+    decimal Quality,
+    decimal Delivery,
+    decimal Price,
+    decimal Service,
+    decimal Compliance,
     DateOnly? EvaluatedAt,
     string? Note);
 
@@ -140,3 +143,15 @@ public record UpdateSupplierModuleSettingsRequest(
     decimal GradeHMinScore,
     string EvaluationCycle,
     bool GroupRequired);
+
+public record BlacklistSupplierRequest(string Reason);
+
+public record SupplierBlacklistDto(
+    int Id,
+    string SupplierCode,
+    string SupplierName,
+    string? ContactPhone,
+    string Rating,
+    DateTime BlacklistedAt,
+    string? BlacklistedByName,
+    string? BlacklistReason);

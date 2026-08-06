@@ -1,8 +1,11 @@
+using NamViet.ERP.Modules.Warehouse.Domain.SupplierEvaluation;
 using NamViet.ERP.SharedKernel.Entities;
 
 namespace NamViet.ERP.Modules.Warehouse.Domain.Entities;
 
-/// <summary>Đánh giá nhà cung cấp theo kỳ. Xếp hạng suy ra từ điểm + ngưỡng trong thiết lập.</summary>
+/// <summary>
+/// Đánh giá nhà cung cấp định kỳ (KPI). Điểm/hạng suy ra từ 30 tiêu chí (thang 1–5).
+/// </summary>
 public class SupplierEvaluation : BaseEntity
 {
     public int Id { get; set; }
@@ -12,12 +15,19 @@ public class SupplierEvaluation : BaseEntity
     /// <summary>Kỳ đánh giá, ví dụ "Q2/2026" hoặc "2026".</summary>
     public string Period { get; set; } = string.Empty;
 
+    /// <summary>Điểm tổng (trung bình 5 nhóm), thang 1–5 — BE tính, không nhận từ client.</summary>
     public decimal Score { get; set; }
-    public string Grade { get; set; } = SupplierGrades.C;
+
+    /// <summary>Hạng KPI A–D — BE tính.</summary>
+    public string Grade { get; set; } = SupplierKpiGrades.C;
+
     public DateOnly EvaluatedAt { get; set; }
-    public decimal OnTimeDeliveryRate { get; set; }
-    public decimal DefectRate { get; set; }
-    public decimal WarrantyCompletionRate { get; set; }
+
+    /// <summary>
+    /// Điểm từng tiêu chí: key <c>flex_0</c>… theo <see cref="KpiCriteriaCatalog"/>.
+    /// </summary>
+    public Dictionary<string, int> CriteriaScores { get; set; } = new(StringComparer.Ordinal);
+
     public string? Note { get; set; }
 
     public Guid? EvaluatedById { get; set; }
@@ -26,6 +36,7 @@ public class SupplierEvaluation : BaseEntity
     public Supplier? Supplier { get; set; }
 }
 
+/// <summary>Hạng hồ sơ NCC / đánh giá theo đơn hàng (A–H), map từ điểm trung bình thang 0–10.</summary>
 public static class SupplierGrades
 {
     public const string A = "A";
@@ -37,12 +48,11 @@ public static class SupplierGrades
     public const string G = "G";
     public const string H = "H";
 
+    /// <summary>Chưa có đánh giá đơn hàng hoàn thành.</summary>
+    public const string Unrated = "—";
+
     public static readonly string[] All = [A, B, C, D, E, F, G, H];
 
-    /// <summary>
-    /// Điểm càng cao hạng càng tốt. So khớp ngưỡng theo thứ tự A→H;
-    /// dưới ngưỡng H vẫn xếp hạng H (hạng thấp nhất).
-    /// </summary>
     public static string FromScore(
         decimal score,
         decimal gradeAMinScore,
@@ -52,18 +62,17 @@ public static class SupplierGrades
         decimal gradeEMinScore,
         decimal gradeFMinScore,
         decimal gradeGMinScore,
-        decimal gradeHMinScore)
-    {
-        if (score >= gradeAMinScore) return A;
-        if (score >= gradeBMinScore) return B;
-        if (score >= gradeCMinScore) return C;
-        if (score >= gradeDMinScore) return D;
-        if (score >= gradeEMinScore) return E;
-        if (score >= gradeFMinScore) return F;
-        if (score >= gradeGMinScore) return G;
-        if (score >= gradeHMinScore) return H;
-        return H;
-    }
+        decimal gradeHMinScore) =>
+        SupplierGradeMapper.FromOrderScore(
+            score,
+            gradeAMinScore,
+            gradeBMinScore,
+            gradeCMinScore,
+            gradeDMinScore,
+            gradeEMinScore,
+            gradeFMinScore,
+            gradeGMinScore,
+            gradeHMinScore);
 }
 
 public static class SupplierEvaluationCycles

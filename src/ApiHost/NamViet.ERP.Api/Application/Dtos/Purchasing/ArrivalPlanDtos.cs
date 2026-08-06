@@ -31,6 +31,8 @@ public record ArrivalPlanProjectDto(
 public record ArrivalPlanListResponse(
     int DaysAhead,
     int OverdueLookbackDays,
+    /// <summary>Ngày «hôm nay» theo giờ Việt Nam — mốc realtime cho filter.</summary>
+    DateOnly AsOfDate,
     DateOnly WindowFrom,
     DateOnly WindowTo,
     IReadOnlyList<ArrivalPlanProjectDto> Projects);

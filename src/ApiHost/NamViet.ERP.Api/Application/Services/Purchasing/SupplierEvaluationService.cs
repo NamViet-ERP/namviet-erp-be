@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using NamViet.ERP.Api.Application.Dtos.Purchasing;
 using NamViet.ERP.Modules.Warehouse.Domain.Entities;
+using NamViet.ERP.Modules.Warehouse.Domain.SupplierEvaluation;
 using NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence;
 using NamViet.ERP.SharedKernel.Interfaces;
 
@@ -11,6 +12,8 @@ public interface ISupplierEvaluationService
     Task<SupplierEvaluationPagedResponse> ListAsync(
         int? supplierId, string? period, string? search, int page, int pageSize,
         CancellationToken ct = default);
+
+    Task<SupplierEvaluationDto> GetByIdAsync(int id, CancellationToken ct = default);
 
     Task<SupplierEvaluationDto> CreateAsync(
         UpsertSupplierEvaluationRequest request, CancellationToken ct = default);
@@ -23,7 +26,6 @@ public interface ISupplierEvaluationService
 
 public sealed class SupplierEvaluationService(
     WarehouseDbContext db,
-    ISupplierModuleSettingsService settings,
     ICurrentUser currentUser) : ISupplierEvaluationService
 {
     public async Task<SupplierEvaluationPagedResponse> ListAsync(
@@ -53,20 +55,45 @@ public sealed class SupplierEvaluationService(
         }
 
         var total = await query.CountAsync(ct);
-        var items = await query
+        var rows = await query
             .OrderByDescending(v => v.EvaluatedAt)
             .ThenByDescending(v => v.Id)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
-            .Select(v => new SupplierEvaluationDto(
-                v.Id, v.SupplierId, v.Supplier!.SupplierName, v.Period,
-                v.Score, v.Grade, v.EvaluatedAt,
-                v.OnTimeDeliveryRate, v.DefectRate, v.WarrantyCompletionRate,
-                v.Note, v.EvaluatedByName))
             .ToListAsync(ct);
+
+        var items = rows.Select(v => ToDto(v, v.Supplier?.SupplierName ?? v.SupplierNameSnapshot ?? string.Empty)).ToList();
+
+        // Supplier nav may be null with AsNoTracking without Include — reload names.
+        if (items.Exists(i => string.IsNullOrEmpty(i.SupplierName)))
+        {
+            var ids = rows.Select(r => r.SupplierId).Distinct().ToArray();
+            var names = await db.Suppliers.AsNoTracking()
+                .Where(s => ids.Contains(s.Id))
+                .ToDictionaryAsync(s => s.Id, s => s.SupplierName, ct);
+            items = rows.Select(v => ToDto(
+                v,
+                names.GetValueOrDefault(v.SupplierId, v.SupplierNameSnapshot ?? string.Empty))).ToList();
+        }
 
         return new SupplierEvaluationPagedResponse(
             items, total, page, pageSize, (int)Math.Ceiling(total / (double)pageSize));
+    }
+
+    public async Task<SupplierEvaluationDto> GetByIdAsync(int id, CancellationToken ct = default)
+    {
+        var evaluation = await db.SupplierEvaluations.AsNoTracking()
+            .FirstOrDefaultAsync(v => v.Id == id, ct)
+            ?? throw new KeyNotFoundException($"Không tìm thấy đánh giá NCC #{id}.");
+
+        var name = await db.Suppliers.AsNoTracking()
+            .Where(s => s.Id == evaluation.SupplierId)
+            .Select(s => s.SupplierName)
+            .FirstOrDefaultAsync(ct)
+            ?? evaluation.SupplierNameSnapshot
+            ?? string.Empty;
+
+        return ToDto(evaluation, name);
     }
 
     public async Task<SupplierEvaluationDto> CreateAsync(
@@ -76,10 +103,7 @@ public sealed class SupplierEvaluationService(
             ?? throw new KeyNotFoundException($"Không tìm thấy nhà cung cấp #{request.SupplierId}.");
 
         var period = RequirePeriod(request.Period);
-        var score = RequireScore(request.Score);
-        var onTimeDeliveryRate = RequireRate(request.OnTimeDeliveryRate, "Tỷ lệ giao hàng đúng hạn");
-        var defectRate = RequireRate(request.DefectRate, "Tỷ lệ hàng lỗi");
-        var warrantyCompletionRate = RequireRate(request.WarrantyCompletionRate, "Tỷ lệ hoàn thành bảo hành");
+        var (score, grade, criteria) = ComputeFromCriteria(request.CriteriaScores);
 
         if (await db.SupplierEvaluations
                 .AnyAsync(v => v.SupplierId == supplier.Id && v.Period == period, ct))
@@ -92,11 +116,9 @@ public sealed class SupplierEvaluationService(
             SupplierNameSnapshot = supplier.SupplierName,
             Period = period,
             Score = score,
-            Grade = await ResolveGradeAsync(score, ct),
+            Grade = grade,
+            CriteriaScores = criteria,
             EvaluatedAt = request.EvaluatedAt ?? DateOnly.FromDateTime(DateTime.UtcNow),
-            OnTimeDeliveryRate = onTimeDeliveryRate,
-            DefectRate = defectRate,
-            WarrantyCompletionRate = warrantyCompletionRate,
             Note = Trim(request.Note),
             EvaluatedById = currentUser.IsAuthenticated ? currentUser.Id : null,
             EvaluatedByName = currentUser.IsAuthenticated ? currentUser.Name : null,
@@ -118,10 +140,7 @@ public sealed class SupplierEvaluationService(
             ?? throw new KeyNotFoundException($"Không tìm thấy nhà cung cấp #{request.SupplierId}.");
 
         var period = RequirePeriod(request.Period);
-        var score = RequireScore(request.Score);
-        var onTimeDeliveryRate = RequireRate(request.OnTimeDeliveryRate, "Tỷ lệ giao hàng đúng hạn");
-        var defectRate = RequireRate(request.DefectRate, "Tỷ lệ hàng lỗi");
-        var warrantyCompletionRate = RequireRate(request.WarrantyCompletionRate, "Tỷ lệ hoàn thành bảo hành");
+        var (score, grade, criteria) = ComputeFromCriteria(request.CriteriaScores);
 
         if (await db.SupplierEvaluations
                 .AnyAsync(v => v.Id != id && v.SupplierId == supplier.Id && v.Period == period, ct))
@@ -132,11 +151,9 @@ public sealed class SupplierEvaluationService(
         evaluation.SupplierNameSnapshot = supplier.SupplierName;
         evaluation.Period = period;
         evaluation.Score = score;
-        evaluation.Grade = await ResolveGradeAsync(score, ct);
+        evaluation.Grade = grade;
+        evaluation.CriteriaScores = criteria;
         evaluation.EvaluatedAt = request.EvaluatedAt ?? evaluation.EvaluatedAt;
-        evaluation.OnTimeDeliveryRate = onTimeDeliveryRate;
-        evaluation.DefectRate = defectRate;
-        evaluation.WarrantyCompletionRate = warrantyCompletionRate;
         evaluation.Note = Trim(request.Note);
         evaluation.UpdatedAt = DateTime.UtcNow;
 
@@ -153,26 +170,38 @@ public sealed class SupplierEvaluationService(
         await db.SaveChangesAsync(ct);
     }
 
-    private async Task<string> ResolveGradeAsync(decimal score, CancellationToken ct)
+    private static (decimal Score, string Grade, Dictionary<string, int> Criteria) ComputeFromCriteria(
+        IReadOnlyDictionary<string, int>? raw)
     {
-        var config = await settings.GetAsync(ct);
-        return SupplierGrades.FromScore(
-            score,
-            config.GradeAMinScore,
-            config.GradeBMinScore,
-            config.GradeCMinScore,
-            config.GradeDMinScore,
-            config.GradeEMinScore,
-            config.GradeFMinScore,
-            config.GradeGMinScore,
-            config.GradeHMinScore);
+        if (raw is null || raw.Count == 0)
+            throw new PurchasingConflictException("Phải nhập đủ điểm 30 tiêu chí KPI.");
+
+        var copy = raw.ToDictionary(kv => kv.Key, kv => kv.Value, StringComparer.Ordinal);
+        try
+        {
+            var result = KpiEvaluationScoring.Compute(copy);
+            var grade = SupplierGradeMapper.FromKpiScore(result.OverallScore);
+            return (result.OverallScore, grade, copy);
+        }
+        catch (ArgumentException ex)
+        {
+            throw new PurchasingConflictException(ex.Message);
+        }
     }
 
     private static SupplierEvaluationDto ToDto(SupplierEvaluation v, string supplierName) =>
-        new(v.Id, v.SupplierId, supplierName, v.Period,
-            v.Score, v.Grade, v.EvaluatedAt,
-            v.OnTimeDeliveryRate, v.DefectRate, v.WarrantyCompletionRate,
-            v.Note, v.EvaluatedByName);
+        new(
+            v.Id,
+            v.SupplierId,
+            supplierName,
+            v.Period,
+            v.Score,
+            v.Grade,
+            SupplierGradeMapper.KpiGradeLabel(v.Grade),
+            v.EvaluatedAt,
+            v.CriteriaScores ?? new Dictionary<string, int>(StringComparer.Ordinal),
+            v.Note,
+            v.EvaluatedByName);
 
     private static string RequirePeriod(string? period)
     {
@@ -182,20 +211,6 @@ public sealed class SupplierEvaluationService(
         if (value.Length > 30)
             throw new PurchasingConflictException("Kỳ đánh giá tối đa 30 ký tự.");
         return value;
-    }
-
-    private static decimal RequireScore(decimal score)
-    {
-        if (score is < 0 or > 100)
-            throw new PurchasingConflictException("Điểm đánh giá phải nằm trong khoảng 0–100.");
-        return Math.Round(score, 2);
-    }
-
-    private static decimal RequireRate(decimal rate, string fieldName)
-    {
-        if (rate is < 0 or > 100)
-            throw new PurchasingConflictException($"{fieldName} phải nằm trong khoảng 0–100%.");
-        return Math.Round(rate, 2);
     }
 
     private static string? Trim(string? value) =>

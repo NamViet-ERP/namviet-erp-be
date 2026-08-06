@@ -3,6 +3,7 @@ using NamViet.ERP.Api.Application.Dtos.Purchasing;
 using NamViet.ERP.Api.Application.Mappers.Purchasing;
 using NamViet.ERP.Api.Application.Services.Shared;
 using NamViet.ERP.Modules.Warehouse.Domain.Entities;
+using NamViet.ERP.Modules.Warehouse.Domain.SupplierEvaluation;
 using NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence;
 using NamViet.ERP.SharedKernel.Interfaces;
 
@@ -782,6 +783,15 @@ public sealed class PurchasePlanService(
 
         if (src.Quantity <= 0)
             throw new PurchasingConflictException("Quantity phải > 0.");
+
+        if (src.BudgetUnitPrice is decimal budgetPrice)
+        {
+            if (budgetPrice < 0)
+                throw new PurchasingConflictException("Đơn giá dự toán không được âm.");
+            if (budgetPrice > PurchasingMoneyLimits.MaxUnitPrice)
+                throw new PurchasingConflictException(
+                    $"Đơn giá dự toán không được vượt {PurchasingMoneyLimits.MaxUnitPrice:N0} đ.");
+        }
 
         var line = new PurchasePlanLine
         {

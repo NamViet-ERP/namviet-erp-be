@@ -7,6 +7,7 @@ using NamViet.ERP.Api.Infrastructure.Authorization;
 using NamViet.ERP.Modules.Warehouse.Domain.Entities;
 using NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence;
 using NamViet.ERP.SharedKernel.Interfaces;
+using NamViet.ERP.SharedKernel.Time;
 
 namespace NamViet.ERP.Api.Controllers.Purchasing;
 
@@ -36,7 +37,7 @@ public class ArrivalPlansController(
     {
         daysAhead = Math.Clamp(daysAhead, 0, 90);
         overdueLookbackDays = Math.Clamp(overdueLookbackDays, 0, 180);
-        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var today = VietnamClock.Today;
         var windowFrom = today.AddDays(-overdueLookbackDays);
         var windowTo = today.AddDays(daysAhead);
         var canViewPrices = currentUser.HasPermission("wms.prices.view")
@@ -63,7 +64,7 @@ public class ArrivalPlansController(
         {
             if (scoped.Count == 0)
             {
-                return Ok(new ArrivalPlanListResponse(daysAhead, overdueLookbackDays, windowFrom, windowTo, []));
+                return Ok(new ArrivalPlanListResponse(daysAhead, overdueLookbackDays, today, windowFrom, windowTo, []));
             }
 
             query = query.Where(l => scoped.Contains(l.Plan!.ProjectCode));
@@ -137,6 +138,6 @@ public class ArrivalPlansController(
             .ThenBy(p => p.ProjectCode)
             .ToList();
 
-        return Ok(new ArrivalPlanListResponse(daysAhead, overdueLookbackDays, windowFrom, windowTo, projects));
+        return Ok(new ArrivalPlanListResponse(daysAhead, overdueLookbackDays, today, windowFrom, windowTo, projects));
     }
 }
