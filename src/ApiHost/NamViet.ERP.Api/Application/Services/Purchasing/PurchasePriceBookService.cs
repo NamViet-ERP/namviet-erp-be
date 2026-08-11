@@ -271,7 +271,8 @@ public sealed class PurchasePriceBookService(
                 po.Code,
                 po.ProjectCode,
                 item.Ordered * item.PoPrice,
-                "po")
+                "po",
+                null)
         ).ToListAsync(ct);
 
         var livePlanStatuses = new[]
