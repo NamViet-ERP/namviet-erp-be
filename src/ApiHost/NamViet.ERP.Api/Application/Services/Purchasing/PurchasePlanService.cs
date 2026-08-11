@@ -420,6 +420,7 @@ public sealed class PurchasePlanService(
         plan.L2ApprovedByName = currentUser.IsAuthenticated ? currentUser.Name : null;
         plan.L2ApprovedAt = now;
         plan.UpdatedAt = now;
+        await MaterialCeilingSync.ApplyFromPlanAsync(db, code, ct);
         await db.SaveChangesAsync(ct);
 
         await activity.WriteAsync(new ActivityEventWriteRequest(

@@ -288,7 +288,7 @@ public static class RolePermissionTemplates
         ..ProcurementPermissions,
         "purchasing.plans.approve_l1",
         "purchasing.plans.reject",
-        "purchasing.estimates.approve",
+        "purchasing.estimates.approve_l1",
     ];
 
     /** Sếp: xem mua hàng + duyệt L2 + từ chối. */
@@ -300,7 +300,7 @@ public static class RolePermissionTemplates
         ..PurchasingViewOnlyPermissions,
         "purchasing.plans.approve_l2",
         "purchasing.plans.reject",
-        "purchasing.estimates.approve",
+        "purchasing.estimates.approve_l2",
         ..WmsViewOnlyPermissions,
     ];
 

@@ -688,6 +688,7 @@ public class WarehouseDbContext(DbContextOptions<WarehouseDbContext> options) : 
             e.Property(x => x.ConvertedPlanCode).HasMaxLength(30);
             e.Property(x => x.CreatedByName).HasMaxLength(200).IsRequired();
             e.Property(x => x.UpdatedByName).HasMaxLength(200).IsRequired();
+            e.Property(x => x.ShareTokenExpiresAt);
             e.HasIndex(x => x.Code).IsUnique().HasFilter("\"DeletedAt\" IS NULL");
             e.HasIndex(x => x.ProjectCode);
             e.HasIndex(x => x.ShareToken).IsUnique().HasFilter("\"ShareToken\" IS NOT NULL");

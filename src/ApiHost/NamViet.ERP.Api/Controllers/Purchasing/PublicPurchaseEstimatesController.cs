@@ -17,8 +17,15 @@ public class PublicPurchaseEstimatesController(IPurchaseEstimateService estimate
     public async Task<ActionResult<PublicPurchaseEstimateDto>> Get(string token, CancellationToken ct)
     {
         if (!TryParseToken(token, out var id)) return NotFound();
-        var row = await estimates.GetPublicAsync(id, ct);
-        return row is null ? NotFound() : Ok(row);
+        try
+        {
+            var row = await estimates.GetPublicAsync(id, ct);
+            return row is null ? NotFound() : Ok(row);
+        }
+        catch (PurchasingConflictException ex)
+        {
+            return Conflict(ex.Message);
+        }
     }
 
     [HttpPost("{token}/submit")]

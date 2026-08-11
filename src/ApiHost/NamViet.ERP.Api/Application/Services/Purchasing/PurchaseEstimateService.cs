@@ -25,12 +25,17 @@ public interface IPurchaseEstimateService
 
     Task<PurchaseEstimateShareLinkDto?> ShareLinkAsync(Guid id, CancellationToken ct = default);
 
+    Task<PurchaseEstimateDetailDto?> RevokeShareLinkAsync(Guid id, CancellationToken ct = default);
+
     Task<PurchaseEstimateDetailDto?> MarkReviewedAsync(Guid id, CancellationToken ct = default);
 
     Task<PurchaseEstimateDetailDto?> SubmitForApprovalAsync(Guid id, CancellationToken ct = default);
 
-    Task<PurchaseEstimateDetailDto?> DecideApprovalAsync(
-        Guid id, DecidePurchaseEstimateApprovalRequest request, CancellationToken ct = default);
+    Task<PurchaseEstimateDetailDto?> ApproveLevelAsync(
+        Guid id, int level, string? note, CancellationToken ct = default);
+
+    Task<PurchaseEstimateDetailDto?> RejectAsync(
+        Guid id, RejectPurchaseEstimateRequest request, CancellationToken ct = default);
 
     Task<ConvertPurchaseEstimateResult?> ConvertToPlanAsync(Guid id, CancellationToken ct = default);
 
@@ -52,6 +57,8 @@ public sealed class PurchaseEstimateService(
         (1, "Trưởng nhóm Mua hàng"),
         (2, "Trưởng phòng Cung ứng"),
     ];
+
+    private static readonly TimeSpan ShareLinkTtl = TimeSpan.FromDays(7);
 
     public async Task<PurchaseEstimatePagedResponse> ListAsync(
         int page, int pageSize, string? projectCode, string? search, CancellationToken ct = default)
@@ -188,12 +195,27 @@ public sealed class PurchaseEstimateService(
             && header.Status != PurchaseEstimateStatuses.Submitted)
             throw new PurchasingConflictException("Không lấy link khi dự toán đã khóa điền.");
 
-        header.ShareToken ??= Guid.NewGuid();
+        header.ShareToken = Guid.NewGuid();
+        header.ShareTokenExpiresAt = DateTime.UtcNow.Add(ShareLinkTtl);
         if (header.Status == PurchaseEstimateStatuses.Draft)
             header.Status = PurchaseEstimateStatuses.Shared;
         Touch(header);
         await db.SaveChangesAsync(ct);
-        return new PurchaseEstimateShareLinkDto(header.ShareToken.Value.ToString("N"), $"/estimates/fill/{header.ShareToken.Value:N}");
+        return new PurchaseEstimateShareLinkDto(
+            header.ShareToken.Value.ToString("N"),
+            $"/estimates/fill/{header.ShareToken.Value:N}",
+            header.ShareTokenExpiresAt.Value);
+    }
+
+    public async Task<PurchaseEstimateDetailDto?> RevokeShareLinkAsync(Guid id, CancellationToken ct = default)
+    {
+        var header = await db.PurchaseEstimates.FirstOrDefaultAsync(e => e.Id == id, ct);
+        if (header is null) return null;
+        header.ShareToken = null;
+        header.ShareTokenExpiresAt = null;
+        Touch(header);
+        await db.SaveChangesAsync(ct);
+        return await GetByIdAsync(id, null, ct);
     }
 
     public async Task<PurchaseEstimateDetailDto?> MarkReviewedAsync(Guid id, CancellationToken ct = default)
@@ -242,8 +264,37 @@ public sealed class PurchaseEstimateService(
         return await GetByIdAsync(id, null, ct);
     }
 
-    public async Task<PurchaseEstimateDetailDto?> DecideApprovalAsync(
-        Guid id, DecidePurchaseEstimateApprovalRequest request, CancellationToken ct = default)
+    public async Task<PurchaseEstimateDetailDto?> ApproveLevelAsync(
+        Guid id, int level, string? note, CancellationToken ct = default)
+    {
+        EnsureCanDecide(level);
+        return await DecideApprovalAsync(id, new DecidePurchaseEstimateApprovalRequest(level, "approved", note), ct);
+    }
+
+    public async Task<PurchaseEstimateDetailDto?> RejectAsync(
+        Guid id, RejectPurchaseEstimateRequest request, CancellationToken ct = default)
+    {
+        var pending = await db.PurchaseEstimateApprovals.AsNoTracking()
+            .Where(a => a.EstimateId == id && a.Status == "pending")
+            .OrderBy(a => a.Level)
+            .FirstOrDefaultAsync(ct)
+            ?? throw new PurchasingConflictException("Không còn cấp nào chờ duyệt.");
+        EnsureCanDecide(pending.Level);
+        return await DecideApprovalAsync(
+            id, new DecidePurchaseEstimateApprovalRequest(pending.Level, "rejected", request.Note), ct);
+    }
+
+    private void EnsureCanDecide(int level)
+    {
+        var key = level <= 1
+            ? "purchasing.estimates.approve_l1"
+            : "purchasing.estimates.approve_l2";
+        if (!currentUser.HasPermission(key))
+            throw new PurchasingConflictException("Bạn không có quyền duyệt cấp này.");
+    }
+
+    private async Task<PurchaseEstimateDetailDto?> DecideApprovalAsync(
+        Guid id, DecidePurchaseEstimateApprovalRequest request, CancellationToken ct)
     {
         var header = await db.PurchaseEstimates.FirstOrDefaultAsync(e => e.Id == id, ct);
         if (header is null) return null;
@@ -370,6 +421,7 @@ public sealed class PurchaseEstimateService(
         var header = await db.PurchaseEstimates.AsNoTracking()
             .FirstOrDefaultAsync(e => e.ShareToken == token, ct);
         if (header is null) return null;
+        EnsureShareTokenAlive(header);
         return await MapPublicAsync(header, ct);
     }
 
@@ -378,6 +430,7 @@ public sealed class PurchaseEstimateService(
     {
         var header = await db.PurchaseEstimates.FirstOrDefaultAsync(e => e.ShareToken == token, ct)
             ?? throw new PurchasingConflictException("Không tìm thấy dự toán.");
+        EnsureShareTokenAlive(header);
         if (!PurchaseEstimateStatuses.CanFill(header.Status))
             throw new PurchasingConflictException("Dự toán này đã được gửi hoặc đã khóa điền.");
 
@@ -574,7 +627,7 @@ public sealed class PurchaseEstimateService(
 
         return new PurchaseEstimateDetailDto(
             header.Id, header.Code, header.ProjectCode, header.Title, header.Status,
-            header.CurrentVersion, viewed, null,
+            header.CurrentVersion, viewed, null, header.ShareTokenExpiresAt,
             header.PreparerName, header.PreparerDate, header.ReviewedByName, header.ReviewedAt,
             header.ConvertedPlanCode,
             header.CreatedAt, header.CreatedByName, header.UpdatedAt, header.UpdatedByName,
@@ -628,6 +681,12 @@ public sealed class PurchaseEstimateService(
             .Select(x => new PublicPurchaseEstimatePreparerDto(
                 x.Id, x.Name, x.Role, WmsMapper.ToClientRoleLabel(x.Role)))
             .ToList();
+    }
+
+    private static void EnsureShareTokenAlive(PurchaseEstimate header)
+    {
+        if (header.ShareTokenExpiresAt is null || header.ShareTokenExpiresAt <= DateTime.UtcNow)
+            throw new PurchasingConflictException("Link điền đã hết hạn. Liên hệ phòng Cung ứng để cấp lại.");
     }
 
     private static string FormatPreparerLabel(PublicPurchaseEstimatePreparerDto p) =>

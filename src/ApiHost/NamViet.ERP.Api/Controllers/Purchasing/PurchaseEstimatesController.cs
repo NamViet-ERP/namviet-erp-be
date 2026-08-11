@@ -77,6 +77,21 @@ public class PurchaseEstimatesController(IPurchaseEstimateService estimates) : C
         }
     }
 
+    [HttpPost("{id:guid}/revoke-share")]
+    [RequirePermission("purchasing.estimates.update")]
+    public async Task<ActionResult<PurchaseEstimateDetailDto>> RevokeShare(Guid id, CancellationToken ct)
+    {
+        try
+        {
+            var row = await estimates.RevokeShareLinkAsync(id, ct);
+            return row is null ? NotFound() : Ok(row);
+        }
+        catch (PurchasingConflictException ex)
+        {
+            return Conflict(ex.Message);
+        }
+    }
+
     [HttpPost("{id:guid}/review")]
     [RequirePermission("purchasing.estimates.update")]
     public async Task<ActionResult<PurchaseEstimateDetailDto>> Review(Guid id, CancellationToken ct)
@@ -107,14 +122,46 @@ public class PurchaseEstimatesController(IPurchaseEstimateService estimates) : C
         }
     }
 
-    [HttpPost("{id:guid}/decide")]
-    [RequirePermission("purchasing.estimates.approve")]
-    public async Task<ActionResult<PurchaseEstimateDetailDto>> Decide(
-        Guid id, [FromBody] DecidePurchaseEstimateApprovalRequest request, CancellationToken ct)
+    [HttpPost("{id:guid}/approve-l1")]
+    [RequirePermission("purchasing.estimates.approve_l1")]
+    public async Task<ActionResult<PurchaseEstimateDetailDto>> ApproveL1(
+        Guid id, [FromBody] RejectPurchaseEstimateRequest? request, CancellationToken ct)
     {
         try
         {
-            var row = await estimates.DecideApprovalAsync(id, request, ct);
+            var row = await estimates.ApproveLevelAsync(id, 1, request?.Note, ct);
+            return row is null ? NotFound() : Ok(row);
+        }
+        catch (PurchasingConflictException ex)
+        {
+            return Conflict(ex.Message);
+        }
+    }
+
+    [HttpPost("{id:guid}/approve-l2")]
+    [RequirePermission("purchasing.estimates.approve_l2")]
+    public async Task<ActionResult<PurchaseEstimateDetailDto>> ApproveL2(
+        Guid id, [FromBody] RejectPurchaseEstimateRequest? request, CancellationToken ct)
+    {
+        try
+        {
+            var row = await estimates.ApproveLevelAsync(id, 2, request?.Note, ct);
+            return row is null ? NotFound() : Ok(row);
+        }
+        catch (PurchasingConflictException ex)
+        {
+            return Conflict(ex.Message);
+        }
+    }
+
+    [HttpPost("{id:guid}/reject")]
+    [RequireAnyPermission("purchasing.estimates.approve_l1", "purchasing.estimates.approve_l2")]
+    public async Task<ActionResult<PurchaseEstimateDetailDto>> Reject(
+        Guid id, [FromBody] RejectPurchaseEstimateRequest? request, CancellationToken ct)
+    {
+        try
+        {
+            var row = await estimates.RejectAsync(id, request ?? new RejectPurchaseEstimateRequest(null), ct);
             return row is null ? NotFound() : Ok(row);
         }
         catch (PurchasingConflictException ex)

@@ -64,6 +64,7 @@ public record PurchaseEstimateDetailDto(
     int CurrentVersion,
     int ViewedVersion,
     Guid? ShareToken,
+    DateTime? ShareExpiresAt,
     string? PreparerName,
     DateTime? PreparerDate,
     string? ReviewedByName,
@@ -96,7 +97,9 @@ public record UpdatePurchaseEstimateRequest(
     string? Title,
     IReadOnlyList<PurchaseEstimateLineInput> Lines);
 
-public record PurchaseEstimateShareLinkDto(string Token, string Path);
+public record PurchaseEstimateShareLinkDto(string Token, string Path, DateTime ExpiresAt);
+
+public record RejectPurchaseEstimateRequest(string? Note);
 
 public record DecidePurchaseEstimateApprovalRequest(int Level, string Decision, string? Note);
 

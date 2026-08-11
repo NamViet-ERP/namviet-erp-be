@@ -12,6 +12,7 @@ public class PurchaseEstimate : BaseEntity
     public int CurrentVersion { get; set; } = 1;
     public string Status { get; set; } = PurchaseEstimateStatuses.Draft;
     public Guid? ShareToken { get; set; }
+    public DateTime? ShareTokenExpiresAt { get; set; }
     public string? PreparerName { get; set; }
     public DateTime? PreparerDate { get; set; }
     public Guid? ReviewedById { get; set; }
