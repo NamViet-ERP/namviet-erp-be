@@ -8,6 +8,7 @@ using NamViet.ERP.Modules.Warehouse.Domain.Entities;
 using NamViet.ERP.Modules.Warehouse.Domain.Enums;
 using NamViet.ERP.Modules.Warehouse.Domain.Services;
 using NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence;
+using NamViet.ERP.SharedKernel.Authorization;
 
 namespace NamViet.ERP.Api.Controllers.Wms;
 
@@ -20,6 +21,7 @@ public class StockController(WarehouseDbContext db, IInventoryDomainService inve
     [RequirePermission("wms.stock.view:all")]
     public async Task<ActionResult<List<StockMatrixRowDto>>> Matrix(CancellationToken ct)
     {
+        var canViewPrices = PriceVisibility.CanViewPrices(User);
         var generalWarehouseId = await inventory.GetGeneralWarehouseIdAsync(ct);
 
         var projectInventories = await db.ProjectInventories.AsNoTracking().ToListAsync(ct);
@@ -126,7 +128,7 @@ public class StockController(WarehouseDbContext db, IInventoryDomainService inve
                 generalActual,
                 generalReserved,
                 generalAvailable,
-                wacByMaterial.GetValueOrDefault(material.MaterialCode),
+                PriceVisibility.Mask(canViewPrices, wacByMaterial.GetValueOrDefault(material.MaterialCode)),
                 defectedByMaterial.GetValueOrDefault(material.MaterialCode),
                 projectColumns));
         }

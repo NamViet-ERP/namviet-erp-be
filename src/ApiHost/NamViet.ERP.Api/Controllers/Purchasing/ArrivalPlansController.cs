@@ -6,6 +6,7 @@ using NamViet.ERP.Api.Application.Services.Wms;
 using NamViet.ERP.Api.Infrastructure.Authorization;
 using NamViet.ERP.Modules.Warehouse.Domain.Entities;
 using NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence;
+using NamViet.ERP.SharedKernel.Authorization;
 using NamViet.ERP.SharedKernel.Interfaces;
 using NamViet.ERP.SharedKernel.Time;
 
@@ -40,8 +41,7 @@ public class ArrivalPlansController(
         var today = VietnamClock.Today;
         var windowFrom = today.AddDays(-overdueLookbackDays);
         var windowTo = today.AddDays(daysAhead);
-        var canViewPrices = currentUser.HasPermission("wms.prices.view")
-            || currentUser.IsInRole("Admin");
+        var canViewPrices = PriceVisibility.CanViewPrices(currentUser);
 
         var statusFilter = string.IsNullOrWhiteSpace(lineStatus) ? null : lineStatus.Trim().ToLowerInvariant();
         if (statusFilter is not null && !ArrivalPlanLineStatuses.All.Contains(statusFilter))

@@ -7,6 +7,7 @@ using NamViet.ERP.Api.Application.Services.Wms;
 using NamViet.ERP.Api.Infrastructure.Authorization;
 using NamViet.ERP.Modules.Warehouse.Domain.Enums;
 using NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence;
+using NamViet.ERP.SharedKernel.Authorization;
 
 namespace NamViet.ERP.Api.Controllers.Wms;
 
@@ -16,6 +17,8 @@ namespace NamViet.ERP.Api.Controllers.Wms;
 [RequirePermission("wms.dashboard.view")]
 public class DashboardController(WarehouseDbContext db, IWmsCatalogQueryService catalog) : ControllerBase
 {
+    private bool CanViewPrices => PriceVisibility.CanViewPrices(User);
+
     [HttpGet("kpi")]
     public async Task<ActionResult<DashboardKpiDto>> Kpi(CancellationToken ct)
     {
@@ -29,7 +32,7 @@ public class DashboardController(WarehouseDbContext db, IWmsCatalogQueryService 
             pi => pi.ActualImportQty - pi.ActualExportQty, ct);
         var warehouseStock = await db.WarehouseInventories.SumAsync(i => i.Qty, ct);
         var totalStock = (int)Math.Round(projectStock + warehouseStock, MidpointRounding.AwayFromZero);
-        var totalValue = await catalog.GetTotalInventoryValueAsync(ct);
+        var totalValue = PriceVisibility.Mask(CanViewPrices, await catalog.GetTotalInventoryValueAsync(ct));
         var today = DateTime.UtcNow.Date;
         var todayTx = await db.WarehouseTransactions.Where(t => t.CreatedAt >= today).ToListAsync(ct);
         return Ok(new DashboardKpiDto(totalStock, totalValue, activeProjects,
@@ -62,7 +65,10 @@ public class DashboardController(WarehouseDbContext db, IWmsCatalogQueryService 
                     && item.Transaction.TransactionType == TransactionType.Export)
                 .SumAsync(item => (decimal?)(item.Quantity * item.UnitPrice), ct) ?? 0m;
 
-            result.Add(new DashboardTrendDto(start.ToString("MM/yyyy"), importValue, exportValue));
+            result.Add(new DashboardTrendDto(
+                start.ToString("MM/yyyy"),
+                PriceVisibility.Mask(CanViewPrices, importValue),
+                PriceVisibility.Mask(CanViewPrices, exportValue)));
         }
 
         return Ok(result);
@@ -129,7 +135,13 @@ public class DashboardController(WarehouseDbContext db, IWmsCatalogQueryService 
             })
             .ToListAsync(ct);
 
-        return Ok(rows.Select(r => new TopProductDto(r.MaterialCode, r.MaterialName, r.Qty, r.Value)).ToList());
+        return Ok(rows
+            .Select(r => new TopProductDto(
+                r.MaterialCode,
+                r.MaterialName,
+                r.Qty,
+                PriceVisibility.Mask(CanViewPrices, r.Value)))
+            .ToList());
     }
 
     [HttpGet("top-materials")]

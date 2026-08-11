@@ -59,6 +59,10 @@ public class PurchaseOrderItem
     public string Unit { get; set; } = string.Empty;
     public string? Note { get; set; }
     public DateOnly? ExpectedDeliveryDate { get; set; }
+    /// <summary>Số tháng bảo hành (0 = không theo dõi BH).</summary>
+    public int WarrantyMonths { get; set; }
+    /// <summary>delivery | acceptance — mốc tính hạn BH.</summary>
+    public string WarrantyAnchorType { get; set; } = "delivery";
 
     public PurchaseOrder PurchaseOrder { get; set; } = null!;
     public PurchasePlanLine? PlanLine { get; set; }
@@ -97,7 +101,7 @@ public class PurchaseOrderAttachment
 {
     public Guid Id { get; set; } = Guid.NewGuid();
     public string PoCode { get; set; } = string.Empty;
-    /// <summary>contract | invoice | co | cq | bbgh | other</summary>
+    /// <summary>contract | invoice | co | cq | bbgh | bbnt | cnxk | tokhai | pl | other</summary>
     public string DocType { get; set; } = "other";
     public string FileName { get; set; } = string.Empty;
     public string StorageKey { get; set; } = string.Empty;
@@ -109,9 +113,23 @@ public class PurchaseOrderAttachment
 
 public static class PurchaseOrderAttachmentDocTypes
 {
+    public const string Contract = "contract";
+    public const string Invoice = "invoice";
+    public const string Co = "co";
+    public const string Cq = "cq";
+    public const string Bbgh = "bbgh";
+    public const string Bbnt = "bbnt";
+    /// <summary>Chứng nhận xuất xưởng.</summary>
+    public const string Cnxk = "cnxk";
+    /// <summary>Tờ khai hải quan.</summary>
+    public const string Tokhai = "tokhai";
+    /// <summary>Packing list.</summary>
+    public const string Pl = "pl";
+    public const string Other = "other";
+
     public static readonly HashSet<string> Allowed = new(StringComparer.OrdinalIgnoreCase)
     {
-        "contract", "invoice", "co", "cq", "bbgh", "bbnt", "other",
+        Contract, Invoice, Co, Cq, Bbgh, Bbnt, Cnxk, Tokhai, Pl, Other,
     };
 }
 

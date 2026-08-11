@@ -158,6 +158,10 @@ builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Purchasing.IPurc
 builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Purchasing.IPurchaseOrderCodeGenerator, NamViet.ERP.Api.Application.Services.Purchasing.PurchaseOrderCodeGenerator>();
 builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Purchasing.IPurchasePlanImportService, NamViet.ERP.Api.Application.Services.Purchasing.PurchasePlanImportService>();
 builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Purchasing.IPurchasePlanService, NamViet.ERP.Api.Application.Services.Purchasing.PurchasePlanService>();
+builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Purchasing.ISupplierMaterialRiskService, NamViet.ERP.Api.Application.Services.Purchasing.SupplierMaterialRiskService>();
+builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Purchasing.IPurchaseDocumentService, NamViet.ERP.Api.Application.Services.Purchasing.PurchaseDocumentService>();
+builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Purchasing.IPurchaseContractService, NamViet.ERP.Api.Application.Services.Purchasing.PurchaseContractService>();
+builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Purchasing.IPurchaseWarrantyService, NamViet.ERP.Api.Application.Services.Purchasing.PurchaseWarrantyService>();
 builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Purchasing.IPurchaseOrderReceiptService, NamViet.ERP.Api.Application.Services.Purchasing.PurchaseOrderReceiptService>();
 builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Purchasing.IPurchaseDefectApplicationService, NamViet.ERP.Api.Application.Services.Purchasing.PurchaseDefectApplicationService>();
 builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Purchasing.IPurchaseOrderService, NamViet.ERP.Api.Application.Services.Purchasing.PurchaseOrderService>();

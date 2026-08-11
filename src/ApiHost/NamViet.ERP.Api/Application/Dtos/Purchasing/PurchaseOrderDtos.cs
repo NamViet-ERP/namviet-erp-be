@@ -65,7 +65,9 @@ public record PurchaseOrderLineDto(
     decimal EstPrice,
     decimal LineAmount,
     DateOnly? ExpectedDeliveryDate,
-    string? Note);
+    string? Note,
+    int WarrantyMonths = 0,
+    string WarrantyAnchorType = "delivery");
 
 public record PurchaseOrderPagedResponse(
     IReadOnlyList<PurchaseOrderDto> Items,
@@ -88,7 +90,9 @@ public record CreatePurchaseOrderLineRequest(
     decimal Qty,
     decimal UnitPrice,
     DateOnly? ExpectedDeliveryDate,
-    string? Note);
+    string? Note,
+    int WarrantyMonths = 0,
+    string? WarrantyAnchorType = null);
 
 public record UpdatePurchaseOrderRequest(
     string? Note,

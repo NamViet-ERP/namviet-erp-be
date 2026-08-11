@@ -207,7 +207,9 @@ public static class PurchasingMapper
         item.EstPrice,
         Math.Round(item.Ordered * item.PoPrice, 2),
         item.ExpectedDeliveryDate,
-        item.Note);
+        item.Note,
+        item.WarrantyMonths,
+        string.IsNullOrWhiteSpace(item.WarrantyAnchorType) ? "delivery" : item.WarrantyAnchorType);
 
     public static PurchasePaymentDto ToPaymentDto(PurchasePayment payment) => new(
         payment.Code,

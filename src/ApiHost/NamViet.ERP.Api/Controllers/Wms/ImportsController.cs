@@ -104,7 +104,7 @@ public class ImportsController(
             row => row.ReferenceCode,
             row => row.Project);
 
-        var bytes = voucherExport.BuildImportWorkbook(items);
+        var bytes = voucherExport.BuildImportWorkbook(items, includePrices: CanViewPrices);
         var fileName = $"phieu-nhap-{DateTime.UtcNow:yyyyMMdd-HHmm}.xlsx";
         return File(
             bytes,
@@ -163,8 +163,7 @@ public class ImportsController(
         }
     }
 
-    private bool CanViewPrices =>
-        User.IsInRole("Admin") || User.HasClaim(PermissionCatalog.ClaimType, "wms.prices.view");
+    private bool CanViewPrices => PriceVisibility.CanViewPrices(User);
 
     private PoImportPreviewDto MaskPoImportPrices(PoImportPreviewDto preview)
     {

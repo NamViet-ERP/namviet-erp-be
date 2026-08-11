@@ -223,6 +223,8 @@ public sealed class PurchaseOrderService(
                 EstPrice = planLine.BudgetUnitPrice ?? planLine.ProposalUnitPrice ?? 0,
                 ExpectedDeliveryDate = reqLine.ExpectedDeliveryDate,
                 Note = string.IsNullOrWhiteSpace(reqLine.Note) ? null : reqLine.Note.Trim(),
+                WarrantyMonths = Math.Clamp(reqLine.WarrantyMonths, 0, 120),
+                WarrantyAnchorType = NormalizeWarrantyAnchor(reqLine.WarrantyAnchorType),
             });
         }
 
@@ -342,6 +344,8 @@ public sealed class PurchaseOrderService(
                 EstPrice = planLine.BudgetUnitPrice ?? planLine.ProposalUnitPrice ?? 0,
                 ExpectedDeliveryDate = reqLine.ExpectedDeliveryDate,
                 Note = string.IsNullOrWhiteSpace(reqLine.Note) ? null : reqLine.Note.Trim(),
+                WarrantyMonths = Math.Clamp(reqLine.WarrantyMonths, 0, 120),
+                WarrantyAnchorType = NormalizeWarrantyAnchor(reqLine.WarrantyAnchorType),
             });
         }
 
@@ -758,9 +762,12 @@ public sealed class PurchaseOrderService(
     private static string NormalizeDocType(string docType)
     {
         var t = (docType ?? string.Empty).Trim().ToLowerInvariant();
+        // IV (shipping docs) → invoice
+        if (t is "iv")
+            t = PurchaseOrderAttachmentDocTypes.Invoice;
         if (!PurchaseOrderAttachmentDocTypes.Allowed.Contains(t))
             throw new PurchasingConflictException(
-                $"DocType không hợp lệ: '{docType}'. Cho phép: contract, invoice, co, cq, bbgh, bbnt, other.");
+                $"DocType không hợp lệ: '{docType}'. Cho phép: contract, invoice, co, cq, bbgh, bbnt, cnxk, tokhai, pl, other.");
         return t;
     }
 
@@ -921,6 +928,11 @@ public sealed class PurchaseOrderService(
 
     private static string NormalizeName(string? name) =>
         (name ?? string.Empty).Trim().ToLowerInvariant();
+
+    private static string NormalizeWarrantyAnchor(string? anchor) =>
+        string.Equals(anchor, "acceptance", StringComparison.OrdinalIgnoreCase)
+            ? "acceptance"
+            : "delivery";
 
     private static string ResolvePurchaseStatus(PurchasePlanLine line)
     {

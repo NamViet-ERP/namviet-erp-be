@@ -11,7 +11,8 @@ namespace NamViet.ERP.Api.Controllers.Purchasing;
 [Authorize]
 public class PurchasePlansController(
     IPurchasePlanService plans,
-    IPurchasePlanImportService importService) : ControllerBase
+    IPurchasePlanImportService importService,
+    ISupplierMaterialRiskService supplierMaterialRisks) : ControllerBase
 {
     [HttpGet]
     [RequirePermission("purchasing.plans.view")]
@@ -35,6 +36,17 @@ public class PurchasePlansController(
         [FromQuery] string? projectCode = null,
         CancellationToken ct = default) =>
         Ok(await plans.GetVarianceAsync(planCode, projectCode, ct));
+
+    /// <summary>
+    /// Cảnh báo mềm KHMH: NCC + vật tư có ≥5 HL/3 tháng hoặc ≥2 phiếu BH.
+    /// Không chặn lưu/duyệt.
+    /// </summary>
+    [HttpPost("supplier-material-risks")]
+    [RequirePermission("purchasing.plans.view")]
+    public async Task<ActionResult<IReadOnlyList<SupplierMaterialRiskDto>>> LookupSupplierMaterialRisks(
+        [FromBody] SupplierMaterialRiskLookupRequest request,
+        CancellationToken ct = default) =>
+        Ok(await supplierMaterialRisks.LookupAsync(request, ct));
 
     [HttpGet("{code}")]
     [RequirePermission("purchasing.plans.view")]

@@ -5,29 +5,44 @@ namespace NamViet.ERP.Api.Application.Services.Wms;
 
 public interface IWmsVoucherExcelExportService
 {
-    byte[] BuildImportWorkbook(IReadOnlyList<ImportDto> rows);
+    byte[] BuildImportWorkbook(IReadOnlyList<ImportDto> rows, bool includePrices = true);
     byte[] BuildExportWorkbook(IReadOnlyList<ExportDto> rows);
     byte[] BuildTransferWorkbook(IReadOnlyList<TransferDto> rows);
 }
 
 public sealed class WmsVoucherExcelExportService : IWmsVoucherExcelExportService
 {
-    public byte[] BuildImportWorkbook(IReadOnlyList<ImportDto> rows) =>
-        BuildWorkbook(
-            "Phieu nhap",
-            ["Mã chứng từ", "Ngày", "Kho dự án", "NCC", "Mã tham chiếu", "Tổng GT", "Trạng thái", "Người tạo", "Ghi chú"],
-            rows.Select(r => new object?[]
-            {
-                r.VoucherCode,
-                r.Date,
-                r.Project ?? "",
-                r.Supplier,
-                r.ReferenceCode,
-                r.TotalValue,
-                r.Status,
-                r.CreatedBy,
-                r.Note,
-            }));
+    public byte[] BuildImportWorkbook(IReadOnlyList<ImportDto> rows, bool includePrices = true) =>
+        includePrices
+            ? BuildWorkbook(
+                "Phieu nhap",
+                ["Mã chứng từ", "Ngày", "Kho dự án", "NCC", "Mã tham chiếu", "Tổng GT", "Trạng thái", "Người tạo", "Ghi chú"],
+                rows.Select(r => new object?[]
+                {
+                    r.VoucherCode,
+                    r.Date,
+                    r.Project ?? "",
+                    r.Supplier,
+                    r.ReferenceCode,
+                    r.TotalValue,
+                    r.Status,
+                    r.CreatedBy,
+                    r.Note,
+                }))
+            : BuildWorkbook(
+                "Phieu nhap",
+                ["Mã chứng từ", "Ngày", "Kho dự án", "NCC", "Mã tham chiếu", "Trạng thái", "Người tạo", "Ghi chú"],
+                rows.Select(r => new object?[]
+                {
+                    r.VoucherCode,
+                    r.Date,
+                    r.Project ?? "",
+                    r.Supplier,
+                    r.ReferenceCode,
+                    r.Status,
+                    r.CreatedBy,
+                    r.Note,
+                }));
 
     public byte[] BuildExportWorkbook(IReadOnlyList<ExportDto> rows) =>
         BuildWorkbook(

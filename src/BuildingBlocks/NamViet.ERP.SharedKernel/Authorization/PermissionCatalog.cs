@@ -144,6 +144,12 @@ public static class PermissionCatalog
         new("purchasing.payments.pay", "Purchasing", "Payments", "Xác nhận đã thanh toán DNTT"),
         new("purchasing.payments.cancel", "Purchasing", "Payments", "Hủy đề nghị thanh toán"),
         new("purchasing.documents.view", "Purchasing", "Documents", "Xem hồ sơ chứng từ"),
+        new("purchasing.contracts.view", "Purchasing", "Contracts", "Xem hợp đồng mua hàng"),
+        new("purchasing.contracts.create", "Purchasing", "Contracts", "Tạo hợp đồng mua hàng"),
+        new("purchasing.contracts.update", "Purchasing", "Contracts", "Cập nhật / tải file hợp đồng"),
+        new("purchasing.warranties.view", "Purchasing", "Warranties", "Xem quản lý bảo hành"),
+        new("purchasing.warranties.create", "Purchasing", "Warranties", "Tạo phiếu bảo hành"),
+        new("purchasing.warranties.update", "Purchasing", "Warranties", "Cập nhật hồ sơ / đóng phiếu bảo hành"),
         new("purchasing.settings.view", "Purchasing", "Settings", "Xem thiết lập mua hàng"),
     ];
 

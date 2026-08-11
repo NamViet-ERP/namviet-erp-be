@@ -71,6 +71,9 @@ public class WarehouseDbContext(DbContextOptions<WarehouseDbContext> options) : 
     public DbSet<PurchaseDefectItem> PurchaseDefectItems => Set<PurchaseDefectItem>();
     public DbSet<PurchaseDefectAttachment> PurchaseDefectAttachments => Set<PurchaseDefectAttachment>();
     public DbSet<PurchasePayment> PurchasePayments => Set<PurchasePayment>();
+    public DbSet<PurchaseWarranty> PurchaseWarranties => Set<PurchaseWarranty>();
+    public DbSet<PurchaseWarrantyClaim> PurchaseWarrantyClaims => Set<PurchaseWarrantyClaim>();
+    public DbSet<PurchaseContract> PurchaseContracts => Set<PurchaseContract>();
     public DbSet<ActivityEvent> ActivityEvents => Set<ActivityEvent>();
     public DbSet<Conversion> Conversions => Set<Conversion>();
     public DbSet<ConversionItem> ConversionItems => Set<ConversionItem>();
@@ -576,12 +579,91 @@ public class WarehouseDbContext(DbContextOptions<WarehouseDbContext> options) : 
             e.Property(i => i.Ordered).HasColumnType("numeric(18,4)");
             e.Property(i => i.Received).HasColumnType("numeric(18,4)");
             e.Property(i => i.Defected).HasColumnType("numeric(18,4)").HasDefaultValue(0m);
+            e.Property(i => i.WarrantyMonths).HasDefaultValue(0);
+            e.Property(i => i.WarrantyAnchorType).HasMaxLength(20).HasDefaultValue("delivery");
             e.HasOne(i => i.PurchaseOrder).WithMany(p => p.Items)
              .HasForeignKey(i => i.PoCode).OnDelete(DeleteBehavior.Cascade);
             e.HasOne(i => i.PlanLine).WithMany(l => l.PurchaseOrderItems)
              .HasForeignKey(i => i.PlanLineId).OnDelete(DeleteBehavior.Restrict).IsRequired(false);
             e.HasOne(i => i.Material).WithMany()
              .HasForeignKey(i => i.MaterialCode).OnDelete(DeleteBehavior.Restrict).IsRequired(false);
+        });
+
+        model.Entity<PurchaseWarranty>(e =>
+        {
+            e.ToTable("purchase_warranties");
+            e.HasKey(w => w.Id);
+            e.Property(w => w.Code).HasMaxLength(30).IsRequired();
+            e.Property(w => w.PoCode).HasMaxLength(50).IsRequired();
+            e.Property(w => w.ProjectCode).HasMaxLength(50);
+            e.Property(w => w.PlanCode).HasMaxLength(50);
+            e.Property(w => w.SupplierName).HasMaxLength(255);
+            e.Property(w => w.MaterialCode).HasMaxLength(100);
+            e.Property(w => w.MaterialName).HasMaxLength(500).IsRequired();
+            e.Property(w => w.Unit).HasMaxLength(50);
+            e.Property(w => w.Quantity).HasColumnType("numeric(18,4)");
+            e.Property(w => w.AnchorType).HasMaxLength(20).IsRequired();
+            e.Property(w => w.Status).HasMaxLength(30).IsRequired();
+            e.Property(w => w.ImportTicketCode).HasMaxLength(50);
+            e.HasIndex(w => w.Code).IsUnique().HasFilter("\"DeletedAt\" IS NULL");
+            e.HasIndex(w => w.PoItemId).IsUnique().HasFilter("\"DeletedAt\" IS NULL");
+            e.HasIndex(w => w.PoCode);
+            e.HasIndex(w => w.ProjectCode);
+            e.HasIndex(w => w.SupplierId);
+            e.HasIndex(w => w.MaterialCode);
+            e.HasQueryFilter(w => w.DeletedAt == null);
+            e.HasOne(w => w.PurchaseOrder).WithMany()
+             .HasForeignKey(w => w.PoCode).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(w => w.PurchaseOrderItem).WithMany()
+             .HasForeignKey(w => w.PoItemId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        model.Entity<PurchaseWarrantyClaim>(e =>
+        {
+            e.ToTable("purchase_warranty_claims");
+            e.HasKey(c => c.Id);
+            e.Property(c => c.TicketCode).HasMaxLength(30).IsRequired();
+            e.Property(c => c.Status).HasMaxLength(30).IsRequired();
+            e.Property(c => c.Reason).HasMaxLength(2000).IsRequired();
+            e.Property(c => c.Note).HasMaxLength(2000);
+            e.Property(c => c.ServiceNote).HasMaxLength(2000);
+            e.Property(c => c.CreatedByName).HasMaxLength(200).IsRequired();
+            e.HasIndex(c => c.TicketCode).IsUnique().HasFilter("\"DeletedAt\" IS NULL");
+            e.HasIndex(c => c.WarrantyId);
+            e.HasQueryFilter(c => c.DeletedAt == null);
+            e.HasOne(c => c.Warranty).WithMany(w => w.Claims)
+             .HasForeignKey(c => c.WarrantyId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        model.Entity<PurchaseContract>(e =>
+        {
+            e.ToTable("purchase_contracts");
+            e.HasKey(c => c.Id);
+            e.Property(c => c.Code).HasMaxLength(30).IsRequired();
+            e.Property(c => c.ContractNo).HasMaxLength(100).IsRequired();
+            e.Property(c => c.Title).HasMaxLength(500).IsRequired();
+            e.Property(c => c.PoCode).HasMaxLength(50);
+            e.Property(c => c.ProjectCode).HasMaxLength(50);
+            e.Property(c => c.SupplierName).HasMaxLength(255);
+            e.Property(c => c.Status).HasMaxLength(30).IsRequired();
+            e.Property(c => c.Amount).HasColumnType("numeric(18,2)");
+            e.Property(c => c.Note).HasMaxLength(2000);
+            e.Property(c => c.FileName).HasMaxLength(255);
+            e.Property(c => c.StorageKey).HasMaxLength(500);
+            e.Property(c => c.UploadedByName).HasMaxLength(200);
+            e.HasIndex(c => c.Code).IsUnique().HasFilter("\"DeletedAt\" IS NULL");
+            e.HasIndex(c => c.ProjectCode);
+            e.HasIndex(c => c.SupplierId);
+            e.HasIndex(c => c.PoCode);
+            e.HasIndex(c => c.Status);
+            e.HasIndex(c => new { c.PoCode, c.StorageKey })
+                .IsUnique()
+                .HasFilter("\"DeletedAt\" IS NULL AND \"PoCode\" IS NOT NULL AND \"StorageKey\" IS NOT NULL");
+            e.HasQueryFilter(c => c.DeletedAt == null);
+            e.HasOne(c => c.PurchaseOrder).WithMany()
+             .HasForeignKey(c => c.PoCode).OnDelete(DeleteBehavior.SetNull).IsRequired(false);
+            e.HasOne(c => c.Supplier).WithMany()
+             .HasForeignKey(c => c.SupplierId).OnDelete(DeleteBehavior.SetNull).IsRequired(false);
         });
 
         model.Entity<PurchaseOrderAttachment>(e =>

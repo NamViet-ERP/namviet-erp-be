@@ -38,7 +38,9 @@ public interface IPurchaseOrderReceiptService
         CancellationToken ct = default);
 }
 
-public sealed class PurchaseOrderReceiptService(WarehouseDbContext db) : IPurchaseOrderReceiptService
+public sealed class PurchaseOrderReceiptService(
+    WarehouseDbContext db,
+    IPurchaseWarrantyService warranties) : IPurchaseOrderReceiptService
 {
     public const string PoItemNotePrefix = "poItem:";
 
@@ -99,6 +101,8 @@ public sealed class PurchaseOrderReceiptService(WarehouseDbContext db) : IPurcha
 
         order.DeliveryStatus = ResolveDeliveryStatus(order.Items);
         order.UpdatedAt = DateTime.UtcNow;
+
+        await warranties.UpsertFromApprovedImportAsync(import, ct);
     }
 
     public async Task<PoImportPreviewDto> PreviewImportFromPoAsync(
