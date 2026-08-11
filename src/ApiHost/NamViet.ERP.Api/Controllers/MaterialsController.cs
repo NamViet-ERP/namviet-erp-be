@@ -115,6 +115,8 @@ public class MaterialsController(WarehouseDbContext db) : ControllerBase
             Unit = unit,
             TechnicalSpec = request.TechnicalSpec,
             QualityStandard = request.QualityStandard,
+            CeilingPrice = request.CeilingPrice is > 0 ? request.CeilingPrice : null,
+            AbcClass = NormalizeAbc(request.AbcClass),
             IsConsumable = request.IsConsumable,
             IsActive = true
         };
@@ -150,6 +152,8 @@ public class MaterialsController(WarehouseDbContext db) : ControllerBase
         m.Unit = unit;
         m.TechnicalSpec = request.TechnicalSpec;
         m.QualityStandard = request.QualityStandard;
+        m.CeilingPrice = request.CeilingPrice is > 0 ? request.CeilingPrice : null;
+        m.AbcClass = NormalizeAbc(request.AbcClass);
         m.IsConsumable = request.IsConsumable;
         m.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
@@ -232,6 +236,12 @@ public class MaterialsController(WarehouseDbContext db) : ControllerBase
         return lookup;
     }
 
+    private static string? NormalizeAbc(string? value)
+    {
+        var v = value?.Trim().ToUpperInvariant();
+        return v is "A" or "B" or "C" ? v : null;
+    }
+
     private static MaterialDto ToDto(Material m, IReadOnlyDictionary<int, MaterialCategory> categoryById)
     {
         categoryById.TryGetValue(m.CategoryId, out var leaf);
@@ -239,6 +249,8 @@ public class MaterialsController(WarehouseDbContext db) : ControllerBase
         return new MaterialDto(
             m.MaterialCode, m.MaterialName, m.CategoryId, leaf?.Name,
             path,
-            m.Unit, m.TechnicalSpec, m.QualityStandard, m.IsConsumable, m.IsActive);
+            m.Unit, m.TechnicalSpec, m.QualityStandard,
+            m.CeilingPrice, m.AbcClass,
+            m.IsConsumable, m.IsActive);
     }
 }

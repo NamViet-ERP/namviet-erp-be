@@ -11,6 +11,10 @@ public class Material : BaseEntity
     public string Unit { get; set; } = string.Empty;
     public string? TechnicalSpec { get; set; }
     public string? QualityStandard { get; set; }
+    /// <summary>Giá trần tham chiếu — cảnh báo khi mua vượt.</summary>
+    public decimal? CeilingPrice { get; set; }
+    /// <summary>A / B / C — mức độ quan trọng / giá trị.</summary>
+    public string? AbcClass { get; set; }
     public bool IsConsumable { get; set; }
     /// <summary>false = ngừng sử dụng; vẫn giữ lịch sử dự án/phiếu.</summary>
     public bool IsActive { get; set; } = true;

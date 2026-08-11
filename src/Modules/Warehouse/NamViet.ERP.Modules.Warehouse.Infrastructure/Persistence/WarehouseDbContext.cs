@@ -74,6 +74,13 @@ public class WarehouseDbContext(DbContextOptions<WarehouseDbContext> options) : 
     public DbSet<PurchaseWarranty> PurchaseWarranties => Set<PurchaseWarranty>();
     public DbSet<PurchaseWarrantyClaim> PurchaseWarrantyClaims => Set<PurchaseWarrantyClaim>();
     public DbSet<PurchaseContract> PurchaseContracts => Set<PurchaseContract>();
+    public DbSet<PurchaseEstimate> PurchaseEstimates => Set<PurchaseEstimate>();
+    public DbSet<PurchaseEstimateVersion> PurchaseEstimateVersions => Set<PurchaseEstimateVersion>();
+    public DbSet<PurchaseEstimateLine> PurchaseEstimateLines => Set<PurchaseEstimateLine>();
+    public DbSet<PurchaseEstimateProposal> PurchaseEstimateProposals => Set<PurchaseEstimateProposal>();
+    public DbSet<PurchaseEstimateApproval> PurchaseEstimateApprovals => Set<PurchaseEstimateApproval>();
+    public DbSet<PurchaseRfqQuote> PurchaseRfqQuotes => Set<PurchaseRfqQuote>();
+    public DbSet<PurchaseSellPrice> PurchaseSellPrices => Set<PurchaseSellPrice>();
     public DbSet<ActivityEvent> ActivityEvents => Set<ActivityEvent>();
     public DbSet<Conversion> Conversions => Set<Conversion>();
     public DbSet<ConversionItem> ConversionItems => Set<ConversionItem>();
@@ -114,6 +121,8 @@ public class WarehouseDbContext(DbContextOptions<WarehouseDbContext> options) : 
             e.Property(m => m.MaterialCode).HasMaxLength(100);
             e.Property(m => m.MaterialName).HasMaxLength(255).IsRequired();
             e.Property(m => m.Unit).HasMaxLength(50).IsRequired();
+            e.Property(m => m.CeilingPrice).HasColumnType("numeric(18,2)");
+            e.Property(m => m.AbcClass).HasMaxLength(1);
             e.Property(m => m.IsActive).HasDefaultValue(true);
             e.HasOne(m => m.Category).WithMany(c => c.Materials)
              .HasForeignKey(m => m.CategoryId).OnDelete(DeleteBehavior.Restrict);
@@ -664,6 +673,113 @@ public class WarehouseDbContext(DbContextOptions<WarehouseDbContext> options) : 
              .HasForeignKey(c => c.PoCode).OnDelete(DeleteBehavior.SetNull).IsRequired(false);
             e.HasOne(c => c.Supplier).WithMany()
              .HasForeignKey(c => c.SupplierId).OnDelete(DeleteBehavior.SetNull).IsRequired(false);
+        });
+
+        model.Entity<PurchaseEstimate>(e =>
+        {
+            e.ToTable("purchase_estimates");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Code).HasMaxLength(30).IsRequired();
+            e.Property(x => x.ProjectCode).HasMaxLength(50).IsRequired();
+            e.Property(x => x.Title).HasMaxLength(500).IsRequired();
+            e.Property(x => x.Status).HasMaxLength(30).IsRequired();
+            e.Property(x => x.PreparerName).HasMaxLength(200);
+            e.Property(x => x.ReviewedByName).HasMaxLength(200);
+            e.Property(x => x.ConvertedPlanCode).HasMaxLength(30);
+            e.Property(x => x.CreatedByName).HasMaxLength(200).IsRequired();
+            e.Property(x => x.UpdatedByName).HasMaxLength(200).IsRequired();
+            e.HasIndex(x => x.Code).IsUnique().HasFilter("\"DeletedAt\" IS NULL");
+            e.HasIndex(x => x.ProjectCode);
+            e.HasIndex(x => x.ShareToken).IsUnique().HasFilter("\"ShareToken\" IS NOT NULL");
+            e.HasQueryFilter(x => x.DeletedAt == null);
+        });
+
+        model.Entity<PurchaseEstimateVersion>(e =>
+        {
+            e.ToTable("purchase_estimate_versions");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.UpdatedByName).HasMaxLength(200).IsRequired();
+            e.HasIndex(x => new { x.EstimateId, x.VersionNumber }).IsUnique();
+            e.HasQueryFilter(x => x.DeletedAt == null);
+            e.HasOne(x => x.Estimate).WithMany(p => p.Versions)
+             .HasForeignKey(x => x.EstimateId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        model.Entity<PurchaseEstimateLine>(e =>
+        {
+            e.ToTable("purchase_estimate_lines");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.MaterialCode).HasMaxLength(100).IsRequired();
+            e.Property(x => x.MaterialName).HasMaxLength(255).IsRequired();
+            e.Property(x => x.CategoryName).HasMaxLength(200);
+            e.Property(x => x.Unit).HasMaxLength(50);
+            e.Property(x => x.OldQty).HasColumnType("numeric(18,4)");
+            e.Property(x => x.NewQty).HasColumnType("numeric(18,4)");
+            e.HasIndex(x => new { x.VersionId, x.MaterialCode });
+            e.HasQueryFilter(x => x.DeletedAt == null);
+            e.HasOne(x => x.Version).WithMany(v => v.Lines)
+             .HasForeignKey(x => x.VersionId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        model.Entity<PurchaseEstimateProposal>(e =>
+        {
+            e.ToTable("purchase_estimate_proposals");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Name).HasMaxLength(255).IsRequired();
+            e.Property(x => x.Spec).HasMaxLength(500);
+            e.Property(x => x.Unit).HasMaxLength(50);
+            e.Property(x => x.Qty).HasColumnType("numeric(18,4)");
+            e.Property(x => x.Note).HasMaxLength(1000);
+            e.HasQueryFilter(x => x.DeletedAt == null);
+            e.HasOne(x => x.Estimate).WithMany(p => p.Proposals)
+             .HasForeignKey(x => x.EstimateId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        model.Entity<PurchaseEstimateApproval>(e =>
+        {
+            e.ToTable("purchase_estimate_approvals");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Name).HasMaxLength(200).IsRequired();
+            e.Property(x => x.Status).HasMaxLength(20).IsRequired();
+            e.Property(x => x.ActionByName).HasMaxLength(200);
+            e.Property(x => x.Note).HasMaxLength(1000);
+            e.HasIndex(x => new { x.EstimateId, x.Level }).IsUnique();
+            e.HasQueryFilter(x => x.DeletedAt == null);
+            e.HasOne(x => x.Estimate).WithMany(p => p.Approvals)
+             .HasForeignKey(x => x.EstimateId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        model.Entity<PurchaseRfqQuote>(e =>
+        {
+            e.ToTable("purchase_rfq_quotes");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.MaterialCode).HasMaxLength(100).IsRequired();
+            e.Property(x => x.MaterialName).HasMaxLength(255).IsRequired();
+            e.Property(x => x.SupplierName).HasMaxLength(255).IsRequired();
+            e.Property(x => x.ProjectCode).HasMaxLength(50);
+            e.Property(x => x.UnitPrice).HasColumnType("numeric(18,2)");
+            e.Property(x => x.PaymentTerm).HasMaxLength(200);
+            e.Property(x => x.Status).HasMaxLength(20).IsRequired();
+            e.Property(x => x.PoRef).HasMaxLength(50);
+            e.Property(x => x.Note).HasMaxLength(2000);
+            e.HasIndex(x => x.QuoteDate);
+            e.HasIndex(x => x.SupplierId);
+            e.HasIndex(x => x.MaterialCode);
+            e.HasQueryFilter(x => x.DeletedAt == null);
+        });
+
+        model.Entity<PurchaseSellPrice>(e =>
+        {
+            e.ToTable("purchase_sell_prices");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.MaterialCode).HasMaxLength(100).IsRequired();
+            e.Property(x => x.MaterialName).HasMaxLength(255).IsRequired();
+            e.Property(x => x.ProjectCode).HasMaxLength(50);
+            e.Property(x => x.SellPrice).HasColumnType("numeric(18,2)");
+            e.Property(x => x.CreatedByName).HasMaxLength(200).IsRequired();
+            e.Property(x => x.Note).HasMaxLength(2000);
+            e.HasIndex(x => new { x.MaterialCode, x.ProjectCode, x.EffectiveDate });
+            e.HasQueryFilter(x => x.DeletedAt == null);
         });
 
         model.Entity<PurchaseOrderAttachment>(e =>

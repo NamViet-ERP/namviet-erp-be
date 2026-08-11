@@ -6,12 +6,16 @@ namespace NamViet.ERP.Modules.Warehouse.Application.DTOs;
 public record MaterialDto(
     string MaterialCode, string MaterialName, int CategoryId, string? CategoryName,
     MaterialCategoryPathDto CategoryPath,
-    string Unit, string? TechnicalSpec, string? QualityStandard, bool IsConsumable,
+    string Unit, string? TechnicalSpec, string? QualityStandard,
+    decimal? CeilingPrice, string? AbcClass,
+    bool IsConsumable,
     bool IsActive);
 
 public record UpsertMaterialRequest(
     string MaterialCode, string MaterialName, int CategoryId,
-    string Unit, string? TechnicalSpec, string? QualityStandard, bool IsConsumable = false);
+    string Unit, string? TechnicalSpec, string? QualityStandard,
+    decimal? CeilingPrice = null, string? AbcClass = null,
+    bool IsConsumable = false);
 
 // ── Suppliers ─────────────────────────────────────────────────────────────
 public record SupplierDto(

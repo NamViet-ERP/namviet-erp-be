@@ -150,6 +150,15 @@ public static class PermissionCatalog
         new("purchasing.warranties.view", "Purchasing", "Warranties", "Xem quản lý bảo hành"),
         new("purchasing.warranties.create", "Purchasing", "Warranties", "Tạo phiếu bảo hành"),
         new("purchasing.warranties.update", "Purchasing", "Warranties", "Cập nhật hồ sơ / đóng phiếu bảo hành"),
+        new("purchasing.estimates.view", "Purchasing", "Estimates", "Xem dự toán mua hàng"),
+        new("purchasing.estimates.create", "Purchasing", "Estimates", "Tạo dự toán mua hàng"),
+        new("purchasing.estimates.update", "Purchasing", "Estimates", "Sửa dự toán (tạo version mới)"),
+        new("purchasing.estimates.approve", "Purchasing", "Estimates", "Duyệt / từ chối dự toán"),
+        new("purchasing.rfq.view", "Purchasing", "Rfq", "Xem giá chào thầu"),
+        new("purchasing.rfq.create", "Purchasing", "Rfq", "Ghi nhận báo giá chào thầu"),
+        new("purchasing.rfq.update", "Purchasing", "Rfq", "Sửa / đánh dấu thắng-thua báo giá"),
+        new("purchasing.pricebook.view", "Purchasing", "PriceBook", "Xem sổ giá và phân tích"),
+        new("purchasing.pricebook.update", "Purchasing", "PriceBook", "Cập nhật giá bán / giá chào dự án"),
         new("purchasing.settings.view", "Purchasing", "Settings", "Xem thiết lập mua hàng"),
     ];
 

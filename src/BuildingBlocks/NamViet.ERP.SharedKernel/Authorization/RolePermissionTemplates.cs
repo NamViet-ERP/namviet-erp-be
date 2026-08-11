@@ -14,6 +14,10 @@ public static class RolePermissionTemplates
     public const string ProcurementLeadRole = "Procurement_Lead";
     /** Sếp cung ứng — duyệt cấp 2 KHMH / mua phát sinh. */
     public const string ProcurementBossRole = "Procurement_Boss";
+    /** Người phòng Dự án — lập dự toán vật tư. */
+    public const string ProjectRole = "Project";
+    /** Người phòng Sản xuất — lập dự toán vật tư. */
+    public const string ProductionRole = "Production";
 
     private static readonly string[] CorePermissions =
     [
@@ -94,6 +98,9 @@ public static class RolePermissionTemplates
         "purchasing.documents.view",
         "purchasing.contracts.view",
         "purchasing.warranties.view",
+        "purchasing.estimates.view",
+        "purchasing.rfq.view",
+        "purchasing.pricebook.view",
         "purchasing.settings.view",
         "purchasing.arrival_plans.view",
     ];
@@ -128,6 +135,14 @@ public static class RolePermissionTemplates
         "purchasing.warranties.view",
         "purchasing.warranties.create",
         "purchasing.warranties.update",
+        "purchasing.estimates.view",
+        "purchasing.estimates.create",
+        "purchasing.estimates.update",
+        "purchasing.rfq.view",
+        "purchasing.rfq.create",
+        "purchasing.rfq.update",
+        "purchasing.pricebook.view",
+        "purchasing.pricebook.update",
         "purchasing.settings.view",
         "wms.suppliers.view:all",
         "wms.projects.view:all",
@@ -229,6 +244,12 @@ public static class RolePermissionTemplates
         "hrm.leaves.create",
     ];
 
+    private static readonly string[] ProjectProductionPermissions =
+    [
+        ..StaffPermissions,
+        "wms.projects.view:all",
+    ];
+
     private static readonly string[] BodPermissions =
     [
         ..CorePermissions,
@@ -267,6 +288,7 @@ public static class RolePermissionTemplates
         ..ProcurementPermissions,
         "purchasing.plans.approve_l1",
         "purchasing.plans.reject",
+        "purchasing.estimates.approve",
     ];
 
     /** Sếp: xem mua hàng + duyệt L2 + từ chối. */
@@ -278,6 +300,7 @@ public static class RolePermissionTemplates
         ..PurchasingViewOnlyPermissions,
         "purchasing.plans.approve_l2",
         "purchasing.plans.reject",
+        "purchasing.estimates.approve",
         ..WmsViewOnlyPermissions,
     ];
 
@@ -294,6 +317,8 @@ public static class RolePermissionTemplates
             [ProcurementRole] = ProcurementPermissions,
             [ProcurementLeadRole] = ProcurementLeadPermissions,
             [ProcurementBossRole] = ProcurementBossPermissions,
+            [ProjectRole] = ProjectProductionPermissions,
+            [ProductionRole] = ProjectProductionPermissions,
         };
 
     public static IReadOnlyList<string> ForIdentityRole(string? roleName) =>
@@ -310,5 +335,7 @@ public static class RolePermissionTemplates
         ProcurementLeadRole,
         ProcurementBossRole,
         PmRole,
+        ProjectRole,
+        ProductionRole,
     ];
 }
