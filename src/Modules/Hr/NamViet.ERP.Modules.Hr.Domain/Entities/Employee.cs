@@ -21,7 +21,8 @@ public class Employee : BaseEntity
     public string? CccdPlace { get; set; }
     public string? AddressPermanent { get; set; }
     public string? AddressCurrent { get; set; }
-    public int DepartmentId { get; set; }
+    /// <summary>Null = chưa phân phòng (vd. vừa onboard công khai).</summary>
+    public int? DepartmentId { get; set; }
     public int? PositionId { get; set; }
     public int? ManagerId { get; set; }
     public DateOnly JoinDate { get; set; }
@@ -49,7 +50,7 @@ public class Employee : BaseEntity
     public string? BankBranch { get; set; }
     public string? HadSocialInsurance { get; set; }
 
-    public Department Department { get; set; } = null!;
+    public Department? Department { get; set; }
     public Position? Position { get; set; }
     public Employee? Manager { get; set; }
     public ICollection<LaborContract> Contracts { get; set; } = [];

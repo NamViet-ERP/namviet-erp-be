@@ -32,7 +32,9 @@ public record SupplierContactDto(
     string? Phone,
     string? Email,
     string? Note,
-    bool IsPrimary);
+    /// <summary>primary | secondary | backup</summary>
+    string Role,
+    string RoleLabel);
 
 public record SupplierContactPagedResponse(
     IReadOnlyList<SupplierContactDto> Items,
@@ -48,7 +50,8 @@ public record UpsertSupplierContactRequest(
     string? Phone,
     string? Email,
     string? Note,
-    bool IsPrimary);
+    /// <summary>primary | secondary | backup</summary>
+    string Role);
 
 /// <summary>Đánh giá KPI định kỳ — score/grade do BE tính từ criteriaScores.</summary>
 public record SupplierEvaluationDto(

@@ -9,6 +9,7 @@ namespace NamViet.ERP.Api.Controllers;
 
 public record UpsertDepartmentRequest(string Code, string Name, int? ParentId, string? Block);
 public record UpsertPositionRequest(string Name, int DepartmentId, string? Level);
+public record AssignDepartmentMembersRequest(IReadOnlyList<int> EmployeeIds);
 
 [ApiController]
 [Route("api/hr/departments")]
@@ -29,7 +30,19 @@ public class DepartmentsController(HrDbContext db) : ControllerBase
             .OrderBy(d => d.Code)
             .ToListAsync(ct);
 
-        return Ok(items.Select(MapDto));
+        var ids = items.Select(d => d.Id)
+            .Concat(items.SelectMany(d => d.Children.Where(c => c.DeletedAt == null).Select(c => c.Id)))
+            .Distinct()
+            .ToList();
+
+        var employeeCounts = await db.Employees
+            .AsNoTracking()
+            .Where(e => e.DepartmentId != null && ids.Contains(e.DepartmentId.Value))
+            .GroupBy(e => e.DepartmentId!.Value)
+            .Select(g => new { DepartmentId = g.Key, Count = g.Count() })
+            .ToDictionaryAsync(x => x.DepartmentId, x => x.Count, ct);
+
+        return Ok(items.Select(d => MapDto(d, employeeCounts)));
     }
 
     [HttpGet("{id:int}")]
@@ -41,22 +54,57 @@ public class DepartmentsController(HrDbContext db) : ControllerBase
             .Include(x => x.Positions)
             .FirstOrDefaultAsync(x => x.Id == id && x.DeletedAt == null, ct);
         if (d is null) return NotFound();
-        return Ok(MapDto(d));
+
+        var employeeCount = await db.Employees.CountAsync(e => e.DepartmentId == id, ct);
+        var counts = new Dictionary<int, int> { [id] = employeeCount };
+        return Ok(MapDto(d, counts));
+    }
+
+    [HttpGet("{id:int}/employees")]
+    [RequirePermission("hrm.members.settings.view")]
+    public async Task<IActionResult> GetEmployees(int id, CancellationToken ct)
+    {
+        var exists = await db.Departments.AnyAsync(d => d.Id == id && d.DeletedAt == null, ct);
+        if (!exists) return NotFound();
+
+        var employees = await db.Employees
+            .AsNoTracking()
+            .Include(e => e.Position)
+            .Where(e => e.DepartmentId == id)
+            .OrderBy(e => e.FullName)
+            .Select(e => new
+            {
+                e.Id,
+                e.Code,
+                e.FullName,
+                e.Email,
+                e.Phone,
+                Status = e.Status.ToString(),
+                PositionName = e.Position != null ? e.Position.Name : null,
+            })
+            .ToListAsync(ct);
+
+        return Ok(employees);
     }
 
     [HttpPost]
     [RequirePermission("hrm.members.settings.update")]
     public async Task<IActionResult> Create([FromBody] UpsertDepartmentRequest request, CancellationToken ct)
     {
-        if (await db.Departments.AnyAsync(d => d.Code == request.Code && d.DeletedAt == null, ct))
-            return Conflict($"Mã phòng ban '{request.Code}' đã tồn tại.");
+        var code = request.Code.Trim();
+        var name = request.Name.Trim();
+        if (string.IsNullOrWhiteSpace(code) || string.IsNullOrWhiteSpace(name))
+            return BadRequest("Mã và tên phòng ban là bắt buộc.");
+
+        if (await db.Departments.AnyAsync(d => d.Code == code && d.DeletedAt == null, ct))
+            return Conflict($"Mã phòng ban '{code}' đã tồn tại.");
 
         var dept = new Department
         {
-            Code = request.Code,
-            Name = request.Name,
+            Code = code,
+            Name = name,
             ParentId = request.ParentId,
-            Block = request.Block
+            Block = string.IsNullOrWhiteSpace(request.Block) ? null : request.Block.Trim(),
         };
         db.Departments.Add(dept);
         await db.SaveChangesAsync(ct);
@@ -69,13 +117,58 @@ public class DepartmentsController(HrDbContext db) : ControllerBase
     {
         var dept = await db.Departments.FirstOrDefaultAsync(d => d.Id == id && d.DeletedAt == null, ct);
         if (dept is null) return NotFound();
-        dept.Code = request.Code;
-        dept.Name = request.Name;
+
+        var code = request.Code.Trim();
+        var name = request.Name.Trim();
+        if (string.IsNullOrWhiteSpace(code) || string.IsNullOrWhiteSpace(name))
+            return BadRequest("Mã và tên phòng ban là bắt buộc.");
+
+        if (await db.Departments.AnyAsync(d => d.Id != id && d.Code == code && d.DeletedAt == null, ct))
+            return Conflict($"Mã phòng ban '{code}' đã tồn tại.");
+
+        dept.Code = code;
+        dept.Name = name;
         dept.ParentId = request.ParentId;
-        dept.Block = request.Block;
+        dept.Block = string.IsNullOrWhiteSpace(request.Block) ? null : request.Block.Trim();
         dept.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
         return NoContent();
+    }
+
+    /// <summary>Gán một hoặc nhiều nhân viên vào phòng ban (ghi đè phòng ban hiện tại của NV).</summary>
+    [HttpPost("{id:int}/employees")]
+    [RequirePermission("hrm.members.settings.update")]
+    public async Task<IActionResult> AssignEmployees(
+        int id,
+        [FromBody] AssignDepartmentMembersRequest request,
+        CancellationToken ct)
+    {
+        var dept = await db.Departments.FirstOrDefaultAsync(d => d.Id == id && d.DeletedAt == null, ct);
+        if (dept is null) return NotFound();
+        if (!dept.IsActive)
+            return BadRequest("Không thể gán nhân viên vào phòng ban đã ngừng hoạt động.");
+
+        var ids = (request.EmployeeIds ?? [])
+            .Where(x => x > 0)
+            .Distinct()
+            .ToList();
+        if (ids.Count == 0)
+            return BadRequest("Chọn ít nhất một nhân viên.");
+
+        var employees = await db.Employees
+            .Where(e => ids.Contains(e.Id))
+            .ToListAsync(ct);
+        if (employees.Count != ids.Count)
+            return BadRequest("Một số nhân viên không tồn tại hoặc đã bị xóa.");
+
+        foreach (var employee in employees)
+        {
+            employee.DepartmentId = id;
+            employee.UpdatedAt = DateTime.UtcNow;
+        }
+
+        await db.SaveChangesAsync(ct);
+        return Ok(new { assigned = employees.Count, departmentId = id });
     }
 
     [HttpDelete("{id:int}")]
@@ -84,18 +177,72 @@ public class DepartmentsController(HrDbContext db) : ControllerBase
     {
         var dept = await db.Departments.FirstOrDefaultAsync(d => d.Id == id && d.DeletedAt == null, ct);
         if (dept is null) return NotFound();
+
+        var employeeCount = await db.Employees.CountAsync(e => e.DepartmentId == id, ct);
+        if (employeeCount > 0)
+        {
+            return Conflict(new
+            {
+                message = $"Không thể xóa phòng ban đang có {employeeCount} nhân viên. Hãy chuyển nhân viên sang phòng khác trước.",
+                employeeCount,
+            });
+        }
+
+        var childCount = await db.Departments.CountAsync(d => d.ParentId == id && d.DeletedAt == null, ct);
+        if (childCount > 0)
+        {
+            return Conflict(new
+            {
+                message = $"Không thể xóa phòng ban đang có {childCount} phòng ban con.",
+                childCount,
+            });
+        }
+
+        var planCount = await db.RecruitmentPlans.CountAsync(p => p.DepartmentId == id, ct);
+        if (planCount > 0)
+        {
+            return Conflict(new
+            {
+                message = $"Không thể xóa phòng ban đang được dùng bởi {planCount} kế hoạch tuyển dụng.",
+                planCount,
+            });
+        }
+
         dept.DeletedAt = DateTime.UtcNow;
         dept.IsActive = false;
+        dept.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
         return NoContent();
     }
 
-    private static object MapDto(Department d) => new
+    private static object MapDto(Department d, IReadOnlyDictionary<int, int> employeeCounts)
     {
-        d.Id, d.Code, d.Name, d.ParentId, d.Block, d.IsActive,
-        Children = d.Children.Where(c => c.DeletedAt == null)
-                             .Select(c => new { c.Id, c.Code, c.Name, c.IsActive })
-    };
+        employeeCounts.TryGetValue(d.Id, out var count);
+        return new
+        {
+            d.Id,
+            d.Code,
+            d.Name,
+            d.ParentId,
+            d.Block,
+            d.IsActive,
+            EmployeeCount = count,
+            Children = d.Children
+                .Where(c => c.DeletedAt == null)
+                .Select(c =>
+                {
+                    employeeCounts.TryGetValue(c.Id, out var childCount);
+                    return new
+                    {
+                        c.Id,
+                        c.Code,
+                        c.Name,
+                        c.IsActive,
+                        EmployeeCount = childCount,
+                    };
+                }),
+        };
+    }
 }
 
 [ApiController]

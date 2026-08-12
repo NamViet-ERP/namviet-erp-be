@@ -138,7 +138,9 @@ public static class HrEmployeeMapper
         e.Cccd, FormatDisplayDate(e.CccdDate), e.CccdPlace,
         e.CmndNumber, e.CmndIssueDate, e.CmndIssuePlace,
         e.MaritalStatus, e.TaxCode,
-        e.PhotoUrl, e.CccdFrontUrl, e.CccdBackUrl, e.DegreePhotoUrl);
+        e.PhotoUrl, e.CccdFrontUrl, e.CccdBackUrl, e.DegreePhotoUrl,
+        LinkedAccountStatus: null,
+        DepartmentId: e.DepartmentId);
 
     public static async Task ApplyFromDtoAsync(
         Employee e, EmployeeDto dto, HrDbContext db, CancellationToken ct = default)
@@ -190,10 +192,28 @@ public static class HrEmployeeMapper
         e.CccdBackUrl = string.IsNullOrWhiteSpace(dto.CccdBackUrl) ? null : dto.CccdBackUrl;
         e.DegreePhotoUrl = string.IsNullOrWhiteSpace(dto.DegreePhotoUrl) ? null : dto.DegreePhotoUrl;
 
-        if (!string.IsNullOrWhiteSpace(dto.Department))
+        if (dto.DepartmentId.HasValue)
         {
-            var dept = await db.Departments.FirstOrDefaultAsync(d => d.Name == dto.Department, ct);
-            if (dept is not null) e.DepartmentId = dept.Id;
+            if (dto.DepartmentId.Value <= 0)
+            {
+                e.DepartmentId = null;
+            }
+            else
+            {
+                var deptById = await db.Departments.FirstOrDefaultAsync(
+                    d => d.Id == dto.DepartmentId.Value && d.DeletedAt == null && d.IsActive, ct);
+                if (deptById is null)
+                    throw new ArgumentException($"Không tìm thấy phòng ban Id={dto.DepartmentId.Value}.");
+                e.DepartmentId = deptById.Id;
+            }
+        }
+        else if (!string.IsNullOrWhiteSpace(dto.Department))
+        {
+            var dept = await db.Departments.FirstOrDefaultAsync(
+                d => d.Name == dto.Department && d.DeletedAt == null && d.IsActive, ct);
+            if (dept is null)
+                throw new ArgumentException($"Không tìm thấy phòng ban \"{dto.Department}\".");
+            e.DepartmentId = dept.Id;
         }
 
         if (!string.IsNullOrWhiteSpace(dto.Position))
@@ -203,17 +223,16 @@ public static class HrEmployeeMapper
         }
     }
 
-    public static async Task EnsureDefaultDepartmentAsync(Employee e, HrDbContext db, CancellationToken ct)
+    /// <summary>
+    /// Onboard công khai: không ép phòng mặc định. Create HR vẫn có thể để trống (chưa phân phòng).
+    /// </summary>
+    public static Task EnsureDefaultDepartmentAsync(Employee e, HrDbContext db, CancellationToken ct)
     {
-        if (e.DepartmentId > 0) return;
-        var dept = await db.Departments.FirstOrDefaultAsync(ct)
-            ?? new Department { Code = "DEFAULT", Name = "Mặc định" };
-        if (dept.Id == 0)
-        {
-            db.Departments.Add(dept);
-            await db.SaveChangesAsync(ct);
-        }
-        e.DepartmentId = dept.Id;
+        // Giữ tương thích chữ ký cũ — không còn tự tạo "Mặc định".
+        _ = e;
+        _ = db;
+        _ = ct;
+        return Task.CompletedTask;
     }
 
     public static async Task<bool> IsCodeTakenAsync(

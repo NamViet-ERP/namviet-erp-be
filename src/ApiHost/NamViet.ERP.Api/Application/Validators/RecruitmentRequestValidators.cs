@@ -19,7 +19,10 @@ public sealed class CreateRecruitmentPlanRequestValidator
         where T : CreateRecruitmentPlanRequest
     {
         validator.RuleFor(x => x.PositionName).NotEmpty().MaximumLength(255);
-        validator.RuleFor(x => x.DepartmentName).NotEmpty().MaximumLength(255);
+        validator.RuleFor(x => x.DepartmentName).MaximumLength(255);
+        validator.RuleFor(x => x)
+            .Must(x => x.DepartmentId is > 0 || !string.IsNullOrWhiteSpace(x.DepartmentName))
+            .WithMessage("Vui lòng chọn phòng ban (departmentId hoặc departmentName).");
         validator.RuleFor(x => x.Headcount).InclusiveBetween(1, 10_000);
         validator.RuleFor(x => x.Reason).MaximumLength(2_000);
         validator.RuleFor(x => x.Period).MaximumLength(100);
@@ -54,7 +57,10 @@ public sealed class UpdateRecruitmentPlanRequestValidator
     public UpdateRecruitmentPlanRequestValidator()
     {
         RuleFor(x => x.PositionName).NotEmpty().MaximumLength(255);
-        RuleFor(x => x.DepartmentName).NotEmpty().MaximumLength(255);
+        RuleFor(x => x.DepartmentName).MaximumLength(255);
+        RuleFor(x => x)
+            .Must(x => x.DepartmentId is > 0 || !string.IsNullOrWhiteSpace(x.DepartmentName))
+            .WithMessage("Vui lòng chọn phòng ban (departmentId hoặc departmentName).");
         RuleFor(x => x.Headcount).InclusiveBetween(1, 10_000);
         RuleFor(x => x.Reason).MaximumLength(2_000);
         RuleFor(x => x.Period).MaximumLength(100);

@@ -47,7 +47,7 @@ public class HrAdminEmployeesController(HrDbContext db) : ControllerBase
             .Select(e => new
             {
                 e.Id, e.Code, e.FullName, Gender = e.Gender.ToString(),
-                e.Phone, e.Email, e.DepartmentId, DepartmentName = e.Department.Name,
+                e.Phone, e.Email, e.DepartmentId, DepartmentName = e.Department != null ? e.Department.Name : null,
                 e.PositionId, PositionName = e.Position != null ? e.Position.Name : null,
                 Status = e.Status.ToString(), JoinDate = e.JoinDate, e.PhotoUrl
             })

@@ -452,7 +452,7 @@ namespace NamViet.ERP.Modules.Hr.Infrastructure.Persistence.Migrations
                     b.Property<DateTime?>("DeletedAt")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<int>("DepartmentId")
+                    b.Property<int?>("DepartmentId")
                         .HasColumnType("integer");
 
                     b.Property<string>("Education")
@@ -1396,8 +1396,7 @@ namespace NamViet.ERP.Modules.Hr.Infrastructure.Persistence.Migrations
                     b.HasOne("NamViet.ERP.Modules.Hr.Domain.Entities.Department", "Department")
                         .WithMany("Employees")
                         .HasForeignKey("DepartmentId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
+                        .OnDelete(DeleteBehavior.SetNull);
 
                     b.HasOne("NamViet.ERP.Modules.Hr.Domain.Entities.Employee", "Manager")
                         .WithMany()

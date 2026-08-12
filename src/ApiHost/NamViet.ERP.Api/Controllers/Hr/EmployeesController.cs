@@ -143,8 +143,14 @@ public class EmployeesController(
             return BadRequest("Mã nhân viên đã tồn tại.");
 
         var e = new Employee { Code = dto.Code.Trim() };
-        await HrEmployeeMapper.ApplyFromDtoAsync(e, dto, db, ct);
-        await HrEmployeeMapper.EnsureDefaultDepartmentAsync(e, db, ct);
+        try
+        {
+            await HrEmployeeMapper.ApplyFromDtoAsync(e, dto, db, ct);
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(ex.Message);
+        }
         db.Employees.Add(e);
         await db.SaveChangesAsync(ct);
         await db.Entry(e).Reference(x => x.Department).LoadAsync(ct);
@@ -177,14 +183,24 @@ public class EmployeesController(
             Segment = null,
             Branch = null,
             Department = null,
+            DepartmentId = null,
             Position = null,
             LinkedAccountStatus = null,
         };
 
         await using var transaction = await db.Database.BeginTransactionAsync(ct);
         var e = new Employee { Code = HrEmployeeMapper.NewPendingCode() };
-        await HrEmployeeMapper.ApplyFromDtoAsync(e, onboardDto, db, ct);
-        await HrEmployeeMapper.EnsureDefaultDepartmentAsync(e, db, ct);
+        try
+        {
+            await HrEmployeeMapper.ApplyFromDtoAsync(e, onboardDto, db, ct);
+        }
+        catch (ArgumentException ex)
+        {
+            await transaction.RollbackAsync(ct);
+            return BadRequest(ex.Message);
+        }
+        // Onboard công khai: chưa phân phòng — HR gán sau.
+        e.DepartmentId = null;
         db.Employees.Add(e);
         await db.SaveChangesAsync(ct);
 
@@ -227,7 +243,14 @@ public class EmployeesController(
         if (!string.IsNullOrWhiteSpace(dto.Code))
             e.Code = dto.Code.Trim();
 
-        await HrEmployeeMapper.ApplyFromDtoAsync(e, dto, db, ct);
+        try
+        {
+            await HrEmployeeMapper.ApplyFromDtoAsync(e, dto, db, ct);
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(ex.Message);
+        }
         e.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
         await db.Entry(e).Reference(x => x.Department).LoadAsync(ct);

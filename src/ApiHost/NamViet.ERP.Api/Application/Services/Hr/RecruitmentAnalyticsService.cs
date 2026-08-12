@@ -306,13 +306,28 @@ public sealed class RecruitmentAnalyticsService(HrDbContext db, ILogger<Recruitm
             .OrderByDescending(r => r.CvCount)
             .ToList();
 
-        var byPosition = await query
-            .Where(c => c.PositionId != null && c.Position != null)
-            .GroupBy(c => c.Position!.Name)
-            .Select(g => new RecruitmentReportPositionRowDto(g.Key, g.Count()))
+        // EF Core cannot translate GroupBy(c => c.Position!.Name) over optional nav + soft-delete filter.
+        // Aggregate PositionId in SQL, then resolve names in memory.
+        var positionIdRows = await query
+            .Where(c => c.PositionId != null)
+            .GroupBy(c => c.PositionId!.Value)
+            .Select(g => new { PositionId = g.Key, Cv = g.Count() })
+            .ToListAsync(ct);
+
+        var positionIds = positionIdRows.Select(r => r.PositionId).ToList();
+        var positionNames = await db.RecruitmentPositions
+            .AsNoTracking()
+            .Where(p => positionIds.Contains(p.Id) && p.DeletedAt == null)
+            .Select(p => new { p.Id, p.Name })
+            .ToDictionaryAsync(p => p.Id, p => p.Name, ct);
+
+        var byPosition = positionIdRows
+            .Select(row => new RecruitmentReportPositionRowDto(
+                positionNames.TryGetValue(row.PositionId, out var name) ? name : "(Không rõ vị trí)",
+                row.Cv))
             .OrderByDescending(r => r.CvCount)
             .Take(15)
-            .ToListAsync(ct);
+            .ToList();
 
         return new RecruitmentReportSummaryDto(bySource, byPosition);
     }

@@ -207,6 +207,7 @@ public class WarehouseDbContext(DbContextOptions<WarehouseDbContext> options) : 
             e.Property(c => c.Phone).HasMaxLength(50);
             e.Property(c => c.Email).HasMaxLength(255);
             e.Property(c => c.Note).HasMaxLength(1000);
+            e.Property(c => c.Role).HasMaxLength(20).IsRequired();
             e.HasIndex(c => c.SupplierId);
             e.HasOne(c => c.Supplier).WithMany(s => s.Contacts)
              .HasForeignKey(c => c.SupplierId).OnDelete(DeleteBehavior.Cascade);
@@ -363,6 +364,7 @@ public class WarehouseDbContext(DbContextOptions<WarehouseDbContext> options) : 
             e.HasOne(t => t.Supplier).WithMany(s => s.Transactions)
              .HasForeignKey(t => t.SupplierId).OnDelete(DeleteBehavior.SetNull).IsRequired(false);
             e.Property(t => t.RowVersion).IsRowVersion();
+            e.HasQueryFilter(t => t.DeletedAt == null);
         });
 
         model.Entity<WarehouseTransactionItem>(e =>

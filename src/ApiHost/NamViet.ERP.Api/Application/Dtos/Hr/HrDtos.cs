@@ -39,7 +39,8 @@ public record EmployeeDto(
     string? CccdFrontUrl,
     string? CccdBackUrl,
     string? DegreePhotoUrl,
-    string? LinkedAccountStatus = null);
+    string? LinkedAccountStatus = null,
+    int? DepartmentId = null);
 
 public record FileUploadResponse(string Url, string FileName, long FileSize);
 
@@ -134,27 +135,30 @@ public record RecruitmentPlanDto(
     string? Period,
     string? OpenDate,
     string? DeadlineDate,
-    string Status);
+    string Status,
+    int? DepartmentId = null);
 
 public record CreateRecruitmentPlanRequest(
     string PositionName,
-    string DepartmentName,
+    string? DepartmentName,
     int Headcount,
     string? Reason,
     string? Period,
     string? OpenDate,
     string? DeadlineDate,
-    string Status = "Active");
+    string Status = "Active",
+    int? DepartmentId = null);
 
 public record UpdateRecruitmentPlanRequest(
     string PositionName,
-    string DepartmentName,
+    string? DepartmentName,
     int Headcount,
     string? Reason,
     string? Period,
     string? OpenDate,
     string? DeadlineDate,
-    string Status);
+    string Status,
+    int? DepartmentId = null);
 
 public record CandidatePagedResponse(
     IReadOnlyList<CandidateDto> Items,

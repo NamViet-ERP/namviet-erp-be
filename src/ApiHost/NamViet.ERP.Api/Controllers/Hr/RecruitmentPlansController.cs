@@ -21,6 +21,7 @@ public class RecruitmentPlansController(
     [RequirePermission("hrm.recruitment.plans.view")]
     public async Task<ActionResult<List<RecruitmentPlanDto>>> List(
         [FromQuery] string? department = null,
+        [FromQuery] int? departmentId = null,
         [FromQuery] string? status = null,
         [FromQuery] string? period = null,
         [FromQuery] string? openMonth = null,
@@ -50,6 +51,9 @@ public class RecruitmentPlansController(
                 && plan.OpenDate.Value.Year == year
                 && plan.OpenDate.Value.Month == month);
         }
+
+        if (departmentId.HasValue)
+            query = query.Where(plan => plan.DepartmentId == departmentId.Value);
 
         var plans = await query
             .OrderByDescending(p => p.Id)
@@ -85,7 +89,8 @@ public class RecruitmentPlansController(
                 return new { plan, departmentName = departmentName ?? "" };
             })
             .Where(x =>
-                string.IsNullOrWhiteSpace(departmentFilter)
+                departmentId.HasValue
+                || string.IsNullOrWhiteSpace(departmentFilter)
                 || x.departmentName.Contains(departmentFilter, StringComparison.OrdinalIgnoreCase))
             .Select(x => ToDto(
                 x.plan,
@@ -106,8 +111,9 @@ public class RecruitmentPlansController(
         var position = await ResolvePositionAsync(request.PositionName, ct);
         if (position is null) return BadRequest($"Không tìm thấy vị trí \"{request.PositionName}\".");
 
-        var department = await ResolveDepartmentAsync(request.DepartmentName, ct);
-        if (department is null) return BadRequest($"Không tìm thấy phòng ban \"{request.DepartmentName}\".");
+        var department = await ResolveDepartmentAsync(request.DepartmentId, request.DepartmentName, ct);
+        if (department is null)
+            return BadRequest("Vui lòng chọn phòng ban hợp lệ (departmentId hoặc departmentName).");
 
         var plan = new RecruitmentPlan
         {
@@ -145,8 +151,9 @@ public class RecruitmentPlansController(
         var position = await ResolvePositionAsync(request.PositionName, ct);
         if (position is null) return BadRequest($"Không tìm thấy vị trí \"{request.PositionName}\".");
 
-        var department = await ResolveDepartmentAsync(request.DepartmentName, ct);
-        if (department is null) return BadRequest($"Không tìm thấy phòng ban \"{request.DepartmentName}\".");
+        var department = await ResolveDepartmentAsync(request.DepartmentId, request.DepartmentName, ct);
+        if (department is null)
+            return BadRequest("Vui lòng chọn phòng ban hợp lệ (departmentId hoặc departmentName).");
 
         plan.PositionId = position.Id;
         plan.DepartmentId = department.Id;
@@ -184,12 +191,25 @@ public class RecruitmentPlansController(
             .FirstOrDefaultAsync(p => p.Name == trimmed && p.DeletedAt == null, ct);
     }
 
-    private async Task<Department?> ResolveDepartmentAsync(string name, CancellationToken ct)
+    private async Task<Department?> ResolveDepartmentAsync(
+        int? departmentId,
+        string? departmentName,
+        CancellationToken ct)
     {
-        var trimmed = name.Trim();
+        if (departmentId is > 0)
+        {
+            return await db.Departments.FirstOrDefaultAsync(
+                d => d.Id == departmentId.Value && d.DeletedAt == null && d.IsActive, ct);
+        }
+
+        if (string.IsNullOrWhiteSpace(departmentName))
+            return null;
+
+        var trimmed = departmentName.Trim();
         return await db.Departments
             .FirstOrDefaultAsync(d =>
                 d.DeletedAt == null
+                && d.IsActive
                 && (d.Name == trimmed || d.Code == trimmed), ct);
     }
 
@@ -249,6 +269,7 @@ public class RecruitmentPlansController(
             plan.Period,
             FormatDateOnly(plan.OpenDate),
             FormatDateOnly(plan.DeadlineDate),
-            plan.Status);
+            plan.Status,
+            plan.DepartmentId);
     }
 }

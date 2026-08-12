@@ -74,7 +74,7 @@ public class HrDbContext(DbContextOptions<HrDbContext> options) : DbContext(opti
             e.Property(em => em.BankAccountName).HasMaxLength(255);
             e.Property(em => em.BankBranch).HasMaxLength(255);
             e.Property(em => em.HadSocialInsurance).HasMaxLength(50);
-            e.HasOne(em => em.Department).WithMany(d => d.Employees).HasForeignKey(em => em.DepartmentId);
+            e.HasOne(em => em.Department).WithMany(d => d.Employees).HasForeignKey(em => em.DepartmentId).IsRequired(false).OnDelete(DeleteBehavior.SetNull);
             e.HasOne(em => em.Position).WithMany(p => p.Employees).HasForeignKey(em => em.PositionId).IsRequired(false);
             e.HasOne(em => em.Manager).WithMany().HasForeignKey(em => em.ManagerId).IsRequired(false);
             e.HasQueryFilter(em => em.DeletedAt == null);

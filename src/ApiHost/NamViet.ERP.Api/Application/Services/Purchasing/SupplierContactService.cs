@@ -42,13 +42,17 @@ public sealed class SupplierContactService(WarehouseDbContext db) : ISupplierCon
         var total = await query.CountAsync(ct);
         var items = await query
             .OrderBy(c => c.Supplier!.SupplierName)
-            .ThenByDescending(c => c.IsPrimary)
+            .ThenBy(c => c.Role == SupplierContactRoles.Primary ? 0
+                : c.Role == SupplierContactRoles.Secondary ? 1 : 2)
             .ThenBy(c => c.FullName)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .Select(c => new SupplierContactDto(
                 c.Id, c.SupplierId, c.Supplier!.SupplierName, c.FullName,
-                c.Position, c.Phone, c.Email, c.Note, c.IsPrimary))
+                c.Position, c.Phone, c.Email, c.Note,
+                c.Role,
+                c.Role == SupplierContactRoles.Primary ? "Chính"
+                    : c.Role == SupplierContactRoles.Backup ? "Backup" : "Phụ"))
             .ToListAsync(ct);
 
         return new SupplierContactPagedResponse(
@@ -61,6 +65,7 @@ public sealed class SupplierContactService(WarehouseDbContext db) : ISupplierCon
         var supplier = await db.Suppliers.FirstOrDefaultAsync(s => s.Id == request.SupplierId, ct)
             ?? throw new KeyNotFoundException($"Không tìm thấy nhà cung cấp #{request.SupplierId}.");
 
+        var role = RequireRole(request.Role);
         var contact = new SupplierContact
         {
             SupplierId = supplier.Id,
@@ -69,12 +74,13 @@ public sealed class SupplierContactService(WarehouseDbContext db) : ISupplierCon
             Phone = NormalizePhone(request.Phone),
             Email = ValidateEmail(request.Email),
             Note = Trim(request.Note),
-            IsPrimary = request.IsPrimary,
+            Role = role,
+            IsPrimary = role == SupplierContactRoles.Primary,
         };
 
         db.SupplierContacts.Add(contact);
         if (contact.IsPrimary)
-            await ClearOtherPrimaryAsync(supplier.Id, contactIdToKeep: null, ct);
+            await DemoteOtherPrimariesAsync(supplier.Id, contactIdToKeep: null, ct);
 
         await db.SaveChangesAsync(ct);
         return ToDto(contact, supplier.SupplierName);
@@ -89,17 +95,19 @@ public sealed class SupplierContactService(WarehouseDbContext db) : ISupplierCon
         var supplier = await db.Suppliers.FirstOrDefaultAsync(s => s.Id == request.SupplierId, ct)
             ?? throw new KeyNotFoundException($"Không tìm thấy nhà cung cấp #{request.SupplierId}.");
 
+        var role = RequireRole(request.Role);
         contact.SupplierId = supplier.Id;
         contact.FullName = RequireName(request.FullName);
         contact.Position = RequirePosition(request.Position);
         contact.Phone = NormalizePhone(request.Phone);
         contact.Email = ValidateEmail(request.Email);
         contact.Note = Trim(request.Note);
-        contact.IsPrimary = request.IsPrimary;
+        contact.Role = role;
+        contact.IsPrimary = role == SupplierContactRoles.Primary;
         contact.UpdatedAt = DateTime.UtcNow;
 
         if (contact.IsPrimary)
-            await ClearOtherPrimaryAsync(supplier.Id, contact.Id, ct);
+            await DemoteOtherPrimariesAsync(supplier.Id, contact.Id, ct);
 
         await db.SaveChangesAsync(ct);
         return ToDto(contact, supplier.SupplierName);
@@ -114,15 +122,17 @@ public sealed class SupplierContactService(WarehouseDbContext db) : ISupplierCon
         await db.SaveChangesAsync(ct);
     }
 
-    private async Task ClearOtherPrimaryAsync(int supplierId, int? contactIdToKeep, CancellationToken ct)
+    private async Task DemoteOtherPrimariesAsync(int supplierId, int? contactIdToKeep, CancellationToken ct)
     {
         var others = await db.SupplierContacts
-            .Where(c => c.SupplierId == supplierId && c.IsPrimary
+            .Where(c => c.SupplierId == supplierId
+                        && c.Role == SupplierContactRoles.Primary
                         && (contactIdToKeep == null || c.Id != contactIdToKeep))
             .ToListAsync(ct);
 
         foreach (var other in others)
         {
+            other.Role = SupplierContactRoles.Secondary;
             other.IsPrimary = false;
             other.UpdatedAt = DateTime.UtcNow;
         }
@@ -130,7 +140,15 @@ public sealed class SupplierContactService(WarehouseDbContext db) : ISupplierCon
 
     private static SupplierContactDto ToDto(SupplierContact c, string supplierName) =>
         new(c.Id, c.SupplierId, supplierName, c.FullName,
-            c.Position, c.Phone, c.Email, c.Note, c.IsPrimary);
+            c.Position, c.Phone, c.Email, c.Note,
+            c.Role, SupplierContactRoles.ToClientLabel(c.Role));
+
+    private static string RequireRole(string? role)
+    {
+        if (!SupplierContactRoles.TryNormalize(role, out var normalized))
+            throw new PurchasingConflictException("Vai trò liên hệ phải là Chính, Phụ hoặc Backup.");
+        return normalized;
+    }
 
     private static string RequireName(string? name)
     {
