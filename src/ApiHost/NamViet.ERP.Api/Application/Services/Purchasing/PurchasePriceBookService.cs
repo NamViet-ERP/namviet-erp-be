@@ -10,7 +10,7 @@ namespace NamViet.ERP.Api.Application.Services.Purchasing;
 public interface IPurchasePriceBookService
 {
     Task<IReadOnlyList<PriceBookItemDto>> ListItemsAsync(
-        string? search, int? categoryId, CancellationToken ct = default);
+        string? search, int? categoryId, DateOnly? fromDate, DateOnly? toDate, CancellationToken ct = default);
 
     Task<PriceBookItemDetailDto?> GetItemAsync(string materialCode, CancellationToken ct = default);
 
@@ -22,6 +22,11 @@ public interface IPurchasePriceBookService
 
     Task<PurchaseSellPriceDto> UpsertSellPriceAsync(
         UpsertPurchaseSellPriceRequest request, CancellationToken ct = default);
+
+    Task<IReadOnlyList<PriceBookEstimateRowDto>> EstimatesAsync(CancellationToken ct = default);
+
+    Task<PurchaseItemEstimatePriceDto> UpsertEstimatePriceAsync(
+        UpsertPurchaseItemEstimatePriceRequest request, CancellationToken ct = default);
 }
 
 public sealed class PurchasePriceBookService(
@@ -29,7 +34,7 @@ public sealed class PurchasePriceBookService(
     ICurrentUser currentUser) : IPurchasePriceBookService
 {
     public async Task<IReadOnlyList<PriceBookItemDto>> ListItemsAsync(
-        string? search, int? categoryId, CancellationToken ct = default)
+        string? search, int? categoryId, DateOnly? fromDate, DateOnly? toDate, CancellationToken ct = default)
     {
         var categoryIds = categoryId is > 0
             ? await DescendantCategoryIdsAsync(categoryId.Value, ct)
@@ -50,13 +55,16 @@ public sealed class PurchasePriceBookService(
             .Take(500)
             .ToListAsync(ct);
         var cats = await db.MaterialCategories.AsNoTracking().ToDictionaryAsync(c => c.Id, ct);
-        var history = await LoadPoHistoryAsync(materials.Select(m => m.MaterialCode).ToList(), ct);
+        var codes = materials.Select(m => m.MaterialCode).ToList();
+        var history = await LoadPoHistoryAsync(codes, ct);
+        var estimates = await LoadLatestEstimatesAsync(codes, toDate, ct);
 
         return materials.Select(m =>
         {
             cats.TryGetValue(m.CategoryId, out var cat);
             history.TryGetValue(m.MaterialCode, out var hist);
-            return ToItemDto(m, cat?.Name, hist);
+            estimates.TryGetValue(m.MaterialCode, out var estimate);
+            return ToItemDto(m, cat?.Name, hist, estimate, fromDate, toDate);
         }).ToList();
     }
 
@@ -69,7 +77,9 @@ public sealed class PurchasePriceBookService(
             .FirstOrDefaultAsync(c => c.Id == material.CategoryId, ct);
         var histMap = await LoadPoHistoryAsync([code], ct);
         histMap.TryGetValue(code, out var poHist);
-        var item = ToItemDto(material, cat?.Name, poHist);
+        var estimates = await LoadLatestEstimatesAsync([code], null, ct);
+        estimates.TryGetValue(code, out var estimate);
+        var item = ToItemDto(material, cat?.Name, poHist, estimate, null, null);
 
         var history = (poHist ?? [])
             .Select(p => new PriceBookHistoryRowDto(
@@ -84,7 +94,18 @@ public sealed class PurchasePriceBookService(
                 s.EffectiveDate, "sell", null, null, null, s.SellPrice, null, s.ProjectCode));
         }
 
-        return new PriceBookItemDetailDto(item, history.OrderByDescending(h => h.Date).ToList());
+        var estimateRows = await db.PurchaseItemEstimatePrices.AsNoTracking()
+            .Where(s => s.MaterialCode == code)
+            .ToListAsync(ct);
+        foreach (var e in estimateRows)
+        {
+            history.Add(new PriceBookHistoryRowDto(
+                e.EffectiveDate, "estimate", null, null, null, e.EstimatePrice, null, e.ProjectCode));
+        }
+
+        return new PriceBookItemDetailDto(
+            item,
+            history.OrderByDescending(h => h.Date).ThenByDescending(h => h.UnitPrice).ToList());
     }
 
     public async Task<PriceBookMatrixDto> MatrixAsync(int categoryId, CancellationToken ct = default)
@@ -250,6 +271,80 @@ public sealed class PurchasePriceBookService(
             existing.SellPrice, existing.EffectiveDate, existing.CreatedByName, existing.Note);
     }
 
+    public async Task<IReadOnlyList<PriceBookEstimateRowDto>> EstimatesAsync(CancellationToken ct = default)
+    {
+        var rows = await db.PurchaseItemEstimatePrices.AsNoTracking().ToListAsync(ct);
+        var latest = rows
+            .GroupBy(s => $"{s.MaterialCode}|{s.ProjectCode ?? ""}")
+            .Select(g => g.OrderByDescending(x => x.EffectiveDate).ThenByDescending(x => x.UpdatedAt).First())
+            .ToList();
+        var histMap = await LoadPoHistoryAsync(latest.Select(s => s.MaterialCode).Distinct().ToList(), ct);
+
+        return latest.Select(s =>
+        {
+            histMap.TryGetValue(s.MaterialCode, out var hist);
+            var purchase = (hist ?? []).Where(h => h.Kind == "po").ToList();
+            var latestPo = purchase.Count == 0 ? (decimal?)null : purchase[^1].UnitPrice;
+            var diff = latestPo is null ? (decimal?)null : latestPo - s.EstimatePrice;
+            var diffPct = diff is null || s.EstimatePrice == 0
+                ? (decimal?)null
+                : Math.Round(diff.Value / s.EstimatePrice * 100m, 1);
+            var marginPct = diffPct is null ? null : -diffPct;
+            return new PriceBookEstimateRowDto(
+                s.MaterialCode, s.MaterialName, s.ProjectCode, s.EstimatePrice, s.EffectiveDate,
+                latestPo, diff, diffPct, marginPct,
+                rows.Count(x => x.MaterialCode == s.MaterialCode));
+        }).ToList();
+    }
+
+    public async Task<PurchaseItemEstimatePriceDto> UpsertEstimatePriceAsync(
+        UpsertPurchaseItemEstimatePriceRequest request, CancellationToken ct = default)
+    {
+        var code = request.MaterialCode.Trim();
+        var mat = await db.Materials.AsNoTracking().FirstOrDefaultAsync(m => m.MaterialCode == code, ct)
+            ?? throw new PurchasingConflictException($"Không tìm thấy vật tư {code}.");
+        if (request.EstimatePrice <= 0)
+            throw new PurchasingConflictException("Giá dự toán phải lớn hơn 0.");
+
+        var now = DateTime.UtcNow;
+        var projectCode = string.IsNullOrWhiteSpace(request.ProjectCode) ? null : request.ProjectCode.Trim();
+        var actor = string.IsNullOrWhiteSpace(currentUser.Name) ? currentUser.Email : currentUser.Name;
+        var existing = await db.PurchaseItemEstimatePrices.FirstOrDefaultAsync(s =>
+            s.MaterialCode == mat.MaterialCode
+            && (s.ProjectCode ?? "") == (projectCode ?? "")
+            && s.EffectiveDate == request.EffectiveDate, ct);
+
+        if (existing is null)
+        {
+            existing = new PurchaseItemEstimatePrice
+            {
+                MaterialCode = mat.MaterialCode,
+                MaterialName = mat.MaterialName,
+                ProjectCode = projectCode,
+                EstimatePrice = request.EstimatePrice,
+                EffectiveDate = request.EffectiveDate,
+                CreatedByName = actor,
+                Note = string.IsNullOrWhiteSpace(request.Note) ? null : request.Note.Trim(),
+                CreatedAt = now,
+                UpdatedAt = now,
+            };
+            db.PurchaseItemEstimatePrices.Add(existing);
+        }
+        else
+        {
+            existing.MaterialName = mat.MaterialName;
+            existing.EstimatePrice = request.EstimatePrice;
+            existing.CreatedByName = actor;
+            existing.Note = string.IsNullOrWhiteSpace(request.Note) ? null : request.Note.Trim();
+            existing.UpdatedAt = now;
+        }
+
+        await db.SaveChangesAsync(ct);
+        return new PurchaseItemEstimatePriceDto(
+            existing.Id, existing.MaterialCode, existing.MaterialName, existing.ProjectCode,
+            existing.EstimatePrice, existing.EffectiveDate, existing.CreatedByName, existing.Note);
+    }
+
     private async Task<Dictionary<string, List<PoPricePoint>>> LoadPoHistoryAsync(
         IReadOnlyList<string> codes, CancellationToken ct)
     {
@@ -261,7 +356,6 @@ public sealed class PurchasePriceBookService(
             where item.MaterialCode != null
                   && codes.Contains(item.MaterialCode)
                   && item.PoPrice > 0
-                  && po.ApprovalStatus == PurchaseOrderApprovalStatuses.Approved
             select new PoPricePoint(
                 item.MaterialCode!,
                 po.OrderDate,
@@ -433,14 +527,43 @@ public sealed class PurchasePriceBookService(
 
     private static bool IsPurchaseKind(PoPricePoint point) => point.Kind is "po" or "plan" or "import";
 
-    private static PriceBookItemDto ToItemDto(Material m, string? categoryName, List<PoPricePoint>? hist)
+    private async Task<Dictionary<string, decimal>> LoadLatestEstimatesAsync(
+        IReadOnlyList<string> codes, DateOnly? asOf, CancellationToken ct)
     {
-        var purchase = (hist ?? []).Where(IsPurchaseKind).ToList();
+        if (codes.Count == 0) return new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
+
+        var rows = await db.PurchaseItemEstimatePrices.AsNoTracking()
+            .Where(e => codes.Contains(e.MaterialCode))
+            .ToListAsync(ct);
+
+        return rows
+            .Where(e => asOf is null || e.EffectiveDate <= asOf)
+            .GroupBy(e => e.MaterialCode, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                g => g.Key,
+                g => g.OrderByDescending(x => x.EffectiveDate).ThenByDescending(x => x.UpdatedAt).First().EstimatePrice,
+                StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static PriceBookItemDto ToItemDto(
+        Material m,
+        string? categoryName,
+        List<PoPricePoint>? hist,
+        decimal? estimatePrice,
+        DateOnly? fromDate,
+        DateOnly? toDate)
+    {
+        var purchase = (hist ?? [])
+            .Where(h => h.Kind == "po")
+            .Where(h => fromDate is null || h.Date >= fromDate)
+            .Where(h => toDate is null || h.Date <= toDate)
+            .ToList();
         if (purchase.Count == 0)
         {
             return new PriceBookItemDto(
                 m.MaterialCode, m.MaterialName, m.CategoryId, categoryName, m.CeilingPrice, m.AbcClass,
-                null, null, null, null, null, null, 0, null, false);
+                null, null, null, null, null, null, 0, null, false,
+                estimatePrice, null, null, 0);
         }
 
         var latest = purchase[^1];
@@ -449,13 +572,17 @@ public sealed class PurchasePriceBookService(
             ? 0
             : Math.Round((latest.UnitPrice - prev.UnitPrice) / prev.UnitPrice * 100m, 1);
         var over = m.CeilingPrice is > 0 && latest.UnitPrice > m.CeilingPrice;
+        decimal? diff = estimatePrice is null ? null : latest.UnitPrice - estimatePrice;
+        decimal? diffPct = diff is null || estimatePrice is null or 0
+            ? null
+            : Math.Round(diff.Value / estimatePrice.Value * 100m, 1);
         return new PriceBookItemDto(
             m.MaterialCode, m.MaterialName, m.CategoryId, categoryName, m.CeilingPrice, m.AbcClass,
             latest.UnitPrice, latest.Date, latest.SupplierName,
             purchase.Min(h => h.UnitPrice), purchase.Max(h => h.UnitPrice),
             Math.Round(purchase.Average(h => h.UnitPrice), 2),
             purchase.Select(h => h.SupplierId).Distinct().Count(),
-            trend, over);
+            trend, over, estimatePrice, diff, diffPct, purchase.Count);
     }
 
     private sealed record PoPricePoint(

@@ -24,14 +24,32 @@ public class SupplierContactsController(ISupplierContactService contacts) : Cont
     [HttpPost]
     [RequirePermission("wms.suppliers.create")]
     public async Task<ActionResult<SupplierContactDto>> Create(
-        [FromBody] UpsertSupplierContactRequest request, CancellationToken ct) =>
-        Ok(await contacts.CreateAsync(request, ct));
+        [FromBody] UpsertSupplierContactRequest request, CancellationToken ct)
+    {
+        try
+        {
+            return Ok(await contacts.CreateAsync(request, ct));
+        }
+        catch (PurchasingConflictException ex)
+        {
+            return ContactFieldError(ex.Message);
+        }
+    }
 
     [HttpPut("{id:int}")]
     [RequirePermission("wms.suppliers.update")]
     public async Task<ActionResult<SupplierContactDto>> Update(
-        int id, [FromBody] UpsertSupplierContactRequest request, CancellationToken ct) =>
-        Ok(await contacts.UpdateAsync(id, request, ct));
+        int id, [FromBody] UpsertSupplierContactRequest request, CancellationToken ct)
+    {
+        try
+        {
+            return Ok(await contacts.UpdateAsync(id, request, ct));
+        }
+        catch (PurchasingConflictException ex)
+        {
+            return ContactFieldError(ex.Message);
+        }
+    }
 
     [HttpDelete("{id:int}")]
     [RequirePermission("wms.suppliers.delete")]
@@ -39,5 +57,22 @@ public class SupplierContactsController(ISupplierContactService contacts) : Cont
     {
         await contacts.DeleteAsync(id, ct);
         return NoContent();
+    }
+
+    private static BadRequestObjectResult ContactFieldError(string message)
+    {
+        var field = "fullName";
+        if (message.Contains("điện thoại", StringComparison.OrdinalIgnoreCase)
+            || message.Contains("SĐT", StringComparison.OrdinalIgnoreCase))
+            field = "phone";
+        else if (message.Contains("Email", StringComparison.OrdinalIgnoreCase))
+            field = "email";
+        else if (message.Contains("Chức vụ", StringComparison.OrdinalIgnoreCase))
+            field = "position";
+
+        return new BadRequestObjectResult(new
+        {
+            errors = new Dictionary<string, string[]> { [field] = [message] },
+        });
     }
 }

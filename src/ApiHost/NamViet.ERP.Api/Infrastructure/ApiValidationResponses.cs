@@ -73,6 +73,11 @@ public static class ApiValidationResponses
                 "startDate" => "Ngày bắt đầu không hợp lệ.",
                 "materialBudget" => "Ngân sách vật tư không hợp lệ.",
                 "pmId" => "Người phụ trách không hợp lệ.",
+                "supplierCode" => "Mã NCC không hợp lệ.",
+                "supplierName" => "Tên nhà cung cấp không hợp lệ.",
+                "contactPhone" => "Số điện thoại không hợp lệ.",
+                "maxDebtDays" => "Hạn công nợ phải là số nguyên từ 0 đến 3650 ngày.",
+                "paymentTerms" => "Điều khoản thanh toán không hợp lệ.",
                 _ => "Dữ liệu không hợp lệ."
             };
         }
@@ -86,6 +91,9 @@ public static class ApiValidationResponses
                 "startDate" => "Vui lòng chọn ngày bắt đầu",
                 "materialBudget" => "Vui lòng nhập ngân sách vật tư",
                 "createdBy" => "Không xác định được người lập phiếu.",
+                "supplierCode" => "Mã NCC là bắt buộc.",
+                "supplierName" => "Tên nhà cung cấp là bắt buộc.",
+                "maxDebtDays" => "Hạn công nợ là bắt buộc.",
                 "_form" => "Vui lòng kiểm tra lại thông tin.",
                 _ => "Trường này là bắt buộc"
             };

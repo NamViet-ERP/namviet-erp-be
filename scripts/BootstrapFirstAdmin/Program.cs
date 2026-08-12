@@ -72,10 +72,32 @@ if (!await roleManager.RoleExistsAsync(adminRole))
     Console.WriteLine("Created role Admin.");
 }
 
+var forceReset = args.Any(a => string.Equals(a, "--force-reset", StringComparison.OrdinalIgnoreCase));
 var existing = await userManager.FindByEmailAsync(email);
 if (existing is not null)
 {
-    Console.WriteLine($"User '{email}' already exists — skipping (idempotent).");
+    if (!forceReset)
+    {
+        Console.WriteLine($"User '{email}' already exists — skipping (idempotent). Pass --force-reset to update password.");
+        return 0;
+    }
+
+    existing.Name = name;
+    existing.IsActive = true;
+    existing.EmailConfirmed = true;
+    existing.DeletedAt = null;
+    await userManager.UpdateAsync(existing);
+    var token = await userManager.GeneratePasswordResetTokenAsync(existing);
+    var reset = await userManager.ResetPasswordAsync(existing, token, password);
+    if (!reset.Succeeded)
+    {
+        Console.Error.WriteLine("Failed to reset password: " +
+            string.Join("; ", reset.Errors.Select(e => e.Description)));
+        return 1;
+    }
+    if (!await userManager.IsInRoleAsync(existing, adminRole))
+        await userManager.AddToRoleAsync(existing, adminRole);
+    Console.WriteLine($"Reset password for admin user '{email}'.");
     return 0;
 }
 

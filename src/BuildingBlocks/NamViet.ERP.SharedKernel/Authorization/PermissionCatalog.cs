@@ -90,6 +90,7 @@ public static class PermissionCatalog
         new("wms.suppliers.create", "WMS", "Suppliers", "Tạo nhà cung cấp"),
         new("wms.suppliers.update", "WMS", "Suppliers", "Sửa nhà cung cấp"),
         new("wms.suppliers.delete", "WMS", "Suppliers", "Xóa nhà cung cấp"),
+        new("wms.suppliers.approve", "WMS", "Suppliers", "Duyệt nhà cung cấp mới (Sếp)"),
         new("wms.categories.view:all", "WMS", "Categories", "Xem nhóm vật tư"),
         new("wms.categories.create", "WMS", "Categories", "Tạo nhóm vật tư"),
         new("wms.categories.update", "WMS", "Categories", "Sửa nhóm vật tư"),

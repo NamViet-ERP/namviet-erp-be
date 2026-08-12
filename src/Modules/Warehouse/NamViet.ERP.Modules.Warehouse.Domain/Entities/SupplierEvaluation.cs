@@ -48,7 +48,7 @@ public static class SupplierGrades
     public const string G = "G";
     public const string H = "H";
 
-    /// <summary>Chưa có đánh giá đơn hàng hoàn thành.</summary>
+    /// <summary>Chưa có đánh giá đơn hàng hoàn thành (legacy). NCC mới dùng D.</summary>
     public const string Unrated = "—";
 
     public static readonly string[] All = [A, B, C, D, E, F, G, H];
@@ -73,6 +73,26 @@ public static class SupplierGrades
             gradeFMinScore,
             gradeGMinScore,
             gradeHMinScore);
+}
+
+public static class SupplierApprovalStatuses
+{
+    public const string New = "new";
+    public const string Approved = "approved";
+    public const string Rejected = "rejected";
+
+    public static bool CanPlaceOrder(Supplier supplier) =>
+        !supplier.IsBlacklisted
+        && string.Equals(supplier.ApprovalStatus, Approved, StringComparison.OrdinalIgnoreCase);
+}
+
+public static class SupplierFieldLimits
+{
+    public const int CodeMax = 50;
+    public const int NameMax = 255;
+    public const int PaymentTermsMax = 500;
+    public const int MaxDebtDaysMin = 0;
+    public const int MaxDebtDaysMax = 3650;
 }
 
 public static class SupplierEvaluationCycles

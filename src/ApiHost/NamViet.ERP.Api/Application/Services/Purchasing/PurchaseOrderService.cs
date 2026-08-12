@@ -151,6 +151,7 @@ public sealed class PurchaseOrderService(
 
         var supplier = await db.Suppliers.FirstOrDefaultAsync(s => s.Id == request.SupplierId, ct)
             ?? throw new KeyNotFoundException($"Không tìm thấy nhà cung cấp #{request.SupplierId}.");
+        EnsureSupplierCanPlaceOrder(supplier);
 
         var lineIds = request.Lines.Select(l => l.PlanLineId).Distinct().ToList();
         var planLines = plan.Lines.Where(l => lineIds.Contains(l.Id)).ToDictionary(l => l.Id);
@@ -900,6 +901,16 @@ public sealed class PurchaseOrderService(
             return byC;
 
         return null;
+    }
+
+    private static void EnsureSupplierCanPlaceOrder(Supplier supplier)
+    {
+        if (supplier.IsBlacklisted)
+            throw new PurchasingConflictException(
+                "NCC đang blacklist, không thể tạo đơn đặt hàng.");
+        if (!SupplierApprovalStatuses.CanPlaceOrder(supplier))
+            throw new PurchasingConflictException(
+                "NCC chưa được sếp duyệt, chưa đặt hàng được.");
     }
 
     private static void ValidateSupplierMatch(PurchasePlanLine planLine, Supplier supplier)

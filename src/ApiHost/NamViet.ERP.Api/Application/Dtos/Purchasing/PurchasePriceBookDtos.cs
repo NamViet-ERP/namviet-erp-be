@@ -15,7 +15,11 @@ public record PriceBookItemDto(
     decimal? AvgPrice,
     int SupplierCount,
     decimal? TrendPct,
-    bool OverCeiling);
+    bool OverCeiling,
+    decimal? EstimatePrice,
+    decimal? EstimateDiff,
+    decimal? EstimateDiffPct,
+    int HistoryCount);
 
 public record PriceBookHistoryRowDto(
     DateOnly Date,
@@ -83,5 +87,34 @@ public record UpsertPurchaseSellPriceRequest(
     string MaterialCode,
     string? ProjectCode,
     decimal SellPrice,
+    DateOnly EffectiveDate,
+    string? Note);
+
+public record PriceBookEstimateRowDto(
+    string MaterialCode,
+    string MaterialName,
+    string? ProjectCode,
+    decimal EstimatePrice,
+    DateOnly EffectiveDate,
+    decimal? PurchaseLatest,
+    decimal? Diff,
+    decimal? DiffPct,
+    decimal? MarginPct,
+    int EstimateHistoryCount);
+
+public record PurchaseItemEstimatePriceDto(
+    Guid Id,
+    string MaterialCode,
+    string MaterialName,
+    string? ProjectCode,
+    decimal EstimatePrice,
+    DateOnly EffectiveDate,
+    string CreatedByName,
+    string? Note);
+
+public record UpsertPurchaseItemEstimatePriceRequest(
+    string MaterialCode,
+    string? ProjectCode,
+    decimal EstimatePrice,
     DateOnly EffectiveDate,
     string? Note);

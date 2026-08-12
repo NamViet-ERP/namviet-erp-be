@@ -16,8 +16,10 @@ public class PurchasePriceBookController(IPurchasePriceBookService priceBook) : 
     public async Task<ActionResult<IReadOnlyList<PriceBookItemDto>>> Items(
         [FromQuery] string? search,
         [FromQuery] int? categoryId,
+        [FromQuery] DateOnly? fromDate,
+        [FromQuery] DateOnly? toDate,
         CancellationToken ct) =>
-        Ok(await priceBook.ListItemsAsync(search, categoryId, ct));
+        Ok(await priceBook.ListItemsAsync(search, categoryId, fromDate, toDate, ct));
 
     [HttpGet("items/{code}")]
     [RequirePermission("purchasing.pricebook.view")]
@@ -60,6 +62,26 @@ public class PurchasePriceBookController(IPurchasePriceBookService priceBook) : 
         try
         {
             return Ok(await priceBook.UpsertSellPriceAsync(request, ct));
+        }
+        catch (PurchasingConflictException ex)
+        {
+            return Conflict(ex.Message);
+        }
+    }
+
+    [HttpGet("estimates")]
+    [RequirePermission("purchasing.pricebook.view")]
+    public async Task<ActionResult<IReadOnlyList<PriceBookEstimateRowDto>>> Estimates(CancellationToken ct) =>
+        Ok(await priceBook.EstimatesAsync(ct));
+
+    [HttpPost("estimate-prices")]
+    [RequirePermission("purchasing.pricebook.update")]
+    public async Task<ActionResult<PurchaseItemEstimatePriceDto>> UpsertEstimatePrice(
+        [FromBody] UpsertPurchaseItemEstimatePriceRequest request, CancellationToken ct)
+    {
+        try
+        {
+            return Ok(await priceBook.UpsertEstimatePriceAsync(request, ct));
         }
         catch (PurchasingConflictException ex)
         {

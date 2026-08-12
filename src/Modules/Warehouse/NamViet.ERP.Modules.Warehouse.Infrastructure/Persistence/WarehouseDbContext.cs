@@ -81,6 +81,7 @@ public class WarehouseDbContext(DbContextOptions<WarehouseDbContext> options) : 
     public DbSet<PurchaseEstimateApproval> PurchaseEstimateApprovals => Set<PurchaseEstimateApproval>();
     public DbSet<PurchaseRfqQuote> PurchaseRfqQuotes => Set<PurchaseRfqQuote>();
     public DbSet<PurchaseSellPrice> PurchaseSellPrices => Set<PurchaseSellPrice>();
+    public DbSet<PurchaseItemEstimatePrice> PurchaseItemEstimatePrices => Set<PurchaseItemEstimatePrice>();
     public DbSet<ActivityEvent> ActivityEvents => Set<ActivityEvent>();
     public DbSet<Conversion> Conversions => Set<Conversion>();
     public DbSet<ConversionItem> ConversionItems => Set<ConversionItem>();
@@ -164,7 +165,9 @@ public class WarehouseDbContext(DbContextOptions<WarehouseDbContext> options) : 
             e.Property(s => s.SupplierName).HasMaxLength(255).IsRequired();
             e.Property(s => s.ContactPhone).HasMaxLength(50);
             e.Property(s => s.PaymentTerms).HasMaxLength(500);
-            e.Property(s => s.Rating).HasMaxLength(10).HasDefaultValue("—");
+            e.Property(s => s.Rating).HasMaxLength(10).HasDefaultValue("D");
+            e.Property(s => s.ApprovalStatus).HasMaxLength(20).HasDefaultValue("new");
+            e.HasIndex(s => s.ApprovalStatus);
             e.Property(s => s.IsBlacklisted).HasDefaultValue(false);
             e.Property(s => s.BlacklistedByName).HasMaxLength(200);
             e.Property(s => s.BlacklistReason).HasMaxLength(1000);
@@ -777,6 +780,20 @@ public class WarehouseDbContext(DbContextOptions<WarehouseDbContext> options) : 
             e.Property(x => x.MaterialName).HasMaxLength(255).IsRequired();
             e.Property(x => x.ProjectCode).HasMaxLength(50);
             e.Property(x => x.SellPrice).HasColumnType("numeric(18,2)");
+            e.Property(x => x.CreatedByName).HasMaxLength(200).IsRequired();
+            e.Property(x => x.Note).HasMaxLength(2000);
+            e.HasIndex(x => new { x.MaterialCode, x.ProjectCode, x.EffectiveDate });
+            e.HasQueryFilter(x => x.DeletedAt == null);
+        });
+
+        model.Entity<PurchaseItemEstimatePrice>(e =>
+        {
+            e.ToTable("purchase_item_estimate_prices");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.MaterialCode).HasMaxLength(100).IsRequired();
+            e.Property(x => x.MaterialName).HasMaxLength(255).IsRequired();
+            e.Property(x => x.ProjectCode).HasMaxLength(50);
+            e.Property(x => x.EstimatePrice).HasColumnType("numeric(18,2)");
             e.Property(x => x.CreatedByName).HasMaxLength(200).IsRequired();
             e.Property(x => x.Note).HasMaxLength(2000);
             e.HasIndex(x => new { x.MaterialCode, x.ProjectCode, x.EffectiveDate });

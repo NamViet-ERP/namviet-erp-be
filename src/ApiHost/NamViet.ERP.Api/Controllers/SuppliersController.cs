@@ -42,6 +42,7 @@ public class SuppliersController(
         [FromQuery] string? rating = null,
         [FromQuery] int? groupId = null,
         [FromQuery] bool? isBlacklisted = null,
+        [FromQuery] string? approvalStatus = null,
         CancellationToken ct = default)
     {
         var query = db.Suppliers.AsQueryable();
@@ -51,6 +52,8 @@ public class SuppliersController(
             query = query.Where(s => s.Rating == rating);
         if (isBlacklisted is bool bl)
             query = query.Where(s => s.IsBlacklisted == bl);
+        if (!string.IsNullOrWhiteSpace(approvalStatus))
+            query = query.Where(s => s.ApprovalStatus == approvalStatus);
         if (groupId is int gid)
         {
             query = query.Where(s => s.GroupMemberships.Any(m => m.SupplierGroupId == gid));
@@ -70,6 +73,7 @@ public class SuppliersController(
                 s.MaxDebtDays,
                 s.PaymentTerms,
                 s.Rating,
+                s.ApprovalStatus,
                 s.IsBlacklisted,
                 s.BlacklistReason,
                 s.BlacklistedAt,
@@ -139,6 +143,7 @@ public class SuppliersController(
             s.MaxDebtDays,
             s.PaymentTerms,
             s.Rating,
+            s.ApprovalStatus,
             s.IsBlacklisted,
             s.BlacklistReason,
             s.BlacklistedAt,
@@ -148,6 +153,11 @@ public class SuppliersController(
             latestEvaluationMap.GetValueOrDefault(s.Id))).ToList();
         return Ok(PagedResult<SupplierDto>.Create(items, total, page, pageSize));
     }
+
+    [HttpGet("next-code")]
+    [RequirePermission("wms.suppliers.create")]
+    public async Task<ActionResult<SupplierNextCodeDto>> NextCode(CancellationToken ct) =>
+        Ok(new SupplierNextCodeDto(await NextSupplierCodeAsync(ct)));
 
     [HttpGet("blacklist")]
     [RequirePermission("wms.suppliers.view:all")]
@@ -214,6 +224,7 @@ public class SuppliersController(
             s.MaxDebtDays,
             s.PaymentTerms,
             s.Rating,
+            s.ApprovalStatus,
             s.IsBlacklisted,
             s.BlacklistReason,
             s.BlacklistedAt,
@@ -225,60 +236,88 @@ public class SuppliersController(
 
     [HttpPost]
     [RequirePermission("wms.suppliers.create")]
-    public async Task<IActionResult> Create([FromBody] UpsertSupplierRequest req, CancellationToken ct)
+    public async Task<ActionResult<SupplierDto>> Create([FromBody] UpsertSupplierRequest req, CancellationToken ct)
     {
-        if (await db.Suppliers.AnyAsync(s => s.SupplierCode == req.SupplierCode, ct))
-            return Conflict($"Mã NCC '{req.SupplierCode}' đã tồn tại.");
+        if (TryValidateUpsert(req, requireCode: false, out var phone, out var errors) is BadRequestObjectResult bad)
+            return bad;
 
-        string? phone;
-        try
+        var name = req.SupplierName.Trim();
+        if (await SupplierNameTakenAsync(name, exceptId: null, currentName: null, ct))
         {
-            phone = VietnamPhoneRules.NormalizeOptional(req.ContactPhone);
-        }
-        catch (ArgumentException ex)
-        {
-            return BadRequest(ex.Message);
+            errors["supplierName"] = ["Tên nhà cung cấp đã tồn tại."];
+            return FieldErrors(errors);
         }
 
         var s = new Supplier
         {
-            SupplierCode = req.SupplierCode.Trim(),
-            SupplierName = req.SupplierName.Trim(),
+            SupplierCode = await NextSupplierCodeAsync(ct),
+            SupplierName = name,
             ContactPhone = phone,
             MaxDebtDays = req.MaxDebtDays,
             PaymentTerms = string.IsNullOrWhiteSpace(req.PaymentTerms) ? null : req.PaymentTerms.Trim(),
-            Rating = SupplierGrades.Unrated,
+            Rating = SupplierGrades.D,
+            ApprovalStatus = SupplierApprovalStatuses.New,
         };
         db.Suppliers.Add(s);
         await db.SaveChangesAsync(ct);
-        return CreatedAtAction(nameof(GetById), new { id = s.Id }, null);
+        return await GetById(s.Id, ct);
     }
 
     [HttpPut("{id:int}")]
     [RequirePermission("wms.suppliers.update")]
     public async Task<IActionResult> Update(int id, [FromBody] UpsertSupplierRequest req, CancellationToken ct)
     {
+        if (TryValidateUpsert(req, requireCode: false, out var phone, out _) is { } invalid)
+            return invalid;
+
         var s = await db.Suppliers.FindAsync([id], ct);
         if (s is null) return NotFound();
 
-        string? phone;
-        try
+        var name = req.SupplierName.Trim();
+        if (await SupplierNameTakenAsync(name, exceptId: id, currentName: s.SupplierName, ct))
         {
-            phone = VietnamPhoneRules.NormalizeOptional(req.ContactPhone);
-        }
-        catch (ArgumentException ex)
-        {
-            return BadRequest(ex.Message);
+            return FieldErrors(new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["supplierName"] = ["Tên nhà cung cấp đã tồn tại."],
+            });
         }
 
-        s.SupplierName = req.SupplierName.Trim();
+        s.SupplierName = name;
         s.ContactPhone = phone;
         s.MaxDebtDays = req.MaxDebtDays;
         s.PaymentTerms = string.IsNullOrWhiteSpace(req.PaymentTerms) ? null : req.PaymentTerms.Trim();
-        // Rating is system-owned — never overwrite from client.
+        // Rating + ApprovalStatus are system-owned — never overwrite from client.
         s.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
         return NoContent();
+    }
+
+    [HttpPost("{id:int}/approve")]
+    [RequirePermission("wms.suppliers.approve")]
+    public async Task<ActionResult<SupplierDto>> Approve(int id, CancellationToken ct)
+    {
+        var s = await db.Suppliers.FirstOrDefaultAsync(x => x.Id == id, ct);
+        if (s is null) return NotFound();
+        if (s.IsBlacklisted)
+            return Conflict("NCC đang blacklist, không thể duyệt để đặt hàng.");
+
+        s.ApprovalStatus = SupplierApprovalStatuses.Approved;
+        s.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
+        return await GetById(id, ct);
+    }
+
+    [HttpPost("{id:int}/reject")]
+    [RequirePermission("wms.suppliers.approve")]
+    public async Task<ActionResult<SupplierDto>> Reject(int id, CancellationToken ct)
+    {
+        var s = await db.Suppliers.FirstOrDefaultAsync(x => x.Id == id, ct);
+        if (s is null) return NotFound();
+
+        s.ApprovalStatus = SupplierApprovalStatuses.Rejected;
+        s.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
+        return await GetById(id, ct);
     }
 
     [HttpPost("{id:int}/blacklist")]
@@ -334,4 +373,86 @@ public class SuppliersController(
         await db.SaveChangesAsync(ct);
         return NoContent();
     }
+
+    private static IActionResult? TryValidateUpsert(
+        UpsertSupplierRequest req,
+        bool requireCode,
+        out string? phone,
+        out Dictionary<string, string[]> errors)
+    {
+        errors = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
+        phone = null;
+
+        var code = req.SupplierCode?.Trim() ?? string.Empty;
+        if (requireCode)
+        {
+            if (code.Length == 0)
+                errors["supplierCode"] = ["Mã NCC là bắt buộc."];
+            else if (code.Length > SupplierFieldLimits.CodeMax)
+                errors["supplierCode"] = [$"Mã NCC tối đa {SupplierFieldLimits.CodeMax} ký tự."];
+        }
+
+        var name = req.SupplierName?.Trim() ?? string.Empty;
+        if (name.Length == 0)
+            errors["supplierName"] = ["Tên nhà cung cấp là bắt buộc."];
+        else if (name.Length > SupplierFieldLimits.NameMax)
+            errors["supplierName"] = [$"Tên nhà cung cấp tối đa {SupplierFieldLimits.NameMax} ký tự."];
+
+        if (req.MaxDebtDays < SupplierFieldLimits.MaxDebtDaysMin
+            || req.MaxDebtDays > SupplierFieldLimits.MaxDebtDaysMax)
+            errors["maxDebtDays"] = ["Hạn công nợ từ 0 đến 3650 ngày."];
+
+        var terms = req.PaymentTerms?.Trim() ?? string.Empty;
+        if (terms.Length > SupplierFieldLimits.PaymentTermsMax)
+            errors["paymentTerms"] = [$"Điều khoản thanh toán tối đa {SupplierFieldLimits.PaymentTermsMax} ký tự."];
+
+        try
+        {
+            phone = VietnamPhoneRules.NormalizeOptional(req.ContactPhone);
+        }
+        catch (ArgumentException ex)
+        {
+            errors["contactPhone"] = [ex.Message];
+        }
+
+        return errors.Count > 0 ? FieldErrors(errors) : null;
+    }
+
+    private async Task<bool> SupplierNameTakenAsync(
+        string name, int? exceptId, string? currentName, CancellationToken ct)
+    {
+        if (exceptId is not null && Supplier.SameFoldedName(name, currentName))
+            return false;
+
+        var names = await db.Suppliers.AsNoTracking()
+            .Where(s => exceptId == null || s.Id != exceptId)
+            .Select(s => s.SupplierName)
+            .ToListAsync(ct);
+        return names.Exists(existing => Supplier.SameFoldedName(existing, name));
+    }
+
+    private async Task<string> NextSupplierCodeAsync(CancellationToken ct)
+    {
+        var codes = await db.Suppliers.IgnoreQueryFilters()
+            .Select(s => s.SupplierCode)
+            .ToListAsync(ct);
+        var next = 1;
+        foreach (var code in codes)
+        {
+            if (Supplier.TryParseSequence(code, out var n))
+                next = Math.Max(next, n + 1);
+        }
+
+        for (var i = 0; i < 8; i++)
+        {
+            var candidate = Supplier.GenerateCode(next + i);
+            if (!await db.Suppliers.IgnoreQueryFilters().AnyAsync(s => s.SupplierCode == candidate, ct))
+                return candidate;
+        }
+
+        return Supplier.GenerateCode(next);
+    }
+
+    private static BadRequestObjectResult FieldErrors(IReadOnlyDictionary<string, string[]> errors) =>
+        new(new { errors });
 }

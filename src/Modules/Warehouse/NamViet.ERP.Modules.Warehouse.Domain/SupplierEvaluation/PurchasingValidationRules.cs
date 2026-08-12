@@ -14,10 +14,12 @@ public static class PurchasingMoneyLimits
 public static class VietnamPhoneRules
 {
     public const int MaxLength = 50;
+    public const string InvalidMessage =
+        "SĐT không hợp lệ. Chỉ nhập 10 số, bắt đầu bằng 0 (vd. 0912345678).";
 
     /// <summary>
-    /// Trả về số đã chuẩn hoá (chỉ chữ số, +84→0) hoặc null nếu empty.
-    /// Throw nếu có giá trị nhưng không hợp lệ.
+    /// Trả về số đã chuẩn hoá (10 chữ số, +84→0) hoặc null nếu empty.
+    /// Không bỏ qua chữ cái — có ký tự lạ thì reject.
     /// </summary>
     public static string? NormalizeOptional(string? raw)
     {
@@ -28,15 +30,19 @@ public static class VietnamPhoneRules
         if (trimmed.Length > MaxLength)
             throw new ArgumentException($"Số điện thoại tối đa {MaxLength} ký tự.");
 
+        if (trimmed.Any(ch => !IsAllowedPhoneChar(ch)))
+            throw new ArgumentException(InvalidMessage);
+
         var digits = new string(trimmed.Where(char.IsDigit).ToArray());
-        if (digits.StartsWith("84", StringComparison.Ordinal) && digits.Length == 11)
+        if (digits.StartsWith("84", StringComparison.Ordinal) && digits.Length is 11 or 12)
             digits = "0" + digits[2..];
 
-        // Cho phép số di động VN 10 số bắt đầu 0, hoặc số bàn 10–11 số bắt đầu 0.
-        if (digits.Length is >= 10 and <= 11 && digits.StartsWith('0'))
+        if (digits.Length == 10 && digits[0] == '0')
             return digits;
 
-        throw new ArgumentException(
-            "Số điện thoại không hợp lệ. Dùng số Việt Nam 10–11 chữ số (bắt đầu bằng 0).");
+        throw new ArgumentException(InvalidMessage);
     }
+
+    private static bool IsAllowedPhoneChar(char ch) =>
+        char.IsDigit(ch) || ch is ' ' or '-' or '.' or '(' or ')' or '+';
 }

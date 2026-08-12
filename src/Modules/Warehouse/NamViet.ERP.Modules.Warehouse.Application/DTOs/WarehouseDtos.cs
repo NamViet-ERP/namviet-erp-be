@@ -24,6 +24,7 @@ public record SupplierDto(
     int MaxDebtDays,
     string? PaymentTerms,
     string Rating,
+    string ApprovalStatus,
     bool IsBlacklisted,
     string? BlacklistReason,
     DateTime? BlacklistedAt,
@@ -40,8 +41,10 @@ public record SupplierLatestEvaluationDto(
     DateOnly EvaluatedAt);
 
 public record UpsertSupplierRequest(
-    string SupplierCode, string SupplierName,
+    string? SupplierCode, string SupplierName,
     string? ContactPhone, int MaxDebtDays = 30, string? PaymentTerms = null);
+
+public record SupplierNextCodeDto(string NextCode);
 
 // ── Projects ──────────────────────────────────────────────────────────────
 public record ProjectWarehouseKeeperDto(Guid UserId, string DisplayName);

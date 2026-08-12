@@ -301,6 +301,7 @@ public static class RolePermissionTemplates
         "purchasing.plans.approve_l2",
         "purchasing.plans.reject",
         "purchasing.estimates.approve_l2",
+        "wms.suppliers.approve",
         ..WmsViewOnlyPermissions,
     ];
 
@@ -317,7 +318,12 @@ public static class RolePermissionTemplates
             [ProcurementRole] = ProcurementPermissions,
             [ProcurementLeadRole] = ProcurementLeadPermissions,
             [ProcurementBossRole] = ProcurementBossPermissions,
-            [ProjectRole] = ProjectProductionPermissions,
+            [ProjectRole] =
+            [
+                ..ProjectProductionPermissions,
+                "purchasing.pricebook.view",
+                "purchasing.rfq.view",
+            ],
             [ProductionRole] = ProjectProductionPermissions,
         };
 
