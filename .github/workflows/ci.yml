@@ -1,11 +1,11 @@
-# Runs on production + feature branches used for purchasing work.
+# Production deploy branch is `main`. Keep purchasing/production for existing PRs.
 name: CI
 
 on:
   push:
-    branches: [production, feature/purchasing]
+    branches: [main, production, feature/purchasing]
   pull_request:
-    branches: [production, feature/purchasing]
+    branches: [main, production, feature/purchasing]
 
 jobs:
   backend:

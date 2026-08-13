@@ -18,7 +18,7 @@ Repo BE cần có `Dockerfile` ở root (đã thêm). FE đã ở: https://namvi
 |-------|--------|
 | Name | `namviet-erp-api` |
 | Region | Singapore (gần Supabase) |
-| Branch | `feature/purchasing` (hoặc `production` nếu đã merge) |
+| Branch | `main` |
 | Runtime | **Docker** |
 | Dockerfile Path | `./Dockerfile` |
 | Instance type | **Free** (demo) |
