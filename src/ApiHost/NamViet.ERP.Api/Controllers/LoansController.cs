@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using NamViet.ERP.Api.Infrastructure.Authorization;
 using NamViet.ERP.Modules.Warehouse.Application.DTOs;
 using NamViet.ERP.Modules.Warehouse.Domain.Entities;
 using NamViet.ERP.Modules.Warehouse.Domain.Enums;
@@ -15,6 +16,7 @@ namespace NamViet.ERP.Api.Controllers;
 public class LoansController(WarehouseDbContext db) : ControllerBase
 {
     [HttpGet]
+    [RequirePermission("wms.loans.view:all")]
     public async Task<IActionResult> GetAll(
         [FromQuery] int page = 1, [FromQuery] int pageSize = 20,
         [FromQuery] string? projectCode = null, [FromQuery] string? status = null,
@@ -45,6 +47,7 @@ public class LoansController(WarehouseDbContext db) : ControllerBase
     }
 
     [HttpGet("{loanCode}")]
+    [RequirePermission("wms.loans.view:all")]
     public async Task<IActionResult> GetById(string loanCode, CancellationToken ct)
     {
         var l = await db.ProjectMaterialLoans
@@ -59,7 +62,7 @@ public class LoansController(WarehouseDbContext db) : ControllerBase
     }
 
     [HttpPost]
-    [Authorize(Roles = "Admin,PM,Warehouse_Keeper")]
+    [RequirePermission("wms.loans.create")]
     public async Task<IActionResult> Create([FromBody] CreateLoanRequest request, CancellationToken ct)
     {
         var dateStr = DateTime.UtcNow.ToString("yyyyMMdd");
@@ -82,7 +85,7 @@ public class LoansController(WarehouseDbContext db) : ControllerBase
     }
 
     [HttpPatch("{loanCode}/return")]
-    [Authorize(Roles = "Admin,PM,Warehouse_Keeper")]
+    [RequirePermission("wms.loans.update")]
     public async Task<IActionResult> MarkReturned(
         string loanCode,
         [FromBody] string? returnTicketLink,

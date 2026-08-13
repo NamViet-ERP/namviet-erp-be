@@ -21,6 +21,7 @@ _build_verify/
 .tmp-*/
 ..tmp-test-out/
 .tmp-verify-build/
+_tmp*
 
 # Rider / VS
 .idea/

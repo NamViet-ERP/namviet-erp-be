@@ -149,6 +149,13 @@ public class RecruitmentP1P2Tests
     [Theory]
     [InlineData("hrm.insurance.manage")]
     [InlineData("hrm.leaves.approve")]
+    [InlineData("hrm.attendance.view")]
+    [InlineData("hrm.attendance.manage")]
+    [InlineData("hrm.kpi.view")]
+    [InlineData("hrm.kpi.manage")]
+    [InlineData("wms.loans.view:all")]
+    [InlineData("wms.loans.create")]
+    [InlineData("wms.loans.update")]
     [InlineData("wms.transactions.create")]
     [InlineData("wms.transactions.approve")]
     public void Migrated_controller_permissions_are_catalogued(string permission)

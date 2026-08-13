@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using NamViet.ERP.Api.Infrastructure.Authorization;
 using NamViet.ERP.Modules.Hr.Domain.Entities;
 using NamViet.ERP.Modules.Hr.Infrastructure.Persistence;
 using NamViet.ERP.SharedKernel.Common;
@@ -19,6 +20,7 @@ public record UpsertAttendanceSummaryRequest(
 [ApiController]
 [Route("api/hr/attendance")]
 [Authorize]
+[RequirePermission("hrm.attendance.view")]
 public class AttendanceController(HrDbContext db) : ControllerBase
 {
     // ── Chấm công ngày ─────────────────────────────────────────────────────────
@@ -53,7 +55,7 @@ public class AttendanceController(HrDbContext db) : ControllerBase
     }
 
     [HttpPost]
-    [Authorize(Roles = "Admin,HR")]
+    [RequirePermission("hrm.attendance.manage")]
     public async Task<IActionResult> Upsert([FromBody] UpsertAttendanceRequest request, CancellationToken ct)
     {
         if (!DateOnly.TryParse(request.Date, out var date))
@@ -111,7 +113,7 @@ public class AttendanceController(HrDbContext db) : ControllerBase
     }
 
     [HttpPost("summary")]
-    [Authorize(Roles = "Admin,HR")]
+    [RequirePermission("hrm.attendance.manage")]
     public async Task<IActionResult> UpsertSummary([FromBody] UpsertAttendanceSummaryRequest request, CancellationToken ct)
     {
         var existing = await db.AttendanceSummaries

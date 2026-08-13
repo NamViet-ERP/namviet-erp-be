@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using NamViet.ERP.Api.Infrastructure.Authorization;
 using NamViet.ERP.Modules.Hr.Domain.Entities;
 using NamViet.ERP.Modules.Hr.Infrastructure.Persistence;
 
@@ -16,6 +17,7 @@ public record UpsertKpiRecordRequest(
 [ApiController]
 [Route("api/hr/kpi")]
 [Authorize]
+[RequirePermission("hrm.kpi.view")]
 public class KpiController(HrDbContext db) : ControllerBase
 {
     // ── Danh sách KPI ──────────────────────────────────────────────────────────
@@ -37,7 +39,7 @@ public class KpiController(HrDbContext db) : ControllerBase
     }
 
     [HttpPost("definitions")]
-    [Authorize(Roles = "Admin,HR")]
+    [RequirePermission("hrm.kpi.manage")]
     public async Task<IActionResult> CreateDefinition([FromBody] CreateKpiDefinitionRequest request, CancellationToken ct)
     {
         var kpi = new KpiDefinition
@@ -53,7 +55,7 @@ public class KpiController(HrDbContext db) : ControllerBase
     }
 
     [HttpDelete("definitions/{id:int}")]
-    [Authorize(Roles = "Admin,HR")]
+    [RequirePermission("hrm.kpi.manage")]
     public async Task<IActionResult> DeleteDefinition(int id, CancellationToken ct)
     {
         var kpi = await db.KpiDefinitions.FindAsync([id], ct);
@@ -96,7 +98,7 @@ public class KpiController(HrDbContext db) : ControllerBase
     }
 
     [HttpPost("records")]
-    [Authorize(Roles = "Admin,HR")]
+    [RequirePermission("hrm.kpi.manage")]
     public async Task<IActionResult> UpsertRecord([FromBody] UpsertKpiRecordRequest request, CancellationToken ct)
     {
         if (!await db.KpiDefinitions.AnyAsync(k => k.Id == request.KpiId && k.DeletedAt == null, ct))
@@ -133,7 +135,7 @@ public class KpiController(HrDbContext db) : ControllerBase
     }
 
     [HttpDelete("records/{id:int}")]
-    [Authorize(Roles = "Admin,HR")]
+    [RequirePermission("hrm.kpi.manage")]
     public async Task<IActionResult> DeleteRecord(int id, CancellationToken ct)
     {
         var record = await db.KpiRecords.FindAsync([id], ct);

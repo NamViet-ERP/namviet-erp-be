@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using NamViet.ERP.Api.Application.Dtos.Hr;
 using NamViet.ERP.Api.Infrastructure.Authorization;
 using NamViet.ERP.Modules.Hr.Domain.Entities;
 using NamViet.ERP.Modules.Hr.Infrastructure.Persistence;
@@ -18,7 +19,7 @@ public class DepartmentsController(HrDbContext db) : ControllerBase
 {
     [HttpGet]
     [RequirePermission("hrm.members.settings.view")]
-    public async Task<IActionResult> GetAll([FromQuery] bool activeOnly = true, CancellationToken ct = default)
+    public async Task<ActionResult<IReadOnlyList<DepartmentDto>>> GetAll([FromQuery] bool activeOnly = true, CancellationToken ct = default)
     {
         var query = db.Departments
             .Include(d => d.Children)
@@ -47,7 +48,7 @@ public class DepartmentsController(HrDbContext db) : ControllerBase
 
     [HttpGet("{id:int}")]
     [RequirePermission("hrm.members.settings.view")]
-    public async Task<IActionResult> GetById(int id, CancellationToken ct)
+    public async Task<ActionResult<DepartmentDto>> GetById(int id, CancellationToken ct)
     {
         var d = await db.Departments
             .Include(x => x.Children)
@@ -62,7 +63,7 @@ public class DepartmentsController(HrDbContext db) : ControllerBase
 
     [HttpGet("{id:int}/employees")]
     [RequirePermission("hrm.members.settings.view")]
-    public async Task<IActionResult> GetEmployees(int id, CancellationToken ct)
+    public async Task<ActionResult<IReadOnlyList<DepartmentMemberDto>>> GetEmployees(int id, CancellationToken ct)
     {
         var exists = await db.Departments.AnyAsync(d => d.Id == id && d.DeletedAt == null, ct);
         if (!exists) return NotFound();
@@ -72,16 +73,14 @@ public class DepartmentsController(HrDbContext db) : ControllerBase
             .Include(e => e.Position)
             .Where(e => e.DepartmentId == id)
             .OrderBy(e => e.FullName)
-            .Select(e => new
-            {
+            .Select(e => new DepartmentMemberDto(
                 e.Id,
                 e.Code,
                 e.FullName,
                 e.Email,
                 e.Phone,
-                Status = e.Status.ToString(),
-                PositionName = e.Position != null ? e.Position.Name : null,
-            })
+                e.Status.ToString(),
+                e.Position != null ? e.Position.Name : null))
             .ToListAsync(ct);
 
         return Ok(employees);
@@ -215,33 +214,27 @@ public class DepartmentsController(HrDbContext db) : ControllerBase
         return NoContent();
     }
 
-    private static object MapDto(Department d, IReadOnlyDictionary<int, int> employeeCounts)
+    private static DepartmentDto MapDto(Department d, IReadOnlyDictionary<int, int> employeeCounts)
     {
         employeeCounts.TryGetValue(d.Id, out var count);
-        return new
-        {
+        var children = d.Children
+            .Where(c => c.DeletedAt == null)
+            .Select(c =>
+            {
+                employeeCounts.TryGetValue(c.Id, out var childCount);
+                return new DepartmentChildDto(c.Id, c.Code, c.Name, c.IsActive, childCount);
+            })
+            .ToList();
+
+        return new DepartmentDto(
             d.Id,
             d.Code,
             d.Name,
             d.ParentId,
             d.Block,
             d.IsActive,
-            EmployeeCount = count,
-            Children = d.Children
-                .Where(c => c.DeletedAt == null)
-                .Select(c =>
-                {
-                    employeeCounts.TryGetValue(c.Id, out var childCount);
-                    return new
-                    {
-                        c.Id,
-                        c.Code,
-                        c.Name,
-                        c.IsActive,
-                        EmployeeCount = childCount,
-                    };
-                }),
-        };
+            count,
+            children);
     }
 }
 

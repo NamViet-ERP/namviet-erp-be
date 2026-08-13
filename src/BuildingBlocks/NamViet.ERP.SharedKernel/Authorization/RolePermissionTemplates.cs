@@ -58,6 +58,10 @@ public static class RolePermissionTemplates
         "hrm.leaves.create",
         "hrm.leaves.manage",
         "hrm.leaves.approve",
+        "hrm.attendance.view",
+        "hrm.attendance.manage",
+        "hrm.kpi.view",
+        "hrm.kpi.manage",
     ];
 
     /** Xem toàn bộ phân hệ kho — không CUD. */
@@ -84,6 +88,7 @@ public static class RolePermissionTemplates
         "wms.warehouses.view:all",
         "wms.conversions.view:all",
         "wms.lending_logs.view:all",
+        "wms.loans.view:all",
     ];
 
     /** Xem mua hàng — không CUD. */
@@ -161,6 +166,8 @@ public static class RolePermissionTemplates
         "wms.defects.approve",
         "wms.reports.export",
         "wms.transactions.approve",
+        "wms.loans.create",
+        "wms.loans.update",
         "hrm.leaves.view",
         "hrm.leaves.create",
     ];
@@ -226,6 +233,9 @@ public static class RolePermissionTemplates
         "wms.lending_logs.create",
         "wms.lending_logs.update",
         "wms.lending_logs.delete",
+        "wms.loans.view:all",
+        "wms.loans.create",
+        "wms.loans.update",
         // Không có wms.prices.view — ẩn giá
         "purchasing.arrival_plans.view",
         "hrm.leaves.view",

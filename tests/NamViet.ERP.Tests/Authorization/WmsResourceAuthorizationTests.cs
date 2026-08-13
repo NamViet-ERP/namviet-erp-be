@@ -1,4 +1,5 @@
 using System.Reflection;
+using NamViet.ERP.Api.Controllers;
 using NamViet.ERP.Api.Controllers.Wms;
 using NamViet.ERP.Api.Infrastructure.Authorization;
 using NamViet.ERP.SharedKernel.Authorization;
@@ -23,6 +24,10 @@ public class WmsResourceAuthorizationTests
         { typeof(LendingLogsController), nameof(LendingLogsController.Sign), "wms.lending_logs.update" },
         { typeof(LendingLogsController), nameof(LendingLogsController.Return), "wms.lending_logs.update" },
         { typeof(LendingLogsController), nameof(LendingLogsController.Delete), "wms.lending_logs.delete" },
+        { typeof(LoansController), nameof(LoansController.GetAll), "wms.loans.view:all" },
+        { typeof(LoansController), nameof(LoansController.GetById), "wms.loans.view:all" },
+        { typeof(LoansController), nameof(LoansController.Create), "wms.loans.create" },
+        { typeof(LoansController), nameof(LoansController.MarkReturned), "wms.loans.update" },
     };
 
     [Theory]

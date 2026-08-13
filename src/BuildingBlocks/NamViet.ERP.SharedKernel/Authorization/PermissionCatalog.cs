@@ -53,6 +53,10 @@ public static class PermissionCatalog
         new("hrm.leaves.create", "HRM", "Leaves", "Tạo đơn nghỉ phép"),
         new("hrm.leaves.manage", "HRM", "Leaves", "Quản lý cấu hình nghỉ phép"),
         new("hrm.leaves.approve", "HRM", "Leaves", "Duyệt nghỉ phép"),
+        new("hrm.attendance.view", "HRM", "Attendance", "Xem chấm công"),
+        new("hrm.attendance.manage", "HRM", "Attendance", "Nhập / sửa chấm công"),
+        new("hrm.kpi.view", "HRM", "Kpi", "Xem KPI nhân sự"),
+        new("hrm.kpi.manage", "HRM", "Kpi", "Quản lý KPI nhân sự"),
 
         // WMS
         new("wms.dashboard.view", "WMS", "Dashboard", "Xem dashboard kho"),
@@ -117,6 +121,9 @@ public static class PermissionCatalog
         new("wms.lending_logs.create", "WMS", "LendingLogs", "Tạo phiếu mượn vật tư"),
         new("wms.lending_logs.update", "WMS", "LendingLogs", "Ký / hoàn trả phiếu mượn vật tư"),
         new("wms.lending_logs.delete", "WMS", "LendingLogs", "Xóa phiếu mượn vật tư"),
+        new("wms.loans.view:all", "WMS", "Loans", "Xem phiếu mượn vật tư (kho dự án)"),
+        new("wms.loans.create", "WMS", "Loans", "Tạo phiếu mượn vật tư (kho dự án)"),
+        new("wms.loans.update", "WMS", "Loans", "Đánh dấu đã trả phiếu mượn vật tư"),
 
         // Purchasing (cung ứng)
         new("purchasing.dashboard.view", "Purchasing", "Dashboard", "Xem dashboard mua hàng"),

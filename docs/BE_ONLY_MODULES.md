@@ -3,6 +3,14 @@
 Các endpoint dưới đây tồn tại trên API host nhưng **chưa được** repo `WareHouse_Management` (FE) gọi.  
 Giữ lại cho roadmap / tích hợp sau — **không** xóa trừ khi business xác nhận bỏ nghiệp vụ.
 
+## FE đang gọi (không còn BE-only)
+
+| Controller | Route prefix | FE |
+|------------|--------------|----|
+| `DepartmentsController` | `/api/hr/departments` | `departmentsService`, `recruitmentPlansService`, `DepartmentsSettingsPanel` |
+
+## Chưa có FE
+
 | Controller | Route prefix | Ghi chú |
 |------------|--------------|---------|
 | `AttendanceController` | `/api/hr/attendance` | Chấm công |
@@ -12,7 +20,6 @@ Giữ lại cho roadmap / tích hợp sau — **không** xóa trừ khi business
 | `LoansController` | `/api/warehouse/loans` | Mượn / tạm ứng vật tư |
 | `TransactionsController` | `/api/warehouse/transactions` | Giao dịch kho tổng hợp |
 | `AdminRequestsController` | `/api/hr/admin-requests` | Yêu cầu admin HR |
-| `DepartmentsController` | `/api/hr/departments` | Phòng ban |
 | `PositionsController` | `/api/hr/positions` | Chức danh HR (khác `api/recruitment/positions`) |
 | `HrAdminEmployeesController` | `/api/hr/employees` | HR admin: contracts, appointments (FE dùng `api/employees`) |
 | `Wms/ConversionsController` | `/api/conversions` | Chuyển đổi đơn vị / quy đổi |
