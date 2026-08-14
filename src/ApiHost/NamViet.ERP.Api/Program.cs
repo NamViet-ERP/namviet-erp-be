@@ -178,6 +178,7 @@ builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Purchasing.ISupp
 builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Purchasing.ISupplierEvaluationService, NamViet.ERP.Api.Application.Services.Purchasing.SupplierEvaluationService>();
 builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Purchasing.ISupplierDeliveryEvaluationService, NamViet.ERP.Api.Application.Services.Purchasing.SupplierDeliveryEvaluationService>();
 builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Purchasing.ISuppliersDashboardService, NamViet.ERP.Api.Application.Services.Purchasing.SuppliersDashboardService>();
+builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Purchasing.ISupplierPayableService, NamViet.ERP.Api.Application.Services.Purchasing.SupplierPayableService>();
 builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Shared.IActivityEventWriter, NamViet.ERP.Api.Application.Services.Shared.ActivityEventWriter>();
 builder.Services.AddScoped<IAdminUserQueryService, AdminUserQueryService>();
 builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Hr.IEmployeeAccessService, NamViet.ERP.Api.Application.Services.Hr.EmployeeAccessService>();

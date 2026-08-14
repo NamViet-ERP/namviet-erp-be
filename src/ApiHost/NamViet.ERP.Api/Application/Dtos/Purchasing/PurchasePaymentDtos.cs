@@ -12,7 +12,9 @@ public record PurchasePaymentDto(
     string Status,
     string? Note,
     DateTime CreatedAt,
-    string? CreatedByName);
+    string? CreatedByName,
+    DateTime? PaidAt,
+    string? PaidByName);
 
 public record PurchasePaymentPagedResponse(
     IReadOnlyList<PurchasePaymentDto> Items,

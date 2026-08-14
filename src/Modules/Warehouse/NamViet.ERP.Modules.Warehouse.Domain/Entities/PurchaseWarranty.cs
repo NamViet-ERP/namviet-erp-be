@@ -56,17 +56,23 @@ public class PurchaseWarranty : BaseEntity
     }
 }
 
-/// <summary>Phiếu bảo hành (claim) gắn hồ sơ BH.</summary>
+/// <summary>Phiếu bảo hành hoặc phiếu khiếu nại gắn hồ sơ BH.</summary>
 public class PurchaseWarrantyClaim : BaseEntity
 {
     public Guid Id { get; set; } = Guid.NewGuid();
     public string TicketCode { get; set; } = string.Empty;
     public Guid WarrantyId { get; set; }
+    /// <summary><see cref="PurchaseWarrantyClaimKinds"/> — warranty | complaint.</summary>
+    public string Kind { get; set; } = PurchaseWarrantyClaimKinds.Warranty;
     /// <summary><see cref="PurchaseWarrantyClaimStatuses"/>.</summary>
     public string Status { get; set; } = PurchaseWarrantyClaimStatuses.Draft;
-    /// <summary>Nguyên nhân (nhập tay).</summary>
+    /// <summary>Nguyên nhân / mô tả lỗi (nhập tay).</summary>
     public string Reason { get; set; } = string.Empty;
     public string? Note { get; set; }
+    /// <summary><see cref="PurchaseWarrantyDefectTypes"/> — phiếu khiếu nại.</summary>
+    public string? DefectType { get; set; }
+    /// <summary><see cref="PurchaseWarrantySeverities"/> — phiếu khiếu nại.</summary>
+    public string? Severity { get; set; }
     public Guid CreatedById { get; set; }
     public string CreatedByName { get; set; } = string.Empty;
     public DateTime? SubmittedAt { get; set; }
@@ -77,7 +83,10 @@ public class PurchaseWarrantyClaim : BaseEntity
 
     public PurchaseWarranty? Warranty { get; set; }
 
-    public static string GenerateTicketCode(int sequence) => $"PBH-{sequence:D4}";
+    public static string GenerateTicketCode(int sequence, string kind) =>
+        string.Equals(kind, PurchaseWarrantyClaimKinds.Complaint, StringComparison.OrdinalIgnoreCase)
+            ? $"KN-{sequence:D4}"
+            : $"PBH-{sequence:D4}";
 }
 
 public static class PurchaseWarrantyAnchorTypes
@@ -105,4 +114,39 @@ public static class PurchaseWarrantyClaimStatuses
     public const string Submitted = "submitted";
     public const string Closed = "closed";
     public const string Cancelled = "cancelled";
+}
+
+public static class PurchaseWarrantyClaimKinds
+{
+    public const string Warranty = "warranty";
+    public const string Complaint = "complaint";
+
+    public static readonly HashSet<string> Allowed = new(StringComparer.OrdinalIgnoreCase)
+    {
+        Warranty, Complaint,
+    };
+}
+
+public static class PurchaseWarrantyDefectTypes
+{
+    public const string Physical = "physical";
+    public const string Spec = "spec";
+    public const string Functional = "functional";
+
+    public static readonly HashSet<string> Allowed = new(StringComparer.OrdinalIgnoreCase)
+    {
+        Physical, Spec, Functional,
+    };
+}
+
+public static class PurchaseWarrantySeverities
+{
+    public const string High = "high";
+    public const string Medium = "medium";
+    public const string Low = "low";
+
+    public static readonly HashSet<string> Allowed = new(StringComparer.OrdinalIgnoreCase)
+    {
+        High, Medium, Low,
+    };
 }

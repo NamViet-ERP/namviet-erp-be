@@ -1299,6 +1299,16 @@ namespace NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence.Migrations
                         .HasMaxLength(2000)
                         .HasColumnType("character varying(2000)");
 
+                    b.Property<DateTime?>("PaidAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("PaidById")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("PaidByName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
                     b.Property<string>("PoCode")
                         .IsRequired()
                         .HasMaxLength(50)

@@ -27,6 +27,14 @@ public static class AuthorizationServiceCollectionExtensions
                     "hrm.employees.view:all",
                     "hrm.employees.view:own",
                 ])));
+
+            options.AddPolicy(
+                PermissionPolicies.AnyName("purchasing.suppliers.view", "wms.suppliers.view:all"),
+                policy => policy.Requirements.Add(new PermissionAnyRequirement(
+                [
+                    "purchasing.suppliers.view",
+                    "wms.suppliers.view:all",
+                ])));
         });
 
         return services;

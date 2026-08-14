@@ -22,6 +22,7 @@ public record SupplierDto(
     int Id, string SupplierCode, string SupplierName,
     string? ContactPhone,
     int MaxDebtDays,
+    decimal? CreditLimit,
     string? PaymentTerms,
     string Rating,
     string ApprovalStatus,
@@ -42,7 +43,8 @@ public record SupplierLatestEvaluationDto(
 
 public record UpsertSupplierRequest(
     string? SupplierCode, string SupplierName,
-    string? ContactPhone, int MaxDebtDays = 30, string? PaymentTerms = null);
+    string? ContactPhone, int MaxDebtDays = 30, string? PaymentTerms = null,
+    decimal? CreditLimit = null);
 
 public record SupplierNextCodeDto(string NextCode);
 

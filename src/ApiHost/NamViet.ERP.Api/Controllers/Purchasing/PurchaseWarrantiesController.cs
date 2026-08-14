@@ -22,6 +22,15 @@ public class PurchaseWarrantiesController(IPurchaseWarrantyService warranties) :
         CancellationToken ct)
         => Ok(await warranties.ListAsync(projectCode, materialCode, supplierId, status, search, ct));
 
+    [HttpGet("claims")]
+    [RequirePermission("purchasing.warranties.view")]
+    public async Task<ActionResult<IReadOnlyList<PurchaseWarrantyClaimListDto>>> ListClaims(
+        [FromQuery] string? kind,
+        [FromQuery] string? status,
+        [FromQuery] string? search,
+        CancellationToken ct)
+        => Ok(await warranties.ListClaimsAsync(kind, status, search, ct));
+
     [HttpGet("{id:guid}")]
     [RequirePermission("purchasing.warranties.view")]
     public async Task<ActionResult<PurchaseWarrantyDetailDto>> GetById(Guid id, CancellationToken ct)

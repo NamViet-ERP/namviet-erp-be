@@ -93,6 +93,8 @@ public static class SupplierFieldLimits
     public const int PaymentTermsMax = 500;
     public const int MaxDebtDaysMin = 0;
     public const int MaxDebtDaysMax = 3650;
+    public const decimal CreditLimitMin = 0m;
+    public const decimal CreditLimitMax = 999_999_999_999m;
 }
 
 public static class SupplierEvaluationCycles

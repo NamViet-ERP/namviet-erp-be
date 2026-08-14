@@ -24,6 +24,12 @@ public interface IPurchaseWarrantyService
         UpdatePurchaseWarrantyRequest request,
         CancellationToken ct = default);
 
+    Task<IReadOnlyList<PurchaseWarrantyClaimListDto>> ListClaimsAsync(
+        string? kind,
+        string? status,
+        string? search,
+        CancellationToken ct = default);
+
     Task<PurchaseWarrantyClaimDto> CreateClaimAsync(
         Guid warrantyId,
         CreatePurchaseWarrantyClaimRequest request,
@@ -119,6 +125,60 @@ public sealed class PurchaseWarrantyService(
         }).ToList();
     }
 
+    public async Task<IReadOnlyList<PurchaseWarrantyClaimListDto>> ListClaimsAsync(
+        string? kind,
+        string? status,
+        string? search,
+        CancellationToken ct = default)
+    {
+        var today = VietnamClock.Today;
+        var query = db.PurchaseWarrantyClaims.AsNoTracking().Include(c => c.Warranty).AsQueryable();
+
+        if (!string.IsNullOrWhiteSpace(kind))
+        {
+            var k = kind.Trim().ToLowerInvariant();
+            query = query.Where(c => c.Kind == k);
+        }
+        if (!string.IsNullOrWhiteSpace(status))
+        {
+            var st = status.Trim().ToLowerInvariant();
+            query = query.Where(c => c.Status == st);
+        }
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var q = search.Trim().ToLowerInvariant();
+            query = query.Where(c =>
+                c.TicketCode.ToLower().Contains(q)
+                || c.Reason.ToLower().Contains(q)
+                || (c.Warranty != null && (
+                    c.Warranty.Code.ToLower().Contains(q)
+                    || c.Warranty.PoCode.ToLower().Contains(q)
+                    || c.Warranty.MaterialName.ToLower().Contains(q)
+                    || (c.Warranty.MaterialCode != null && c.Warranty.MaterialCode.ToLower().Contains(q))
+                    || (c.Warranty.SupplierName != null && c.Warranty.SupplierName.ToLower().Contains(q))
+                    || (c.Warranty.ProjectCode != null && c.Warranty.ProjectCode.ToLower().Contains(q)))));
+        }
+
+        var rows = await query
+            .OrderByDescending(c => c.CreatedAt)
+            .Take(500)
+            .ToListAsync(ct);
+
+        return rows.Select(c =>
+        {
+            var w = c.Warranty;
+            var warrantyStatus = w is null
+                ? ""
+                : ResolveListStatus(w.Status, w.WarrantyEndDate, today);
+            return new PurchaseWarrantyClaimListDto(
+                c.Id, c.TicketCode, c.WarrantyId, c.Kind, c.Status, c.Reason, c.Note,
+                c.DefectType, c.Severity, c.CreatedById, c.CreatedByName,
+                c.SubmittedAt, c.ClosedAt, c.CreatedAt, c.ServiceRating, c.ServiceNote,
+                w?.Code ?? "", w?.PoCode ?? "", w?.ProjectCode, w?.SupplierName,
+                w?.MaterialCode, w?.MaterialName ?? "", w?.WarrantyEndDate, warrantyStatus);
+        }).ToList();
+    }
+
     public async Task<PurchaseWarrantyDetailDto?> GetByIdAsync(Guid id, CancellationToken ct = default)
     {
         var w = await db.PurchaseWarranties
@@ -181,17 +241,31 @@ public sealed class PurchaseWarrantyService(
 
         w.Recalculate(VietnamClock.Today);
         if (w.Status == PurchaseWarrantyStatuses.Void)
-            throw new PurchasingConflictException("Hồ sơ bảo hành đã hủy — không tạo phiếu.");
+            throw new PurchasingConflictException("Hồ sơ bảo hành đã hủy - không tạo phiếu.");
+
+        var kind = NormalizeKind(request.Kind);
+        var defectType = NormalizeOptional(request.DefectType, PurchaseWarrantyDefectTypes.Allowed, "Loại lỗi");
+        var severity = NormalizeOptional(request.Severity, PurchaseWarrantySeverities.Allowed, "Mức độ");
+        if (kind == PurchaseWarrantyClaimKinds.Complaint)
+        {
+            if (defectType is null)
+                throw new PurchasingConflictException("Phiếu khiếu nại cần chọn loại lỗi.");
+            if (severity is null)
+                throw new PurchasingConflictException("Phiếu khiếu nại cần chọn mức độ.");
+        }
 
         var seq = await db.PurchaseWarrantyClaims.IgnoreQueryFilters().CountAsync(ct) + 1;
         var claim = new PurchaseWarrantyClaim
         {
-            TicketCode = PurchaseWarrantyClaim.GenerateTicketCode(seq),
+            TicketCode = PurchaseWarrantyClaim.GenerateTicketCode(seq, kind),
             WarrantyId = w.Id,
+            Kind = kind,
             Reason = reason,
             Note = string.IsNullOrWhiteSpace(request.Note) ? null : request.Note.Trim(),
+            DefectType = kind == PurchaseWarrantyClaimKinds.Complaint ? defectType : null,
+            Severity = kind == PurchaseWarrantyClaimKinds.Complaint ? severity : null,
             CreatedById = currentUser.Id,
-            CreatedByName = currentUser.IsAuthenticated ? (currentUser.Name ?? "—") : "—",
+            CreatedByName = currentUser.IsAuthenticated ? (currentUser.Name ?? "-") : "-",
             Status = PurchaseWarrantyClaimStatuses.Draft,
         };
 
@@ -428,5 +502,25 @@ public sealed class PurchaseWarrantyService(
     private static PurchaseWarrantyClaimDto ToClaimDto(PurchaseWarrantyClaim c) => new(
         c.Id, c.TicketCode, c.WarrantyId, c.Status, c.Reason, c.Note,
         c.CreatedById, c.CreatedByName, c.SubmittedAt, c.ClosedAt, c.CreatedAt,
-        c.ServiceRating, c.ServiceNote);
+        c.ServiceRating, c.ServiceNote, c.Kind, c.DefectType, c.Severity);
+
+    private static string NormalizeKind(string? kind)
+    {
+        var value = string.IsNullOrWhiteSpace(kind)
+            ? PurchaseWarrantyClaimKinds.Warranty
+            : kind.Trim().ToLowerInvariant();
+        if (!PurchaseWarrantyClaimKinds.Allowed.Contains(value))
+            throw new PurchasingConflictException("Loại phiếu phải là warranty hoặc complaint.");
+        return value;
+    }
+
+    private static string? NormalizeOptional(string? value, HashSet<string> allowed, string label)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+        var trimmed = value.Trim().ToLowerInvariant();
+        if (!allowed.Contains(trimmed))
+            throw new PurchasingConflictException($"{label} không hợp lệ.");
+        return trimmed;
+    }
 }

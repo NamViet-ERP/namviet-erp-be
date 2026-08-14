@@ -165,6 +165,7 @@ public class WarehouseDbContext(DbContextOptions<WarehouseDbContext> options) : 
             e.Property(s => s.SupplierName).HasMaxLength(255).IsRequired();
             e.Property(s => s.ContactPhone).HasMaxLength(50);
             e.Property(s => s.PaymentTerms).HasMaxLength(500);
+            e.Property(s => s.CreditLimit).HasColumnType("numeric(18,2)");
             e.Property(s => s.Rating).HasMaxLength(10).HasDefaultValue("D");
             e.Property(s => s.ApprovalStatus).HasMaxLength(20).HasDefaultValue("new");
             e.HasIndex(s => s.ApprovalStatus);
@@ -637,13 +638,17 @@ public class WarehouseDbContext(DbContextOptions<WarehouseDbContext> options) : 
             e.ToTable("purchase_warranty_claims");
             e.HasKey(c => c.Id);
             e.Property(c => c.TicketCode).HasMaxLength(30).IsRequired();
+            e.Property(c => c.Kind).HasMaxLength(20).IsRequired().HasDefaultValue("warranty");
             e.Property(c => c.Status).HasMaxLength(30).IsRequired();
             e.Property(c => c.Reason).HasMaxLength(2000).IsRequired();
             e.Property(c => c.Note).HasMaxLength(2000);
+            e.Property(c => c.DefectType).HasMaxLength(20);
+            e.Property(c => c.Severity).HasMaxLength(20);
             e.Property(c => c.ServiceNote).HasMaxLength(2000);
             e.Property(c => c.CreatedByName).HasMaxLength(200).IsRequired();
             e.HasIndex(c => c.TicketCode).IsUnique().HasFilter("\"DeletedAt\" IS NULL");
             e.HasIndex(c => c.WarrantyId);
+            e.HasIndex(c => c.Kind);
             e.HasQueryFilter(c => c.DeletedAt == null);
             e.HasOne(c => c.Warranty).WithMany(w => w.Claims)
              .HasForeignKey(c => c.WarrantyId).OnDelete(DeleteBehavior.Cascade);
@@ -916,6 +921,7 @@ public class WarehouseDbContext(DbContextOptions<WarehouseDbContext> options) : 
             e.Property(p => p.Status).HasMaxLength(30).IsRequired();
             e.Property(p => p.Note).HasMaxLength(2000);
             e.Property(p => p.CreatedByName).HasMaxLength(200);
+            e.Property(p => p.PaidByName).HasMaxLength(200);
             e.HasOne(p => p.PurchaseOrder).WithMany()
              .HasForeignKey(p => p.PoCode).OnDelete(DeleteBehavior.Restrict);
             e.HasOne(p => p.Supplier).WithMany()

@@ -12,8 +12,8 @@ public interface ISuppliersDashboardService
 }
 
 /// <summary>
-/// Tổng quan NCC: công nợ suy ra từ giá trị PO, thanh toán từ DNTT đã trả (status = paid).
-/// Mốc thời gian của thanh toán dùng CreatedAt vì hệ thống chưa lưu ngày trả thực tế.
+/// Tổng quan NCC: công nợ từ DNTT (không hủy), không lấy tổng giá trị PO.
+/// Thanh toán = DNTT status = paid. Mốc thời gian dùng CreatedAt vì chưa lưu ngày trả thực tế.
 /// </summary>
 public sealed class SuppliersDashboardService(WarehouseDbContext db) : ISuppliersDashboardService
 {
@@ -29,7 +29,7 @@ public sealed class SuppliersDashboardService(WarehouseDbContext db) : ISupplier
         var orders = db.PurchaseOrders.AsNoTracking()
             .Where(o => o.CreatedAt >= rangeFrom && o.CreatedAt < rangeTo && o.SupplierId != null);
         var payments = db.PurchasePayments.AsNoTracking()
-            .Where(p => p.Status == PurchasePaymentStatuses.Paid
+            .Where(p => p.Status != PurchasePaymentStatuses.Cancelled
                         && p.CreatedAt >= rangeFrom && p.CreatedAt < rangeTo
                         && p.SupplierId != null);
 
@@ -44,43 +44,45 @@ public sealed class SuppliersDashboardService(WarehouseDbContext db) : ISupplier
             .CountAsync(c => c.Supplier != null, ct);
         var orderCount = await orders.CountAsync(ct);
 
-        var debtRows = await orders
-            .GroupBy(o => new { o.SupplierId, Name = o.Supplier!.SupplierName })
+        var requestedRows = await payments
+            .GroupBy(p => p.SupplierId)
             .Select(g => new
             {
-                SupplierId = g.Key.SupplierId!.Value,
-                g.Key.Name,
-                Debt = g.Sum(o => o.TotalAmount),
+                SupplierId = g.Key!.Value,
+                Requested = g.Sum(p => p.Amount),
+                Paid = g.Sum(p => p.Status == PurchasePaymentStatuses.Paid ? p.Amount : 0m),
             })
             .ToListAsync(ct);
 
-        var paidRows = await payments
-            .GroupBy(p => p.SupplierId)
-            .Select(g => new { SupplierId = g.Key!.Value, Paid = g.Sum(p => p.Amount) })
-            .ToListAsync(ct);
+        var supplierIds = requestedRows.Select(r => r.SupplierId).ToList();
+        var nameMap = supplierIds.Count == 0
+            ? new Dictionary<int, string>()
+            : await db.Suppliers.AsNoTracking()
+                .Where(s => supplierIds.Contains(s.Id))
+                .ToDictionaryAsync(s => s.Id, s => s.SupplierName, ct);
 
-        var paidBySupplier = paidRows.ToDictionary(r => r.SupplierId, r => r.Paid);
-
-        var debtBySupplier = debtRows
+        var debtBySupplier = requestedRows
             .Select(r =>
             {
-                var paid = paidBySupplier.GetValueOrDefault(r.SupplierId, 0m);
+                var name = nameMap.GetValueOrDefault(r.SupplierId);
+                if (string.IsNullOrWhiteSpace(name)) name = $"NCC #{r.SupplierId}";
                 return new SupplierDebtRowDto(
                     r.SupplierId,
-                    r.Name,
-                    Math.Round(r.Debt, 2),
-                    Math.Round(paid, 2),
-                    Math.Round(r.Debt - paid, 2));
+                    name,
+                    Math.Round(r.Requested, 2),
+                    Math.Round(r.Paid, 2),
+                    Math.Round(r.Requested - r.Paid, 2));
             })
             .OrderByDescending(r => r.Remaining)
             .ThenBy(r => r.SupplierName)
             .Take(TopSuppliers)
             .ToList();
 
-        var debtTotal = Math.Round(debtRows.Sum(r => r.Debt), 2);
-        var paymentTotal = Math.Round(paidRows.Sum(r => r.Paid), 2);
+        var debtTotal = Math.Round(requestedRows.Sum(r => r.Requested), 2);
+        var paymentTotal = Math.Round(requestedRows.Sum(r => r.Paid), 2);
 
-        var trend = await BuildTrendAsync(orders, payments, rangeFrom, rangeTo, ct);
+        var paidTrendQuery = payments.Where(p => p.Status == PurchasePaymentStatuses.Paid);
+        var trend = await BuildTrendAsync(payments, paidTrendQuery, rangeFrom, rangeTo, ct);
 
         return new SuppliersDashboardDto(
             supplierCount,
@@ -98,26 +100,25 @@ public sealed class SuppliersDashboardService(WarehouseDbContext db) : ISupplier
     }
 
     private static async Task<List<SupplierTrendPointDto>> BuildTrendAsync(
-        IQueryable<PurchaseOrder> orders,
-        IQueryable<PurchasePayment> payments,
+        IQueryable<PurchasePayment> requested,
+        IQueryable<PurchasePayment> paid,
         DateTime rangeFrom,
         DateTime rangeTo,
         CancellationToken ct)
     {
-        // Giới hạn 12 tháng gần nhất trong kỳ để kỳ "từ trước đến nay" không sinh hàng nghìn cột.
         var lastBucket = new DateTime(rangeTo.Year, rangeTo.Month, 1, 0, 0, 0, DateTimeKind.Utc);
         var earliestBucket = lastBucket.AddMonths(-(TrendMonths - 1));
         var firstBucket = rangeFrom > earliestBucket
             ? new DateTime(rangeFrom.Year, rangeFrom.Month, 1, 0, 0, 0, DateTimeKind.Utc)
             : earliestBucket;
 
-        var debtByMonth = await orders
-            .Where(o => o.CreatedAt >= firstBucket)
-            .GroupBy(o => new { o.CreatedAt.Year, o.CreatedAt.Month })
-            .Select(g => new { g.Key.Year, g.Key.Month, Amount = g.Sum(o => o.TotalAmount) })
+        var debtByMonth = await requested
+            .Where(p => p.CreatedAt >= firstBucket)
+            .GroupBy(p => new { p.CreatedAt.Year, p.CreatedAt.Month })
+            .Select(g => new { g.Key.Year, g.Key.Month, Amount = g.Sum(p => p.Amount) })
             .ToListAsync(ct);
 
-        var paymentByMonth = await payments
+        var paymentByMonth = await paid
             .Where(p => p.CreatedAt >= firstBucket)
             .GroupBy(p => new { p.CreatedAt.Year, p.CreatedAt.Month })
             .Select(g => new { g.Key.Year, g.Key.Month, Amount = g.Sum(p => p.Amount) })

@@ -59,7 +59,36 @@ public record PurchaseWarrantyClaimDto(
     DateTime? ClosedAt,
     DateTime CreatedAt,
     int? ServiceRating = null,
-    string? ServiceNote = null);
+    string? ServiceNote = null,
+    string Kind = "warranty",
+    string? DefectType = null,
+    string? Severity = null);
+
+public record PurchaseWarrantyClaimListDto(
+    Guid Id,
+    string TicketCode,
+    Guid WarrantyId,
+    string Kind,
+    string Status,
+    string Reason,
+    string? Note,
+    string? DefectType,
+    string? Severity,
+    Guid CreatedById,
+    string CreatedByName,
+    DateTime? SubmittedAt,
+    DateTime? ClosedAt,
+    DateTime CreatedAt,
+    int? ServiceRating,
+    string? ServiceNote,
+    string WarrantyCode,
+    string PoCode,
+    string? ProjectCode,
+    string? SupplierName,
+    string? MaterialCode,
+    string MaterialName,
+    DateOnly? WarrantyEndDate,
+    string WarrantyStatus);
 
 public record UpdatePurchaseWarrantyRequest(
     int? WarrantyMonths,
@@ -70,7 +99,10 @@ public record UpdatePurchaseWarrantyRequest(
 public record CreatePurchaseWarrantyClaimRequest(
     string Reason,
     string? Note,
-    bool Submit = true);
+    bool Submit = true,
+    string Kind = "warranty",
+    string? DefectType = null,
+    string? Severity = null);
 
 public record ClosePurchaseWarrantyClaimRequest(
     int ServiceRating,

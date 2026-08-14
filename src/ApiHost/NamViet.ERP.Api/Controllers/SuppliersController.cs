@@ -71,6 +71,7 @@ public class SuppliersController(
                 s.SupplierName,
                 s.ContactPhone,
                 s.MaxDebtDays,
+                s.CreditLimit,
                 s.PaymentTerms,
                 s.Rating,
                 s.ApprovalStatus,
@@ -141,6 +142,7 @@ public class SuppliersController(
             s.SupplierName,
             s.ContactPhone,
             s.MaxDebtDays,
+            s.CreditLimit,
             s.PaymentTerms,
             s.Rating,
             s.ApprovalStatus,
@@ -222,6 +224,7 @@ public class SuppliersController(
             s.SupplierName,
             s.ContactPhone,
             s.MaxDebtDays,
+            s.CreditLimit,
             s.PaymentTerms,
             s.Rating,
             s.ApprovalStatus,
@@ -254,6 +257,7 @@ public class SuppliersController(
             SupplierName = name,
             ContactPhone = phone,
             MaxDebtDays = req.MaxDebtDays,
+            CreditLimit = NormalizeCreditLimit(req.CreditLimit),
             PaymentTerms = string.IsNullOrWhiteSpace(req.PaymentTerms) ? null : req.PaymentTerms.Trim(),
             Rating = SupplierGrades.D,
             ApprovalStatus = SupplierApprovalStatuses.New,
@@ -285,6 +289,7 @@ public class SuppliersController(
         s.SupplierName = name;
         s.ContactPhone = phone;
         s.MaxDebtDays = req.MaxDebtDays;
+        s.CreditLimit = NormalizeCreditLimit(req.CreditLimit);
         s.PaymentTerms = string.IsNullOrWhiteSpace(req.PaymentTerms) ? null : req.PaymentTerms.Trim();
         // Rating + ApprovalStatus are system-owned — never overwrite from client.
         s.UpdatedAt = DateTime.UtcNow;
@@ -402,6 +407,10 @@ public class SuppliersController(
             || req.MaxDebtDays > SupplierFieldLimits.MaxDebtDaysMax)
             errors["maxDebtDays"] = ["Hạn công nợ từ 0 đến 3650 ngày."];
 
+        if (req.CreditLimit is < SupplierFieldLimits.CreditLimitMin
+            or > SupplierFieldLimits.CreditLimitMax)
+            errors["creditLimit"] = ["Hạn mức công nợ phải từ 0 trở lên."];
+
         var terms = req.PaymentTerms?.Trim() ?? string.Empty;
         if (terms.Length > SupplierFieldLimits.PaymentTermsMax)
             errors["paymentTerms"] = [$"Điều khoản thanh toán tối đa {SupplierFieldLimits.PaymentTermsMax} ký tự."];
@@ -452,6 +461,9 @@ public class SuppliersController(
 
         return Supplier.GenerateCode(next);
     }
+
+    private static decimal? NormalizeCreditLimit(decimal? value) =>
+        value is > 0 ? Math.Round(value.Value, 2) : null;
 
     private static BadRequestObjectResult FieldErrors(IReadOnlyDictionary<string, string[]> errors) =>
         new(new { errors });

@@ -206,7 +206,15 @@ public sealed class PurchasePaymentService(
             throw new PurchasingConflictException("Chỉ DNTT đã gửi mới xác nhận thanh toán được.");
 
         payment.Status = PurchasePaymentStatuses.Paid;
-        payment.UpdatedAt = DateTime.UtcNow;
+        var now = DateTime.UtcNow;
+        payment.UpdatedAt = now;
+        payment.PaidAt = now;
+        payment.PaidById = currentUser.IsAuthenticated && currentUser.Id != Guid.Empty
+            ? currentUser.Id
+            : null;
+        payment.PaidByName = currentUser.IsAuthenticated
+            ? (string.IsNullOrWhiteSpace(currentUser.Name) ? currentUser.Email : currentUser.Name)
+            : null;
 
         var order = await db.PurchaseOrders
             .Include(o => o.Installments)

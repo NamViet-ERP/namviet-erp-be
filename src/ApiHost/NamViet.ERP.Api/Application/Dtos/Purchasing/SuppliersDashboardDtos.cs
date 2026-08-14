@@ -1,6 +1,6 @@
 namespace NamViet.ERP.Api.Application.Dtos.Purchasing;
 
-/// <summary>Công nợ một NCC: Debt = tổng giá trị PO, Paid = DNTT đã trả, Remaining = còn lại.</summary>
+/// <summary>Công nợ một NCC: Debt = tổng DNTT (không hủy), Paid = DNTT đã trả, Remaining = còn phải trả.</summary>
 public record SupplierDebtRowDto(
     int SupplierId,
     string SupplierName,

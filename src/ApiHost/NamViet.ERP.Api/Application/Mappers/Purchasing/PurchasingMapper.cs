@@ -223,7 +223,9 @@ public static class PurchasingMapper
         payment.Status,
         payment.Note,
         payment.CreatedAt,
-        payment.CreatedByName);
+        payment.CreatedByName,
+        payment.PaidAt,
+        payment.PaidByName);
 
     private static List<string> DeserializeDocTypes(string json)
     {

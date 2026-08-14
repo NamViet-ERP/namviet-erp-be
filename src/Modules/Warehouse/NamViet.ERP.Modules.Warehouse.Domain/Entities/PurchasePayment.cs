@@ -20,6 +20,10 @@ public class PurchasePayment : BaseEntity
     public Guid? CreatedById { get; set; }
     public string? CreatedByName { get; set; }
 
+    public Guid? PaidById { get; set; }
+    public string? PaidByName { get; set; }
+    public DateTime? PaidAt { get; set; }
+
     public PurchaseOrder? PurchaseOrder { get; set; }
     public Supplier? Supplier { get; set; }
 }
