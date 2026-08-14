@@ -1,11 +1,11 @@
-# Production deploy branch is `main`. Keep purchasing/production for existing PRs.
+# Integration branch is `dev`. Production deploy branch is `main`.
 name: CI
 
 on:
   push:
-    branches: [main, production, feature/purchasing]
+    branches: [dev, main, production, feature/purchasing]
   pull_request:
-    branches: [main, production, feature/purchasing]
+    branches: [dev, main, production, feature/purchasing]
 
 jobs:
   backend:
