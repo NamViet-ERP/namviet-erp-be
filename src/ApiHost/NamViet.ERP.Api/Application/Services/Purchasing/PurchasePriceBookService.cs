@@ -562,6 +562,7 @@ public sealed class PurchasePriceBookService(
         {
             return new PriceBookItemDto(
                 m.MaterialCode, m.MaterialName, m.CategoryId, categoryName, m.CeilingPrice, m.AbcClass,
+                m.TechnicalSpec, m.GeneralTechnicalSpec,
                 null, null, null, null, null, null, 0, null, false,
                 estimatePrice, null, null, 0);
         }
@@ -578,6 +579,7 @@ public sealed class PurchasePriceBookService(
             : Math.Round(diff.Value / estimatePrice.Value * 100m, 1);
         return new PriceBookItemDto(
             m.MaterialCode, m.MaterialName, m.CategoryId, categoryName, m.CeilingPrice, m.AbcClass,
+            m.TechnicalSpec, m.GeneralTechnicalSpec,
             latest.UnitPrice, latest.Date, latest.SupplierName,
             purchase.Min(h => h.UnitPrice), purchase.Max(h => h.UnitPrice),
             Math.Round(purchase.Average(h => h.UnitPrice), 2),

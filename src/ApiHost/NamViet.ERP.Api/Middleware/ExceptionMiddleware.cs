@@ -39,7 +39,7 @@ public class ExceptionMiddleware(RequestDelegate next, ILogger<ExceptionMiddlewa
                 throw;
             }
 
-            if (IsExpectedClientError(ex))
+            if (IsExpectedClientError(ex) && !IsTransientFailure(ex))
                 logger.LogWarning(ex, "Request failed for {Method} {Path}", ctx.Request.Method, ctx.Request.Path);
             else
                 logger.LogError(ex, "Unhandled exception for {Method} {Path}", ctx.Request.Method, ctx.Request.Path);
@@ -57,9 +57,43 @@ public class ExceptionMiddleware(RequestDelegate next, ILogger<ExceptionMiddlewa
             or PurchasingConflictException
             or InvalidOperationException;
 
-    private static async Task HandleExceptionAsync(HttpContext ctx, Exception ex, bool isDevelopment)
+    private static bool IsTransientFailure(Exception ex)
     {
-        var (statusCode, title, detail) = ex switch
+        for (var current = ex; current is not null; current = current.InnerException)
+        {
+            var typeName = current.GetType().FullName ?? current.GetType().Name;
+            var message = current.Message ?? string.Empty;
+            if (typeName.Contains("Npgsql", StringComparison.OrdinalIgnoreCase)
+                || typeName.Contains("Postgres", StringComparison.OrdinalIgnoreCase)
+                || typeName.Contains("SqlException", StringComparison.OrdinalIgnoreCase)
+                || typeName.Contains("DbException", StringComparison.OrdinalIgnoreCase)
+                || typeName.Contains("TimeoutException", StringComparison.OrdinalIgnoreCase)
+                || message.Contains("transient failure", StringComparison.OrdinalIgnoreCase)
+                || message.Contains("the database is not currently available", StringComparison.OrdinalIgnoreCase)
+                || message.Contains("timeout expired", StringComparison.OrdinalIgnoreCase)
+                || message.Contains("could not connect", StringComparison.OrdinalIgnoreCase)
+                || message.Contains("connection refused", StringComparison.OrdinalIgnoreCase)
+                || message.Contains("server closed the connection", StringComparison.OrdinalIgnoreCase)
+                || message.Contains("the connection pool has been exhausted", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static (int StatusCode, string Title, string Detail) MapException(Exception ex, bool isDevelopment)
+    {
+        if (IsTransientFailure(ex))
+        {
+            return (
+                StatusCodes.Status503ServiceUnavailable,
+                "Hệ thống tạm gián đoạn",
+                "Hệ thống đang tạm gián đoạn. Thử lại sau 1-2 phút. Nếu vẫn lỗi, báo quản trị viên.");
+        }
+
+        return ex switch
         {
             ValidationException ve => (400, "Dữ liệu không hợp lệ",
                 string.Join("; ", ve.Errors.Select(e => e.ErrorMessage))),
@@ -77,6 +111,11 @@ public class ExceptionMiddleware(RequestDelegate next, ILogger<ExceptionMiddlewa
                       (ex.InnerException is null ? "" : $" | Inner: {ex.InnerException.GetType().Name}: {ex.InnerException.Message}")
                     : "Đã xảy ra lỗi, vui lòng thử lại sau.")
         };
+    }
+
+    private static async Task HandleExceptionAsync(HttpContext ctx, Exception ex, bool isDevelopment)
+    {
+        var (statusCode, title, detail) = MapException(ex, isDevelopment);
 
         ctx.Response.StatusCode = statusCode;
         ctx.Response.ContentType = "application/problem+json";

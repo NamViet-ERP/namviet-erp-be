@@ -114,6 +114,7 @@ public class MaterialsController(WarehouseDbContext db) : ControllerBase
             CategoryId = request.CategoryId,
             Unit = unit,
             TechnicalSpec = request.TechnicalSpec,
+            GeneralTechnicalSpec = request.GeneralTechnicalSpec,
             QualityStandard = request.QualityStandard,
             CeilingPrice = request.CeilingPrice is > 0 ? request.CeilingPrice : null,
             AbcClass = NormalizeAbc(request.AbcClass),
@@ -151,6 +152,7 @@ public class MaterialsController(WarehouseDbContext db) : ControllerBase
         m.CategoryId = request.CategoryId;
         m.Unit = unit;
         m.TechnicalSpec = request.TechnicalSpec;
+        m.GeneralTechnicalSpec = request.GeneralTechnicalSpec;
         m.QualityStandard = request.QualityStandard;
         m.CeilingPrice = request.CeilingPrice is > 0 ? request.CeilingPrice : null;
         m.AbcClass = NormalizeAbc(request.AbcClass);
@@ -249,7 +251,7 @@ public class MaterialsController(WarehouseDbContext db) : ControllerBase
         return new MaterialDto(
             m.MaterialCode, m.MaterialName, m.CategoryId, leaf?.Name,
             path,
-            m.Unit, m.TechnicalSpec, m.QualityStandard,
+            m.Unit, m.TechnicalSpec, m.GeneralTechnicalSpec, m.QualityStandard,
             m.CeilingPrice, m.AbcClass,
             m.IsConsumable, m.IsActive);
     }

@@ -9,7 +9,10 @@ public class Material : BaseEntity
     public string MaterialName { get; set; } = string.Empty;
     public int CategoryId { get; set; }
     public string Unit { get; set; } = string.Empty;
+    /// <summary>Quy cách (ngắn).</summary>
     public string? TechnicalSpec { get; set; }
+    /// <summary>Thông số kỹ thuật chung — nhập tay dạng văn bản.</summary>
+    public string? GeneralTechnicalSpec { get; set; }
     public string? QualityStandard { get; set; }
     /// <summary>Giá trần tham chiếu — cảnh báo khi mua vượt.</summary>
     public decimal? CeilingPrice { get; set; }

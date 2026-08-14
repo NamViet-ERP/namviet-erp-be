@@ -350,6 +350,9 @@ namespace NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence.Migrations
                     b.Property<string>("QualityStandard")
                         .HasColumnType("text");
 
+                    b.Property<string>("GeneralTechnicalSpec")
+                        .HasColumnType("text");
+
                     b.Property<string>("TechnicalSpec")
                         .HasColumnType("text");
 

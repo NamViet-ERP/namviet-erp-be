@@ -42,6 +42,27 @@ public class ExceptionMiddlewareTests
         Assert.DoesNotContain(unsafeDetail, detail);
     }
 
+    [Fact]
+    public async Task Transient_failure_returns_safe_vietnamese_503()
+    {
+        const string unsafeDetail =
+            "An exception has been raised that is likely due to a transient failure. " +
+            "Host=postgres;Username=erp_admin";
+
+        var context = await InvokeAsync(new InvalidOperationException(unsafeDetail));
+        using var problem = await ReadProblemAsync(context);
+        var detail = problem.RootElement.GetProperty("detail").GetString() ?? string.Empty;
+        var title = problem.RootElement.GetProperty("title").GetString() ?? string.Empty;
+
+        Assert.Equal(StatusCodes.Status503ServiceUnavailable, context.Response.StatusCode);
+        Assert.Equal("Hệ thống tạm gián đoạn", title);
+        Assert.Contains("báo quản trị viên", detail);
+        Assert.DoesNotContain("transient failure", detail, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("postgres", detail, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("erp_admin", detail, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(unsafeDetail, detail);
+    }
+
     private static async Task<DefaultHttpContext> InvokeAsync(Exception exception)
     {
         var context = new DefaultHttpContext();

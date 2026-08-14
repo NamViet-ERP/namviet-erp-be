@@ -7,6 +7,8 @@ public record PriceBookItemDto(
     string? CategoryName,
     decimal? CeilingPrice,
     string? AbcClass,
+    string? TechnicalSpec,
+    string? GeneralTechnicalSpec,
     decimal? LatestPrice,
     DateOnly? LatestDate,
     string? LatestSupplierName,
