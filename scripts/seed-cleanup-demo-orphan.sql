@@ -55,7 +55,6 @@ WHERE o."DeletedAt" IS NULL
     OR o."Code" = 'PO-0001'
     OR o."ProjectCode" ILIKE '%DEMO%'
     OR o."PlanCode" ILIKE '%DEMO%'
-    OR o."PlanCode" ILIKE 'SEED-KHMH-%'
     OR EXISTS (
       SELECT 1 FROM warehouse.suppliers s
       WHERE s."Id" = o."SupplierId" AND s."DeletedAt" IS NOT NULL
@@ -72,6 +71,11 @@ WHERE "DeletedAt" IS NULL
     "Code" ILIKE 'SEED-KHMH-%'
     OR "Code" ILIKE 'KHMH-DEMO-%'
     OR "ProjectCode" ILIKE '%DEMO%'
+  )
+  AND NOT EXISTS (
+    SELECT 1 FROM warehouse.purchase_orders o
+    WHERE o."PlanCode" = warehouse.purchase_plans."Code"
+      AND o."DeletedAt" IS NULL
   );
 
 -- ---------------------------------------------------------------------------

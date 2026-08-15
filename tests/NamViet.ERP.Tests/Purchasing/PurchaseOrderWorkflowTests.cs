@@ -91,6 +91,28 @@ public class PurchaseOrderWorkflowTests : IDisposable
     }
 
     [Fact]
+    public async Task Place_WhenPlanSoftDeleted_StillPlaces()
+    {
+        var plan = await SeedPlanWithLineAsync(supplierName: "NCC Alpha", qty: 10);
+        var order = await _orders.CreateAsync(new CreatePurchaseOrderRequest(
+            plan.Code, 1, null, null,
+            [new CreatePurchaseOrderLineRequest(plan.Lines[0].Id, 4, 1200, null, null)]),
+            CancellationToken.None);
+        await _orders.ApproveAsync(order.Code, CancellationToken.None);
+
+        var stored = await _db.PurchasePlans.FirstAsync(p => p.Code == plan.Code);
+        stored.DeletedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+
+        var placed = await _orders.PlaceAsync(order.Code, CancellationToken.None);
+
+        Assert.Equal(PurchaseOrderPlacementStatuses.Placed, placed!.OrderPlacementStatus);
+        var line = await _db.PurchasePlanLines.AsNoTracking()
+            .FirstAsync(l => l.Id == plan.Lines[0].Id);
+        Assert.Equal(4m, line.OrderedQty);
+    }
+
+    [Fact]
     public async Task Unapprove_BlockedAfterPlace()
     {
         var plan = await SeedPlanWithLineAsync(supplierName: "NCC Alpha", qty: 10);

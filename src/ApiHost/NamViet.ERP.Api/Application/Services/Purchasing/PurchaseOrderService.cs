@@ -292,8 +292,7 @@ public sealed class PurchaseOrderService(
         if (supplier is null)
             throw new PurchasingConflictException("PO thiếu nhà cung cấp.");
 
-        var plan = order.Plan
-            ?? await db.PurchasePlans.Include(p => p.Lines).FirstAsync(p => p.Code == order.PlanCode, ct);
+        var plan = order.Plan ?? await RequirePlanAsync(order.PlanCode, ct);
         var planLines = plan.Lines.ToDictionary(l => l.Id);
 
         // Remaining must ignore current PO quantities (draft not yet placed).
@@ -502,9 +501,7 @@ public sealed class PurchaseOrderService(
                 item.Sku = material.MaterialCode;
         }
 
-        var plan = await db.PurchasePlans
-            .Include(p => p.Lines)
-            .FirstAsync(p => p.Code == order.PlanCode, ct);
+        var plan = await RequirePlanAsync(order.PlanCode, ct);
         planService.RecalcTotals(plan);
 
         order.OrderPlacementStatus = PurchaseOrderPlacementStatuses.Placed;
@@ -954,6 +951,24 @@ public sealed class PurchaseOrderService(
         if (line.ReceivedQty >= line.Quantity && line.Quantity > 0)
             return PurchaseLineStatuses.Delivered;
         return line.PurchaseStatus ?? PurchaseLineStatuses.NotPurchased;
+    }
+
+    private async Task<PurchasePlan> RequirePlanAsync(string? planCode, CancellationToken ct)
+    {
+        var code = (planCode ?? string.Empty).Trim();
+        if (string.IsNullOrEmpty(code))
+            throw new PurchasingConflictException("PO thiếu mã kế hoạch mua hàng.");
+
+        // Soft-deleted KHMH still owns live POs (cleanup scripts). Place/update must not FirstAsync.
+        var plan = await db.PurchasePlans
+            .IgnoreQueryFilters()
+            .Include(p => p.Lines)
+            .FirstOrDefaultAsync(p => p.Code == code, ct);
+
+        if (plan is null)
+            throw new PurchasingConflictException($"Không tìm thấy kế hoạch mua hàng {code}.");
+
+        return plan;
     }
 
     private async Task<PurchaseOrder?> LoadDetailAsync(string code, CancellationToken ct) =>

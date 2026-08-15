@@ -45,7 +45,12 @@ WHERE "DeletedAt" IS NULL AND "Code" LIKE 'SEED-PO-%';
 
 UPDATE warehouse.purchase_plans
 SET "DeletedAt" = NOW(), "UpdatedAt" = NOW()
-WHERE "DeletedAt" IS NULL AND "Code" LIKE 'SEED-KHMH-%';
+WHERE "DeletedAt" IS NULL AND "Code" LIKE 'SEED-KHMH-%'
+  AND NOT EXISTS (
+    SELECT 1 FROM warehouse.purchase_orders o
+    WHERE o."PlanCode" = warehouse.purchase_plans."Code"
+      AND o."DeletedAt" IS NULL
+  );
 
 -- ---------------------------------------------------------------------------
 -- 1) Dự án thật
