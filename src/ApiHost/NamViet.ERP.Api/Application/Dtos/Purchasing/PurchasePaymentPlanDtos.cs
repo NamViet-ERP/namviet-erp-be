@@ -1,6 +1,6 @@
 namespace NamViet.ERP.Api.Application.Dtos.Purchasing;
 
-/// <summary>Trạng thái thanh toán theo đợt trên kế hoạch: unpaid | in_progress | paid.</summary>
+/// <summary>Trạng thái đợt trên kế hoạch: unpaid (chưa gửi DNTT, kể cả nháp) | in_progress (đã gửi) | paid.</summary>
 public record PurchasePaymentPlanStageDto(
     int StageNumber,
     decimal Percent,

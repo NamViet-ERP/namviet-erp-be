@@ -77,9 +77,8 @@ public sealed class PurchasePaymentPlanService(WarehouseDbContext db) : IPurchas
                     .ToList();
                 var paid = stagePayments.FirstOrDefault(p =>
                     string.Equals(p.Status, PurchasePaymentStatuses.Paid, StringComparison.OrdinalIgnoreCase));
-                var active = stagePayments.FirstOrDefault(p =>
-                    string.Equals(p.Status, PurchasePaymentStatuses.Draft, StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(p.Status, PurchasePaymentStatuses.Submitted, StringComparison.OrdinalIgnoreCase));
+                var submitted = stagePayments.FirstOrDefault(p =>
+                    string.Equals(p.Status, PurchasePaymentStatuses.Submitted, StringComparison.OrdinalIgnoreCase));
 
                 string status;
                 string? paymentCode;
@@ -88,10 +87,10 @@ public sealed class PurchasePaymentPlanService(WarehouseDbContext db) : IPurchas
                     status = StagePaid;
                     paymentCode = paid.Code;
                 }
-                else if (active is not null)
+                else if (submitted is not null)
                 {
                     status = StageInProgress;
-                    paymentCode = active.Code;
+                    paymentCode = submitted.Code;
                 }
                 else
                 {

@@ -355,6 +355,15 @@ public sealed class ImportApplicationService(
         t.ApprovalStatus = ApprovalStatus.Pending;
         t.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
+
+        await activity.WriteAsync(new ActivityEventWriteRequest(
+            ActivityModules.Wms,
+            ActivityActions.ImportSubmitted,
+            $"Chốt dự kiến phiếu nhập [{t.TicketCode}]",
+            ActivityCategories.Import,
+            EntityType: "warehouse_import",
+            EntityCode: t.TicketCode), ct);
+
         return WmsMapper.ToImport(t);
     }
 
