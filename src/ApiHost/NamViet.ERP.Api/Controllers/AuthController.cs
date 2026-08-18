@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using NamViet.ERP.Api.Application.Dtos.Auth;
 using NamViet.ERP.Api.Application.Mappers.Wms;
+using NamViet.ERP.Api.Application.Services.Hr;
 using NamViet.ERP.Api.Infrastructure.Auth;
 using NamViet.ERP.Api.Infrastructure.Authorization;
 using NamViet.ERP.Api.Infrastructure.RateLimiting;
@@ -25,6 +26,7 @@ public class AuthController(
     UserManager<ApplicationUser> userManager,
     IPermissionService permissionService,
     IEmployeeInfoProvider employeeInfo,
+    IEmployeeAccountLinkSynchronizer accountLinks,
     IAuthCookieService authCookies) : ControllerBase
 {
     [HttpPost("login")]
@@ -87,6 +89,7 @@ public class AuthController(
         var result = await mediator.Send(
             new RegisterCommand(request.EmployeeCode, request.Name, request.Email,
                 request.Password, request.Department, request.Role), ct);
+        await accountLinks.AttachByCodeAsync(result.EmployeeCode, result.Id, ct);
         return CreatedAtAction(nameof(Register), result);
     }
 

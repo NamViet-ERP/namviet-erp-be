@@ -42,20 +42,21 @@ public sealed class WmsNotificationService(WarehouseDbContext db) : IWmsNotifica
                 .Select(t => new
                 {
                     t.TicketCode,
-                    t.ProjectCode,
+                    ProjectCode = t.BeneficiaryProjectCode ?? t.ProjectCode,
                     t.CreatedByName,
                     t.CreatedAt,
                 })
                 .ToListAsync(ct);
 
-            items.AddRange(rows.Select(r => new WmsNotificationItemDto(
+            items.AddRange(rows.Select(r => ToItem(
                 $"import:{r.TicketCode}",
                 "import",
                 r.TicketCode,
                 "Phiếu nhập chờ duyệt",
-                $"{r.TicketCode} — {r.ProjectCode ?? "—"} — {r.CreatedByName}",
                 "/warehouse/import",
-                r.CreatedAt.ToString("dd/MM/yyyy HH:mm"))));
+                r.CreatedAt,
+                r.ProjectCode,
+                r.CreatedByName)));
         }
 
         if (canExport)
@@ -73,20 +74,21 @@ public sealed class WmsNotificationService(WarehouseDbContext db) : IWmsNotifica
                 .Select(t => new
                 {
                     t.TicketCode,
-                    t.ProjectCode,
+                    ProjectCode = t.BeneficiaryProjectCode ?? t.ProjectCode,
                     t.CreatedByName,
                     t.CreatedAt,
                 })
                 .ToListAsync(ct);
 
-            items.AddRange(rows.Select(r => new WmsNotificationItemDto(
+            items.AddRange(rows.Select(r => ToItem(
                 $"export:{r.TicketCode}",
                 "export",
                 r.TicketCode,
                 "Phiếu xuất chờ duyệt",
-                $"{r.TicketCode} — {r.ProjectCode ?? "—"} — {r.CreatedByName}",
                 "/warehouse/export",
-                r.CreatedAt.ToString("dd/MM/yyyy HH:mm"))));
+                r.CreatedAt,
+                r.ProjectCode,
+                r.CreatedByName)));
         }
 
         if (canTransfer)
@@ -104,20 +106,21 @@ public sealed class WmsNotificationService(WarehouseDbContext db) : IWmsNotifica
                 .Select(t => new
                 {
                     t.TicketCode,
-                    t.ProjectCode,
+                    ProjectCode = t.BeneficiaryProjectCode ?? t.ProjectCode,
                     t.CreatedByName,
                     t.CreatedAt,
                 })
                 .ToListAsync(ct);
 
-            items.AddRange(rows.Select(r => new WmsNotificationItemDto(
+            items.AddRange(rows.Select(r => ToItem(
                 $"transfer:{r.TicketCode}",
                 "transfer",
                 r.TicketCode,
                 "Phiếu chuyển chờ duyệt",
-                $"{r.TicketCode} — {r.ProjectCode ?? "—"} — {r.CreatedByName}",
                 "/warehouse/transfer",
-                r.CreatedAt.ToString("dd/MM/yyyy HH:mm"))));
+                r.CreatedAt,
+                r.ProjectCode,
+                r.CreatedByName)));
         }
 
         if (canStocktake)
@@ -138,14 +141,15 @@ public sealed class WmsNotificationService(WarehouseDbContext db) : IWmsNotifica
                 })
                 .ToListAsync(ct);
 
-            items.AddRange(rows.Select(r => new WmsNotificationItemDto(
+            items.AddRange(rows.Select(r => ToItem(
                 $"stocktake:{r.VoucherCode}",
                 "stocktake",
                 r.VoucherCode,
                 "Phiếu kiểm kê chờ duyệt",
-                $"{r.VoucherCode} — {r.WarehouseName} — {r.CreatedByName}",
                 "/stocktake/list",
-                r.CreatedAt.ToString("dd/MM/yyyy HH:mm"))));
+                r.CreatedAt,
+                r.WarehouseName,
+                r.CreatedByName)));
         }
 
         var ordered = items
@@ -160,5 +164,33 @@ public sealed class WmsNotificationService(WarehouseDbContext db) : IWmsNotifica
             transferCount,
             stocktakeCount,
             ordered);
+    }
+
+    private static WmsNotificationItemDto ToItem(
+        string id,
+        string kind,
+        string voucherCode,
+        string title,
+        string route,
+        DateTime createdAt,
+        string? contextLabel,
+        string? createdByName)
+    {
+        var context = string.IsNullOrWhiteSpace(contextLabel) ? null : contextLabel.Trim();
+        var actor = string.IsNullOrWhiteSpace(createdByName) ? null : createdByName.Trim();
+        var message = string.Join(
+            " - ",
+            new[] { voucherCode, context, actor }.Where(part => !string.IsNullOrWhiteSpace(part)));
+
+        return new WmsNotificationItemDto(
+            id,
+            kind,
+            voucherCode,
+            title,
+            message,
+            route,
+            createdAt.ToString("dd/MM/yyyy HH:mm"),
+            context,
+            actor);
     }
 }

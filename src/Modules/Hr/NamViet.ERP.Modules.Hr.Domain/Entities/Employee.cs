@@ -10,7 +10,7 @@ public class Employee : BaseEntity
 {
     public int Id { get; set; }
     public string Code { get; set; } = string.Empty;           // Mã NV – VD: NV-0001
-    public Guid? UserId { get; set; }                           // Liên kết identity.users
+    public Guid? UserId { get; set; }                           // Canonical login: identity.users.Id
     public string FullName { get; set; } = string.Empty;
     public Gender Gender { get; set; }
     public DateOnly BirthDate { get; set; }

@@ -5,17 +5,24 @@ using NamViet.ERP.SharedKernel.Interfaces;
 
 namespace NamViet.ERP.Modules.Hr.Infrastructure.Services;
 
-public sealed class EmployeeInfoProvider(HrDbContext db) : IEmployeeInfoProvider
+public sealed class EmployeeInfoProvider(
+    HrDbContext db,
+    IEmployeeUserLinkService links) : IEmployeeInfoProvider
 {
     public async Task<LinkedEmployeeInfo?> GetByUserAsync(
         Guid userId, string? employeeCode, CancellationToken ct = default)
     {
-        var employee = await db.Employees
-            .Include(e => e.Department)
-            .AsNoTracking()
-            .FirstOrDefaultAsync(
-                e => e.DeletedAt == null && (e.UserId == userId || e.Code == employeeCode),
+        var employee = await FindByUserIdAsync(userId, ct);
+        if (employee is null && !string.IsNullOrWhiteSpace(employeeCode))
+        {
+            await links.AttachMissingUserIdsAsync(
+                new Dictionary<string, Guid>(StringComparer.OrdinalIgnoreCase)
+                {
+                    [employeeCode] = userId,
+                },
                 ct);
+            employee = await FindByUserIdAsync(userId, ct);
+        }
 
         if (employee is null) return null;
 
@@ -24,6 +31,12 @@ public sealed class EmployeeInfoProvider(HrDbContext db) : IEmployeeInfoProvider
             employee.Department?.Name,
             ToClientStatus(employee.Status));
     }
+
+    private Task<Employee?> FindByUserIdAsync(Guid userId, CancellationToken ct) =>
+        db.Employees
+            .Include(e => e.Department)
+            .AsNoTracking()
+            .FirstOrDefaultAsync(e => e.DeletedAt == null && e.UserId == userId, ct);
 
     private static string ToClientStatus(EmployeeStatus status) => status switch
     {

@@ -7,6 +7,7 @@ using NamViet.ERP.Api.Application.Dtos.Admin;
 using NamViet.ERP.Api.Application.Mappers.Wms;
 using NamViet.ERP.Api.Infrastructure.Authorization;
 using NamViet.ERP.Api.Application.Services.Admin;
+using NamViet.ERP.Api.Application.Services.Hr;
 using NamViet.ERP.Modules.Hr.Domain.Entities;
 using NamViet.ERP.Modules.Hr.Infrastructure.Persistence;
 using NamViet.ERP.Modules.Identity.Domain.Entities;
@@ -20,7 +21,8 @@ public class AdminUsersController(
     IAdminUserQueryService adminUserQueries,
     UserManager<ApplicationUser> userManager,
     RoleManager<ApplicationRole> roleManager,
-    HrDbContext hrDb) : ControllerBase
+    HrDbContext hrDb,
+    IEmployeeAccountLinkSynchronizer accountLinks) : ControllerBase
 {
     [HttpGet]
     [RequirePermission("admin.users.view:all")]
@@ -69,11 +71,16 @@ public class AdminUsersController(
         var existingLink = await userManager.Users
             .FirstOrDefaultAsync(u => u.DeletedAt == null && u.EmployeeCode == employee.Code, ct);
         if (existingLink is not null)
-            return Conflict("Nhân viên đã có tài khoản hệ thống.");
+        {
+            await accountLinks.AttachByCodeAsync(employee.Code, existingLink.Id, ct);
+            if (employee.UserId is null)
+                return Conflict("Tài khoản trùng mã NV đã gắn với nhân viên khác.");
+            return Ok(await adminUserQueries.MapEmployeeRowAsync(employee, existingLink, ct));
+        }
 
         var email = employee.Email?.Trim();
         if (string.IsNullOrEmpty(email))
-            return BadRequest("Nhân viên chưa có email — cập nhật hồ sơ HR trước.");
+            return BadRequest("Nhân viên chưa có email - cập nhật hồ sơ HR trước.");
 
         if (await userManager.FindByEmailAsync(email) is not null)
             return Conflict($"Email '{email}' đã được sử dụng.");
@@ -98,10 +105,7 @@ public class AdminUsersController(
             return BadRequest(new { errors = createResult.Errors.Select(e => e.Description) });
 
         await userManager.AddToRoleAsync(user, identityRole);
-
-        employee.UserId = user.Id;
-        employee.UpdatedAt = DateTime.UtcNow;
-        await hrDb.SaveChangesAsync(ct);
+        await accountLinks.AttachByCodeAsync(employee.Code, user.Id, ct);
 
         return Ok(await adminUserQueries.MapEmployeeRowAsync(employee, user, ct));
     }
@@ -139,6 +143,7 @@ public class AdminUsersController(
             return BadRequest(new { errors = createResult.Errors.Select(e => e.Description) });
 
         await userManager.AddToRoleAsync(user, identityRole);
+        await accountLinks.AttachByCodeAsync(user.EmployeeCode, user.Id, ct);
 
         return Ok(await adminUserQueries.MapManualRowAsync(
             user, ct, request.Department, request.Position));
@@ -161,6 +166,9 @@ public class AdminUsersController(
 
             if (employee.Status == EmployeeStatus.Resigned && request.Enabled)
                 return BadRequest("Không thể bật tài khoản cho nhân viên đã nghỉ việc.");
+
+            if (employee.UserId is null)
+                await accountLinks.SynchronizeAsync(ct);
 
             if (employee.UserId is null)
                 return BadRequest("Nhân viên chưa được cấp tài khoản.");
@@ -251,13 +259,12 @@ public class AdminUsersController(
             var employee = await hrDb.Employees
                 .FirstOrDefaultAsync(e => e.Id == empId && e.DeletedAt == null, ct);
             if (employee is null) return null;
-            if (requireAccount && employee.UserId is null) return null;
 
             if (employee.UserId is null)
-            {
-                return await userManager.Users
-                    .FirstOrDefaultAsync(u => u.DeletedAt == null && u.EmployeeCode == employee.Code, ct);
-            }
+                await accountLinks.SynchronizeAsync(ct);
+
+            if (requireAccount && employee.UserId is null) return null;
+            if (employee.UserId is null) return null;
 
             return await userManager.FindByIdAsync(employee.UserId.Value.ToString());
         }

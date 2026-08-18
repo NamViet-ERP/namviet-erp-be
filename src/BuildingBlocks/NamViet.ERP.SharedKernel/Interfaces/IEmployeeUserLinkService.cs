@@ -18,4 +18,12 @@ public interface IEmployeeUserLinkService
     Task<int> EnsureDepartmentAsync(string code, string name, CancellationToken ct = default);
 
     Task UpsertFromUserAsync(EmployeeUserLinkRequest request, CancellationToken ct = default);
+
+    /// <summary>
+    /// Canonical login link is <c>employees.UserId</c>.
+    /// Fills it for existing HR rows whose code matches a login, without overwriting a link already set.
+    /// </summary>
+    Task<int> AttachMissingUserIdsAsync(
+        IReadOnlyDictionary<string, Guid> userIdByEmployeeCode,
+        CancellationToken ct = default);
 }

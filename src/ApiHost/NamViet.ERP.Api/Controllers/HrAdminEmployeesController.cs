@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using NamViet.ERP.Api.Application.Dtos.Hr;
+using NamViet.ERP.Api.Application.Services.Hr;
 using NamViet.ERP.Modules.Hr.Domain.Entities;
 using NamViet.ERP.Modules.Hr.Infrastructure.Persistence;
 using NamViet.ERP.SharedKernel.Common;
@@ -15,7 +16,9 @@ namespace NamViet.ERP.Api.Controllers;
 [ApiController]
 [Route("api/hr/employees")]
 [Authorize]
-public class HrAdminEmployeesController(HrDbContext db) : ControllerBase
+public class HrAdminEmployeesController(
+    HrDbContext db,
+    IEmployeeAccountLinkSynchronizer accountLinks) : ControllerBase
 {
     [HttpGet]
     public async Task<IActionResult> GetAll(
@@ -106,6 +109,7 @@ public class HrAdminEmployeesController(HrDbContext db) : ControllerBase
         };
         db.Employees.Add(emp);
         await db.SaveChangesAsync(ct);
+        await accountLinks.SynchronizeAsync(ct);
         return CreatedAtAction(nameof(GetById), new { id = emp.Id }, new { emp.Id, emp.Code });
     }
 

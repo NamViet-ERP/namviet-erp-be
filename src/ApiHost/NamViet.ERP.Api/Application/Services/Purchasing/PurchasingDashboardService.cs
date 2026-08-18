@@ -1,7 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using NamViet.ERP.Api.Application.Dtos.Purchasing;
-using NamViet.ERP.Modules.Hr.Domain.Entities;
-using NamViet.ERP.Modules.Hr.Infrastructure.Persistence;
+using NamViet.ERP.Modules.Identity.Infrastructure.Persistence;
 using NamViet.ERP.Modules.Warehouse.Domain.Entities;
 using NamViet.ERP.Modules.Warehouse.Domain.Enums;
 using NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence;
@@ -31,7 +30,7 @@ public interface IPurchasingDashboardService
 
 public sealed class PurchasingDashboardService(
     WarehouseDbContext db,
-    HrDbContext hr) : IPurchasingDashboardService
+    IdentityDbContext identity) : IPurchasingDashboardService
 {
     public async Task<PurchasingDashboardSummaryDto> GetSummaryAsync(
         string? period, DateTime? from, DateTime? to, CancellationToken ct = default)
@@ -158,21 +157,15 @@ public sealed class PurchasingDashboardService(
     public async Task<IReadOnlyList<PurchasingActivityActorDto>> GetActivityActorsAsync(
         string? period, DateTime? from, DateTime? to, CancellationToken ct = default)
     {
-        // Staff list comes from HR Nhân viên (linked login account), not from activity log.
-        // period/from/to kept for API compatibility; filter applies when selecting feed items.
         _ = (period, from, to);
 
-        var rows = await hr.Employees.AsNoTracking()
-            .Where(e => e.DeletedAt == null
-                        && e.UserId != null
-                        && e.Status == EmployeeStatus.Active)
-            .OrderBy(e => e.FullName)
-            .Select(e => new { UserId = e.UserId!.Value, e.FullName })
+        // ActorUserId on the feed is Identity.users.Id - list those logins.
+        return await identity.Users.AsNoTracking()
+            .Where(u => u.DeletedAt == null && u.IsActive)
+            .OrderBy(u => u.Name)
+            .ThenBy(u => u.EmployeeCode)
+            .Select(u => new PurchasingActivityActorDto(u.Id, u.Name))
             .ToListAsync(ct);
-
-        return rows
-            .Select(r => new PurchasingActivityActorDto(r.UserId, r.FullName))
-            .ToList();
     }
 
     /// <summary>

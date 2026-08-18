@@ -180,10 +180,12 @@ builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Purchasing.ISupp
 builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Purchasing.ISuppliersDashboardService, NamViet.ERP.Api.Application.Services.Purchasing.SuppliersDashboardService>();
 builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Purchasing.ISupplierPayableService, NamViet.ERP.Api.Application.Services.Purchasing.SupplierPayableService>();
 builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Shared.IActivityEventWriter, NamViet.ERP.Api.Application.Services.Shared.ActivityEventWriter>();
+builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Hr.IEmployeeAccountLinkSynchronizer, NamViet.ERP.Api.Application.Services.Hr.EmployeeAccountLinkSynchronizer>();
 builder.Services.AddScoped<IAdminUserQueryService, AdminUserQueryService>();
 builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Hr.IEmployeeAccessService, NamViet.ERP.Api.Application.Services.Hr.EmployeeAccessService>();
 builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Hr.IEmployeeOnboardingInviteService, NamViet.ERP.Api.Application.Services.Hr.EmployeeOnboardingInviteService>();
 builder.Services.AddSingleton<NamViet.ERP.Api.Services.Storage.IFileStorage, NamViet.ERP.Api.Services.Storage.LocalFileStorage>();
+builder.Services.AddHostedService<NamViet.ERP.Api.Application.Services.Hr.EmployeeAccountLinkHostedService>();
 builder.Services.AddHostedService<NamViet.ERP.Api.Application.Services.Hr.HrPrivateUploadCleanupService>();
 builder.Services.AddSignalR();
 

@@ -7,7 +7,9 @@ public record WmsNotificationItemDto(
     string Title,
     string Message,
     string Route,
-    string TimeLabel);
+    string TimeLabel,
+    string? ContextLabel,
+    string? CreatedByName);
 
 public record WmsPendingNotificationsDto(
     int TotalCount,

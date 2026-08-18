@@ -59,4 +59,38 @@ public sealed class EmployeeUserLinkService(HrDbContext db) : IEmployeeUserLinkS
 
         await db.SaveChangesAsync(ct);
     }
+
+    public async Task<int> AttachMissingUserIdsAsync(
+        IReadOnlyDictionary<string, Guid> userIdByEmployeeCode,
+        CancellationToken ct = default)
+    {
+        if (userIdByEmployeeCode.Count == 0) return 0;
+
+        var lookup = new Dictionary<string, Guid>(userIdByEmployeeCode, StringComparer.OrdinalIgnoreCase);
+        var unlinked = await db.Employees
+            .Where(e => e.UserId == null)
+            .ToListAsync(ct);
+        if (unlinked.Count == 0) return 0;
+
+        var taken = (await db.Employees
+                .Where(e => e.UserId != null)
+                .Select(e => e.UserId!.Value)
+                .ToListAsync(ct))
+            .ToHashSet();
+
+        var attached = 0;
+        foreach (var employee in unlinked)
+        {
+            if (!lookup.TryGetValue(employee.Code, out var userId)) continue;
+            if (!taken.Add(userId)) continue;
+            employee.UserId = userId;
+            employee.UpdatedAt = DateTime.UtcNow;
+            attached++;
+        }
+
+        if (attached > 0)
+            await db.SaveChangesAsync(ct);
+
+        return attached;
+    }
 }

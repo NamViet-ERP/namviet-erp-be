@@ -27,7 +27,8 @@ public class EmployeesController(
     IValidator<EmployeeDto> onboardValidator,
     ICurrentUser currentUser,
     IEmployeeAccessService employeeAccess,
-    IEmployeeOnboardingInviteService onboardingInvites) : ControllerBase
+    IEmployeeOnboardingInviteService onboardingInvites,
+    IEmployeeAccountLinkSynchronizer accountLinks) : ControllerBase
 {
     [HttpGet]
     [RequirePermission("hrm.employees.view:all")]
@@ -37,6 +38,7 @@ public class EmployeesController(
         [FromQuery] int? pageSize = null,
         CancellationToken ct = default)
     {
+        await accountLinks.SynchronizeAsync(ct);
         var query = db.Employees
             .Include(e => e.Department).Include(e => e.Position)
             .Where(e => e.DeletedAt == null);
@@ -153,6 +155,7 @@ public class EmployeesController(
         }
         db.Employees.Add(e);
         await db.SaveChangesAsync(ct);
+        await accountLinks.SynchronizeAsync(ct);
         await db.Entry(e).Reference(x => x.Department).LoadAsync(ct);
         await db.Entry(e).Reference(x => x.Position).LoadAsync(ct);
         return Ok(HrEmployeeMapper.ToDto(e));
@@ -253,6 +256,8 @@ public class EmployeesController(
         }
         e.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
+        if (e.UserId is null)
+            await accountLinks.SynchronizeAsync(ct);
         await db.Entry(e).Reference(x => x.Department).LoadAsync(ct);
         await db.Entry(e).Reference(x => x.Position).LoadAsync(ct);
         return Ok(HrEmployeeMapper.ToDto(e));

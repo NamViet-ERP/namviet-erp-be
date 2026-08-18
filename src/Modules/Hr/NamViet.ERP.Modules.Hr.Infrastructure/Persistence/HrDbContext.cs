@@ -61,6 +61,9 @@ public class HrDbContext(DbContextOptions<HrDbContext> options) : DbContext(opti
             e.HasKey(em => em.Id);
             e.Property(em => em.Code).HasMaxLength(50).IsRequired();
             e.HasIndex(em => em.Code).IsUnique();
+            e.HasIndex(em => em.UserId)
+                .IsUnique()
+                .HasFilter("\"UserId\" IS NOT NULL");
             e.Property(em => em.FullName).HasMaxLength(255).IsRequired();
             e.Property(em => em.Gender).HasConversion<string>().HasMaxLength(10);
             e.Property(em => em.Status).HasConversion<string>().HasMaxLength(20);

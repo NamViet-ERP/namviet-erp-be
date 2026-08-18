@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using NamViet.ERP.Api.Application.Dtos.Admin;
 using NamViet.ERP.Api.Application.Mappers.Hr;
 using NamViet.ERP.Api.Application.Mappers.Wms;
+using NamViet.ERP.Api.Application.Services.Hr;
 using NamViet.ERP.Modules.Hr.Domain.Entities;
 using NamViet.ERP.Modules.Hr.Infrastructure.Persistence;
 using NamViet.ERP.Modules.Identity.Domain.Entities;
@@ -13,10 +14,12 @@ namespace NamViet.ERP.Api.Application.Services.Admin;
 public class AdminUserQueryService(
     UserManager<ApplicationUser> userManager,
     IdentityDbContext identityDb,
-    HrDbContext hrDb) : IAdminUserQueryService
+    HrDbContext hrDb,
+    IEmployeeAccountLinkSynchronizer accountLinks) : IAdminUserQueryService
 {
     public async Task<AdminUserPagedResponse> ListAsync(AdminUserListQuery query, CancellationToken ct = default)
     {
+        await accountLinks.SynchronizeAsync(ct);
         var summary = await GetSummaryAsync(ct);
 
         var allRows = await BuildAllRowsAsync(ct);
@@ -48,6 +51,7 @@ public class AdminUserQueryService(
 
     public async Task<AdminUserDto?> GetByIdAsync(string id, string source, CancellationToken ct = default)
     {
+        await accountLinks.SynchronizeAsync(ct);
         if (string.Equals(source, "employee", StringComparison.OrdinalIgnoreCase))
         {
             if (!int.TryParse(id, out var empId))
@@ -60,14 +64,9 @@ public class AdminUserQueryService(
             if (employee is null)
                 return null;
 
-            ApplicationUser? linked = null;
-            if (employee.UserId is not null)
-                linked = await userManager.FindByIdAsync(employee.UserId.Value.ToString());
-            else
-            {
-                linked = await userManager.Users
-                    .FirstOrDefaultAsync(u => u.DeletedAt == null && u.EmployeeCode == employee.Code, ct);
-            }
+            ApplicationUser? linked = employee.UserId is Guid userId
+                ? await userManager.FindByIdAsync(userId.ToString())
+                : null;
 
             var lookups = linked is not null
                 ? await BuildLookupsAsync([linked], ct)
@@ -99,10 +98,6 @@ public class AdminUserQueryService(
             .ToListAsync(ct);
 
         var userById = users.ToDictionary(u => u.Id);
-        var usersByEmployeeCode = users
-            .Where(u => !string.IsNullOrEmpty(u.EmployeeCode))
-            .GroupBy(u => u.EmployeeCode, StringComparer.OrdinalIgnoreCase)
-            .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
 
         var linkedUserIds = new HashSet<Guid>();
         var pending = 0;
@@ -113,7 +108,7 @@ public class AdminUserQueryService(
         {
             var linked = emp.UserId is Guid uid && userById.TryGetValue(uid, out var byId)
                 ? byId
-                : usersByEmployeeCode.GetValueOrDefault(emp.Code);
+                : null;
 
             if (linked is null)
             {
@@ -156,8 +151,6 @@ public class AdminUserQueryService(
 
     private sealed record UserLookups(
         Dictionary<Guid, List<string>> RolesByUserId,
-        Dictionary<int, ApplicationUser> UsersByEmployeeId,
-        Dictionary<string, ApplicationUser> UsersByEmployeeCode,
         Dictionary<string, string> RoleLabelByIdentityName);
 
     private async Task<List<AdminUserDto>> BuildAllRowsAsync(CancellationToken ct)
@@ -174,13 +167,15 @@ public class AdminUserQueryService(
             .ToListAsync(ct);
 
         var lookups = await BuildLookupsAsync(users, ct);
+        var usersById = users.ToDictionary(u => u.Id);
         var linkedUserIds = new HashSet<Guid>();
 
         var rows = new List<AdminUserDto>();
         foreach (var emp in employees)
         {
-            lookups.UsersByEmployeeId.TryGetValue(emp.Id, out var linked);
-            linked ??= lookups.UsersByEmployeeCode.GetValueOrDefault(emp.Code);
+            ApplicationUser? linked = emp.UserId is Guid uid
+                ? usersById.GetValueOrDefault(uid)
+                : null;
             if (linked is not null) linkedUserIds.Add(linked.Id);
             rows.Add(ToEmployeeRow(emp, linked, lookups));
         }
@@ -245,7 +240,6 @@ public class AdminUserQueryService(
     private async Task<UserLookups> BuildLookupsAsync(List<ApplicationUser> users, CancellationToken ct)
     {
         var userIds = users.Select(u => u.Id).ToList();
-        var codes = users.Select(u => u.EmployeeCode).Where(c => !string.IsNullOrEmpty(c)).ToList();
 
         var roleRows = await (
             from ur in identityDb.UserRoles
@@ -268,28 +262,7 @@ public class AdminUserQueryService(
                     : WmsMapper.ToClientRoleLabel(r.Name!),
                 StringComparer.OrdinalIgnoreCase);
 
-        var employees = await hrDb.Employees
-            .Where(e => e.DeletedAt == null &&
-                ((e.UserId != null && userIds.Contains(e.UserId.Value)) || codes.Contains(e.Code)))
-            .ToListAsync(ct);
-
-        var usersByEmployeeId = new Dictionary<int, ApplicationUser>();
-        foreach (var e in employees.Where(e => e.UserId.HasValue))
-        {
-            var matched = users.FirstOrDefault(u => u.Id == e.UserId!.Value);
-            if (matched is not null) usersByEmployeeId[e.Id] = matched;
-        }
-
-        var usersByEmployeeCode = new Dictionary<string, ApplicationUser>(StringComparer.OrdinalIgnoreCase);
-        foreach (var e in employees)
-        {
-            if (usersByEmployeeId.ContainsKey(e.Id)) continue;
-            var matched = users.FirstOrDefault(u =>
-                string.Equals(u.EmployeeCode, e.Code, StringComparison.OrdinalIgnoreCase));
-            if (matched is not null) usersByEmployeeCode[e.Code] = matched;
-        }
-
-        return new UserLookups(rolesByUserId, usersByEmployeeId, usersByEmployeeCode, roleLabelByIdentityName);
+        return new UserLookups(rolesByUserId, roleLabelByIdentityName);
     }
 
     private static string ResolveRoleLabel(ApplicationUser user, UserLookups lookups)

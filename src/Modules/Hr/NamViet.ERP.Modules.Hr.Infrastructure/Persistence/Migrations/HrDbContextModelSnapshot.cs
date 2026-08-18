@@ -536,6 +536,10 @@ namespace NamViet.ERP.Modules.Hr.Infrastructure.Persistence.Migrations
                     b.HasIndex("Code")
                         .IsUnique();
 
+                    b.HasIndex("UserId")
+                        .IsUnique()
+                        .HasFilter("\"UserId\" IS NOT NULL");
+
                     b.HasIndex("DepartmentId");
 
                     b.HasIndex("ManagerId");
