@@ -42,6 +42,7 @@ public static class ActivityActions
     public const string PoApproved = "po.approved";
     public const string PoUnapproved = "po.unapproved";
     public const string PoPlaced = "po.placed";
+    public const string PoCommented = "po.commented";
     public const string ImportCreated = "import.created";
     public const string ImportSubmitted = "import.submitted";
     public const string ImportApproved = "import.approved";

@@ -38,7 +38,23 @@ public class PurchaseOrder : BaseEntity
     public Supplier? Supplier { get; set; }
     public ICollection<PurchaseOrderItem> Items { get; set; } = [];
     public ICollection<PurchaseOrderAttachment> Attachments { get; set; } = [];
+    public ICollection<PurchaseOrderComment> Comments { get; set; } = [];
     public ICollection<PurchaseOrderInstallment> Installments { get; set; } = [];
+}
+
+/// <summary>Bình luận đa người dùng trên đơn mua hàng (lưu DB, không ghi đè Note).</summary>
+public class PurchaseOrderComment
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public string PoCode { get; set; } = string.Empty;
+    public Guid AuthorUserId { get; set; }
+    public string AuthorName { get; set; } = string.Empty;
+    public string Body { get; set; } = string.Empty;
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime? UpdatedAt { get; set; }
+    public DateTime? DeletedAt { get; set; }
+
+    public PurchaseOrder? PurchaseOrder { get; set; }
 }
 
 public class PurchaseOrderItem

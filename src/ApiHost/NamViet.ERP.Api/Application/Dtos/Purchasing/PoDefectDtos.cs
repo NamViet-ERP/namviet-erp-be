@@ -101,3 +101,7 @@ public record UpdateDefectProcessingRequest(
     string? CauseSource,
     string? SupplierFeedback,
     string? HandlingMethod);
+
+public record UpdateDefectItemRequest(int Id, decimal Quantity, string? LineReason = null);
+
+public record UpdateDefectItemsRequest(IReadOnlyList<UpdateDefectItemRequest> Items);

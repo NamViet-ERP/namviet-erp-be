@@ -736,6 +736,55 @@ namespace NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence.Migrations
                     b.ToTable("project_material_loans", "warehouse");
                 });
 
+            modelBuilder.Entity("NamViet.ERP.Modules.Warehouse.Domain.Entities.ProjectConstructionTask", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateOnly?>("ActualEnd")
+                        .HasColumnType("date");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<int>("PercentComplete")
+                        .HasColumnType("integer");
+
+                    b.Property<DateOnly>("PlannedEnd")
+                        .HasColumnType("date");
+
+                    b.Property<DateOnly>("PlannedStart")
+                        .HasColumnType("date");
+
+                    b.Property<string>("ProjectCode")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProjectCode");
+
+                    b.HasIndex("ProjectCode", "SortOrder");
+
+                    b.ToTable("project_construction_tasks", "warehouse");
+                });
+
             modelBuilder.Entity("NamViet.ERP.Modules.Warehouse.Domain.Entities.ProjectWarehouseKeeper", b =>
                 {
                     b.Property<int>("Id")
@@ -1111,6 +1160,48 @@ namespace NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence.Migrations
                     b.HasIndex("PoCode", "DocType");
 
                     b.ToTable("purchase_order_attachments", "warehouse");
+                });
+
+            modelBuilder.Entity("NamViet.ERP.Modules.Warehouse.Domain.Entities.PurchaseOrderComment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("AuthorName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<Guid>("AuthorUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Body")
+                        .IsRequired()
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("PoCode")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PoCode");
+
+                    b.HasIndex("PoCode", "CreatedAt");
+
+                    b.ToTable("purchase_order_comments", "warehouse");
                 });
 
             modelBuilder.Entity("NamViet.ERP.Modules.Warehouse.Domain.Entities.PurchaseOrderInstallment", b =>
@@ -2530,6 +2621,17 @@ namespace NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence.Migrations
                     b.Navigation("Material");
                 });
 
+            modelBuilder.Entity("NamViet.ERP.Modules.Warehouse.Domain.Entities.ProjectConstructionTask", b =>
+                {
+                    b.HasOne("NamViet.ERP.Modules.Warehouse.Domain.Entities.Project", "Project")
+                        .WithMany("ConstructionTasks")
+                        .HasForeignKey("ProjectCode")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Project");
+                });
+
             modelBuilder.Entity("NamViet.ERP.Modules.Warehouse.Domain.Entities.ProjectWarehouseKeeper", b =>
                 {
                     b.HasOne("NamViet.ERP.Modules.Warehouse.Domain.Entities.Project", "Project")
@@ -2602,6 +2704,17 @@ namespace NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence.Migrations
                 {
                     b.HasOne("NamViet.ERP.Modules.Warehouse.Domain.Entities.PurchaseOrder", "PurchaseOrder")
                         .WithMany("Attachments")
+                        .HasForeignKey("PoCode")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("PurchaseOrder");
+                });
+
+            modelBuilder.Entity("NamViet.ERP.Modules.Warehouse.Domain.Entities.PurchaseOrderComment", b =>
+                {
+                    b.HasOne("NamViet.ERP.Modules.Warehouse.Domain.Entities.PurchaseOrder", "PurchaseOrder")
+                        .WithMany("Comments")
                         .HasForeignKey("PoCode")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
@@ -2882,6 +2995,8 @@ namespace NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence.Migrations
                     b.Navigation("Transactions");
 
                     b.Navigation("WarehouseKeepers");
+
+                    b.Navigation("ConstructionTasks");
                 });
 
             modelBuilder.Entity("NamViet.ERP.Modules.Warehouse.Domain.Entities.PurchaseDefect", b =>
@@ -2894,6 +3009,8 @@ namespace NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("NamViet.ERP.Modules.Warehouse.Domain.Entities.PurchaseOrder", b =>
                 {
                     b.Navigation("Attachments");
+
+                    b.Navigation("Comments");
 
                     b.Navigation("Installments");
 

@@ -3,6 +3,7 @@ using NamViet.ERP.Api.Application.Dtos.Purchasing;
 using NamViet.ERP.Api.Services.Storage;
 using NamViet.ERP.Modules.Warehouse.Domain.Entities;
 using NamViet.ERP.Modules.Warehouse.Domain.Enums;
+using NamViet.ERP.Modules.Warehouse.Domain.Services;
 using NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence;
 using NamViet.ERP.SharedKernel.Interfaces;
 
@@ -20,6 +21,8 @@ public interface IPurchaseDefectApplicationService
     Task<PurchaseDefectDto?> SubmitAsync(string id, CancellationToken ct = default);
     Task<PurchaseDefectDto?> ApproveAsync(string id, CancellationToken ct = default);
     Task<PurchaseDefectDto?> UpdateReasonAsync(string id, string? reason, CancellationToken ct = default);
+    Task<PurchaseDefectDto?> UpdateItemsAsync(string id, UpdateDefectItemsRequest request, CancellationToken ct = default);
+    Task<PurchaseDefectDto?> CancelAsync(string id, CancellationToken ct = default);
     Task<PurchaseDefectDto?> UpdateProcessingAsync(string id, UpdateDefectProcessingRequest request, CancellationToken ct = default);
     Task<PurchaseDefectAttachmentDto?> UploadAttachmentAsync(
         string id, string kind, string fileName, string contentType, Stream content, CancellationToken ct = default);
@@ -32,7 +35,8 @@ public interface IPurchaseDefectApplicationService
 public sealed class PurchaseDefectApplicationService(
     WarehouseDbContext db,
     ICurrentUser currentUser,
-    IFileStorage fileStorage) : IPurchaseDefectApplicationService
+    IFileStorage fileStorage,
+    IInventoryDomainService inventory) : IPurchaseDefectApplicationService
 {
     public const string PoItemNotePrefix = PurchaseOrderReceiptService.PoItemNotePrefix;
 
@@ -215,7 +219,7 @@ public sealed class PurchaseDefectApplicationService(
         if (!projectExists)
             throw new PurchasingConflictException($"Không tìm thấy kho dự án '{code}'.");
 
-        var pendingByMaterial = await GetPendingStockDefectQtyByMaterialAsync(code, null, ct);
+        var pendingByMaterial = await inventory.GetPendingStockDefectQtyByMaterialAsync(code, null, ct);
 
         var rows = await db.ProjectInventories
             .AsNoTracking()
@@ -276,7 +280,7 @@ public sealed class PurchaseDefectApplicationService(
             .Where(pi => pi.ProjectCode == projectCode && codes.Contains(pi.MaterialCode) && pi.DeletedAt == null)
             .ToListAsync(ct);
 
-        var pendingByMaterial = await GetPendingStockDefectQtyByMaterialAsync(projectCode, null, ct);
+        var pendingByMaterial = await inventory.GetPendingStockDefectQtyByMaterialAsync(projectCode, null, ct);
         var defectItems = new List<PurchaseDefectItem>();
 
         foreach (var code in codes)
@@ -390,6 +394,66 @@ public sealed class PurchaseDefectApplicationService(
             throw new PurchasingConflictException("Phiếu HL đã duyệt — không sửa lý do.");
 
         d.Reason = string.IsNullOrWhiteSpace(reason) ? null : reason.Trim();
+        d.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
+        return ToDto(d);
+    }
+
+    public async Task<PurchaseDefectDto?> UpdateItemsAsync(
+        string id, UpdateDefectItemsRequest request, CancellationToken ct = default)
+    {
+        var d = await FindTrackedAsync(id, ct);
+        if (d is null) return null;
+
+        var editable =
+            string.Equals(d.Status, PurchaseDefectStatuses.Draft, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(d.Status, PurchaseDefectStatuses.Pending, StringComparison.OrdinalIgnoreCase);
+        if (!editable)
+            throw new PurchasingConflictException("Chỉ sửa số lượng phiếu HL nháp hoặc chờ duyệt.");
+
+        if (request.Items is null || request.Items.Count == 0)
+            throw new PurchasingConflictException("Phiếu HL cần ít nhất một dòng.");
+        if (request.Items.Count != d.Items.Count)
+            throw new PurchasingConflictException("Phải gửi đủ mọi dòng của phiếu, không thêm dòng mới.");
+
+        var incomingById = new Dictionary<int, UpdateDefectItemRequest>();
+        foreach (var incoming in request.Items)
+        {
+            if (!incomingById.TryAdd(incoming.Id, incoming))
+                throw new PurchasingConflictException("Dòng hàng bị trùng.");
+        }
+
+        foreach (var item in d.Items)
+        {
+            if (!incomingById.TryGetValue(item.Id, out var incoming))
+                throw new PurchasingConflictException($"Thiếu số lượng cho dòng '{item.Name}'.");
+            if (incoming.Quantity <= 0)
+                throw new PurchasingConflictException($"'{item.Name}': số lượng phải lớn hơn 0.");
+            item.Quantity = incoming.Quantity;
+            if (incoming.LineReason is not null)
+                item.LineReason = string.IsNullOrWhiteSpace(incoming.LineReason)
+                    ? null
+                    : incoming.LineReason.Trim();
+        }
+
+        if (incomingById.Keys.Any(itemId => d.Items.All(i => i.Id != itemId)))
+            throw new PurchasingConflictException("Có dòng không thuộc phiếu này.");
+
+        await EnsureWithinAvailabilityAsync(d, ct);
+
+        d.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
+        return ToDto(d);
+    }
+
+    public async Task<PurchaseDefectDto?> CancelAsync(string id, CancellationToken ct = default)
+    {
+        var d = await FindTrackedAsync(id, ct);
+        if (d is null) return null;
+        if (!string.Equals(d.Status, PurchaseDefectStatuses.Pending, StringComparison.OrdinalIgnoreCase))
+            throw new PurchasingConflictException("Chỉ hủy phiếu HL đang chờ duyệt.");
+
+        d.Status = PurchaseDefectStatuses.Rejected;
         d.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
         return ToDto(d);
@@ -558,6 +622,11 @@ public sealed class PurchaseDefectApplicationService(
                 throw new PurchasingConflictException(
                     $"'{item.Name}': tồn thực tế {inv.ActualInventoryQty:0.##}, không trừ lỗi {item.Quantity:0.##}.");
 
+            var available = inv.ActualInventoryQty - inv.PlannedExportQty;
+            if (item.Quantity > available)
+                throw new PurchasingConflictException(
+                    $"'{item.Name}': chỉ còn {available:0.##} khả dụng (đã trừ xuất/CK dự kiến), không trừ lỗi {item.Quantity:0.##}.");
+
             inv.ApplyActualExport(item.Quantity);
         }
     }
@@ -566,7 +635,7 @@ public sealed class PurchaseDefectApplicationService(
     {
         if (defect.IsFromStock)
         {
-            var pending = await GetPendingStockDefectQtyByMaterialAsync(
+            var pending = await inventory.GetPendingStockDefectQtyByMaterialAsync(
                 defect.ProjectCode, defect.TicketCode, ct);
 
             foreach (var item in defect.Items)
@@ -707,31 +776,6 @@ public sealed class PurchaseDefectApplicationService(
         {
             foreach (var line in hl.Items)
                 map[line.PoItemId] = map.GetValueOrDefault(line.PoItemId) + line.Quantity;
-        }
-        return map;
-    }
-
-    private async Task<Dictionary<string, decimal>> GetPendingStockDefectQtyByMaterialAsync(
-        string projectCode, string? excludeTicketCode, CancellationToken ct)
-    {
-        var pending = await db.PurchaseDefects
-            .AsNoTracking()
-            .Include(d => d.Items)
-            .Where(d =>
-                d.ProjectCode == projectCode
-                && d.SourceType == PurchaseDefectSourceTypes.Stock
-                && d.Status == PurchaseDefectStatuses.Pending
-                && (excludeTicketCode == null || d.TicketCode != excludeTicketCode))
-            .ToListAsync(ct);
-
-        var map = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
-        foreach (var hl in pending)
-        {
-            foreach (var line in hl.Items)
-            {
-                if (string.IsNullOrWhiteSpace(line.MaterialCode)) continue;
-                map[line.MaterialCode] = map.GetValueOrDefault(line.MaterialCode) + line.Quantity;
-            }
         }
         return map;
     }

@@ -76,6 +76,15 @@ public class StockController(WarehouseDbContext db, IInventoryDomainService inve
             .Select(g => new { MaterialCode = g.Key, Qty = g.Sum(x => x.ReservedQty) })
             .ToDictionaryAsync(x => x.MaterialCode, x => x.Qty, ct);
 
+        var pendingHlHolds = await inventory.ListPendingStockDefectHoldsAsync(ct);
+
+        decimal PendingHlFor(string projectCode, string materialCode) =>
+            pendingHlHolds
+                .Where(h =>
+                    string.Equals(h.ProjectCode, projectCode, StringComparison.OrdinalIgnoreCase)
+                    && string.Equals(h.MaterialCode, materialCode, StringComparison.OrdinalIgnoreCase))
+                .Sum(h => h.Quantity);
+
         // WAC (Weighted Average Cost) — IAS 2: phiếu nhập đã duyệt trong 12 tháng theo ngày duyệt
         var wacFrom = DateTime.UtcNow.AddYears(-1);
         var wacByMaterial = await db.WarehouseTransactionItems
@@ -117,7 +126,8 @@ public class StockController(WarehouseDbContext db, IInventoryDomainService inve
                     p.ProjectName,
                     pi?.ActualImportQty - pi?.ActualExportQty ?? 0m,
                     pi?.PlannedImportQty ?? 0m,
-                    pi?.PlannedExportQty ?? 0m);
+                    pi?.PlannedExportQty ?? 0m,
+                    PendingHlFor(p.ProjectCode, material.MaterialCode));
             }).ToList();
 
             rows.Add(new StockMatrixRowDto(

@@ -31,7 +31,7 @@ public class PurchaseOrderReceiptServiceTests : IDisposable
         _orders = new PurchaseOrderService(
             _db, new PurchaseOrderCodeGenerator(_db), _plans, _user, new FakeActivityEventWriter(),
             new FakeFileStorage());
-        _receipt = new PurchaseOrderReceiptService(_db);
+        _receipt = new PurchaseOrderReceiptService(_db, new FakePurchaseWarrantyService());
     }
 
     [Fact]
@@ -97,9 +97,7 @@ public class PurchaseOrderReceiptServiceTests : IDisposable
     public async Task BuildImportDraft_RejectsWhenNotPlaced()
     {
         var plan = await SeedPlanAsync();
-        var order = await _orders.CreateAsync(new CreatePurchaseOrderRequest(
-            plan.Code, 1, null, null,
-            [new CreatePurchaseOrderLineRequest(plan.Lines[0].Id, 2, 1000, null, null)]),
+        var order = await _orders.CreateAsync(PoRequest(plan.Code, plan.Lines[0].Id, 2),
             CancellationToken.None);
 
         var ex = await Assert.ThrowsAsync<PurchasingConflictException>(() =>
@@ -186,12 +184,152 @@ public class PurchaseOrderReceiptServiceTests : IDisposable
         Assert.Equal(PurchaseOrderDeliveryStatuses.Complete, refreshed.DeliveryStatus);
     }
 
+    [Fact]
+    public async Task ApplyApprovedImport_IsIdempotent()
+    {
+        var order = await SeedPlacedOrderAsync(qty: 10, orderQty: 8);
+        var poItemId = (await _db.PurchaseOrderItems.AsNoTracking()
+            .FirstAsync(i => i.PoCode == order.Code)).Id;
+
+        var import = ApprovedImport(order.Code, "NK-IDEM", 5, $"{PurchaseOrderReceiptService.PoItemNotePrefix}{poItemId}");
+
+        await _receipt.ApplyApprovedImportReceiptAsync(import);
+        await _db.SaveChangesAsync();
+        await _receipt.ApplyApprovedImportReceiptAsync(import);
+        await _db.SaveChangesAsync();
+
+        var refreshed = await _db.PurchaseOrders
+            .Include(o => o.Items)
+            .FirstAsync(o => o.Code == order.Code);
+        Assert.Equal(5m, refreshed.Items.Single().Received);
+        Assert.Equal(PurchaseOrderDeliveryStatuses.Partial, refreshed.DeliveryStatus);
+    }
+
+    [Fact]
+    public async Task ApprovedNkWithoutPoItemNotes_BlocksFurtherImportAndHealsReceived()
+    {
+        var order = await SeedPlacedOrderAsync(qty: 8500, orderQty: 8500);
+
+        _db.WarehouseTransactions.Add(ApprovedImport(
+            order.Code, "NK-NV-0002", 8500, notes: null));
+        await _db.SaveChangesAsync();
+
+        var preview = await _receipt.PreviewImportFromPoAsync(order.Code);
+        Assert.Empty(preview.Lines);
+
+        var healed = await _db.PurchaseOrders.Include(o => o.Items).FirstAsync(o => o.Code == order.Code);
+        Assert.Equal(8500m, healed.Items.Single().Received);
+        Assert.Equal(PurchaseOrderDeliveryStatuses.Complete, healed.DeliveryStatus);
+
+        var ex = await Assert.ThrowsAsync<PurchasingConflictException>(() =>
+            _receipt.BuildImportDraftFromPoAsync(order.Code));
+        Assert.Contains("đã nhập đủ", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task PendingNkWithoutPoItemNotes_ReservesQty()
+    {
+        var order = await SeedPlacedOrderAsync(qty: 10, orderQty: 10);
+
+        _db.WarehouseTransactions.Add(new WarehouseTransaction
+        {
+            Id = Guid.NewGuid(),
+            TicketCode = "NK-PEND-NONOTE",
+            TransactionType = TransactionType.Import,
+            ReferenceCode = order.Code,
+            BeneficiaryProjectCode = "DA-TEST",
+            ApprovalStatus = ApprovalStatus.Pending,
+            Items =
+            [
+                new WarehouseTransactionItem
+                {
+                    MaterialCode = "VT-ONG",
+                    MaterialNameSnapshot = "Ống thép",
+                    Quantity = 7,
+                    UnitPrice = 1000,
+                },
+            ],
+        });
+        await _db.SaveChangesAsync();
+
+        var preview = await _receipt.PreviewImportFromPoAsync(order.Code);
+        Assert.Equal(3m, preview.Lines.Single().Available);
+        Assert.Equal(7m, preview.Lines.Single().ReservedPending);
+    }
+
+    [Fact]
+    public async Task Ensure_BlocksWhenApprovedNkFulfillsOrder_EvenWithoutPoItemNotes()
+    {
+        var order = await SeedPlacedOrderAsync(qty: 10, orderQty: 10);
+        _db.WarehouseTransactions.Add(ApprovedImport(order.Code, "NK-FULL", 10, notes: null));
+        await _db.SaveChangesAsync();
+
+        var extra = new WarehouseTransaction
+        {
+            Id = Guid.NewGuid(),
+            TicketCode = "NK-EXTRA",
+            TransactionType = TransactionType.Import,
+            ReferenceCode = order.Code,
+            ApprovalStatus = ApprovalStatus.Draft,
+            Items =
+            [
+                new WarehouseTransactionItem
+                {
+                    MaterialCode = "VT-ONG",
+                    MaterialNameSnapshot = "Ống thép",
+                    Quantity = 1,
+                    UnitPrice = 1000,
+                },
+            ],
+        };
+
+        var ex = await Assert.ThrowsAsync<PurchasingConflictException>(() =>
+            _receipt.EnsureImportLinesWithinPoAvailabilityAsync(extra));
+        Assert.Contains("chỉ còn", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static WarehouseTransaction ApprovedImport(
+        string poCode,
+        string ticket,
+        decimal qty,
+        string? notes) =>
+        new()
+        {
+            Id = Guid.NewGuid(),
+            TicketCode = ticket,
+            TransactionType = TransactionType.Import,
+            ReferenceCode = poCode,
+            BeneficiaryProjectCode = "DA-TEST",
+            ApprovalStatus = ApprovalStatus.Approved,
+            WarehouseApprovalStatus = WarehouseKeeperApprovalStatus.Approved,
+            ApprovedAt = DateTime.UtcNow,
+            Items =
+            [
+                new WarehouseTransactionItem
+                {
+                    MaterialCode = "VT-ONG",
+                    MaterialNameSnapshot = "Ống thép",
+                    Quantity = qty,
+                    UnitPrice = 1000,
+                    Notes = notes,
+                },
+            ],
+        };
+
+    private static CreatePurchaseOrderRequest PoRequest(string planCode, int planLineId, decimal qty) =>
+        new(
+            planCode,
+            1,
+            null,
+            null,
+            [new CreatePurchaseOrderLineRequest(planLineId, qty, 1000, null, null)],
+            Installments: [new PurchaseOrderInstallmentRequest(1, 100, ["invoice"])]);
+
     private async Task<PurchaseOrderDetailDto> SeedPlacedOrderAsync(decimal qty, decimal orderQty)
     {
         var plan = await SeedPlanAsync(qty);
-        var order = await _orders.CreateAsync(new CreatePurchaseOrderRequest(
-            plan.Code, 1, null, null,
-            [new CreatePurchaseOrderLineRequest(plan.Lines[0].Id, orderQty, 1000, null, null)]),
+        var order = await _orders.CreateAsync(
+            PoRequest(plan.Code, plan.Lines[0].Id, orderQty),
             CancellationToken.None);
         await _orders.ApproveAsync(order.Code, CancellationToken.None);
         return (await _orders.PlaceAsync(order.Code, CancellationToken.None))!;
@@ -217,6 +355,9 @@ public class PurchaseOrderReceiptServiceTests : IDisposable
         });
         _plans.RecalcTotals(plan);
         await _db.SaveChangesAsync();
+        await _plans.SubmitAsync(plan.Code, CancellationToken.None);
+        await _plans.ApproveL1Async(plan.Code, CancellationToken.None);
+        await _plans.ApproveL2Async(plan.Code, CancellationToken.None);
         return (await _plans.GetByCodeAsync(plan.Code))!;
     }
 
@@ -236,6 +377,7 @@ public class PurchaseOrderReceiptServiceTests : IDisposable
             SupplierCode = "NCC-A",
             SupplierName = "NCC Alpha",
             MaxDebtDays = 45,
+            ApprovalStatus = SupplierApprovalStatuses.Approved,
         });
         _db.Materials.Add(new Material
         {

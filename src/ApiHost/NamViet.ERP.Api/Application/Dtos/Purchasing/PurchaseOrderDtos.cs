@@ -132,3 +132,16 @@ public record PurchaseOrderAttachmentDto(
     string StorageKey,
     DateTime UploadedAt,
     string? UploadedByName);
+
+public record PurchaseOrderCommentDto(
+    Guid Id,
+    string PoCode,
+    Guid AuthorUserId,
+    string AuthorName,
+    string Body,
+    DateTime CreatedAt,
+    DateTime? UpdatedAt);
+
+public record CreatePurchaseOrderCommentRequest(string Body);
+
+public record UpdatePurchaseOrderCommentRequest(string Body);

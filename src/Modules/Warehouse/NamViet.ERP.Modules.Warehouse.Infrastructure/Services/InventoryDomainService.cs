@@ -41,6 +41,79 @@ public class InventoryDomainService(WarehouseDbContext db) : IInventoryDomainSer
         return actual - holding;
     }
 
+    public async Task<decimal> GetProjectAvailableQtyAsync(
+        string projectCode,
+        string materialCode,
+        string? excludeStockDefectTicketCode = null,
+        CancellationToken ct = default)
+    {
+        var inventory = await db.ProjectInventories
+            .AsNoTracking()
+            .FirstOrDefaultAsync(
+                pi => pi.ProjectCode == projectCode && pi.MaterialCode == materialCode, ct);
+
+        var pending = await GetPendingStockDefectQtyByMaterialAsync(
+            projectCode, excludeStockDefectTicketCode, ct);
+        pending.TryGetValue(materialCode, out var pendingHl);
+        var actual = inventory?.ActualInventoryQty ?? 0m;
+        var planned = inventory?.PlannedExportQty ?? 0m;
+        return actual - planned - pendingHl;
+    }
+
+    public async Task<IReadOnlyDictionary<string, decimal>> GetPendingStockDefectQtyByMaterialAsync(
+        string projectCode,
+        string? excludeStockDefectTicketCode = null,
+        CancellationToken ct = default)
+    {
+        var pending = await db.PurchaseDefects
+            .AsNoTracking()
+            .Include(d => d.Items)
+            .Where(d =>
+                d.ProjectCode == projectCode
+                && d.SourceType == PurchaseDefectSourceTypes.Stock
+                && d.Status == PurchaseDefectStatuses.Pending
+                && (excludeStockDefectTicketCode == null || d.TicketCode != excludeStockDefectTicketCode))
+            .ToListAsync(ct);
+
+        var map = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
+        foreach (var hl in pending)
+        {
+            foreach (var line in hl.Items)
+            {
+                if (string.IsNullOrWhiteSpace(line.MaterialCode)) continue;
+                map[line.MaterialCode] = map.GetValueOrDefault(line.MaterialCode) + line.Quantity;
+            }
+        }
+        return map;
+    }
+
+    public async Task<IReadOnlyList<PendingStockDefectHold>> ListPendingStockDefectHoldsAsync(
+        CancellationToken ct = default)
+    {
+        var pending = await db.PurchaseDefects
+            .AsNoTracking()
+            .Include(d => d.Items)
+            .Where(d =>
+                d.SourceType == PurchaseDefectSourceTypes.Stock
+                && d.Status == PurchaseDefectStatuses.Pending)
+            .ToListAsync(ct);
+
+        var map = new Dictionary<(string Project, string Material), decimal>();
+        foreach (var hl in pending)
+        {
+            foreach (var line in hl.Items)
+            {
+                if (string.IsNullOrWhiteSpace(line.MaterialCode)) continue;
+                var key = (hl.ProjectCode, line.MaterialCode);
+                map[key] = map.GetValueOrDefault(key) + line.Quantity;
+            }
+        }
+
+        return map
+            .Select(kv => new PendingStockDefectHold(kv.Key.Project, kv.Key.Material, kv.Value))
+            .ToList();
+    }
+
     public async Task<ReservationResult> CreateReservationAsync(
         string warehouseId,
         string projectCode,
@@ -159,11 +232,13 @@ public class InventoryDomainService(WarehouseDbContext db) : IInventoryDomainSer
         if (string.IsNullOrWhiteSpace(projectCode))
             throw new InvalidOperationException("Phiếu xuất dự án yêu cầu mã kho dự án.");
 
+        var pendingHl = await GetPendingStockDefectQtyByMaterialAsync(projectCode, null, ct);
         foreach (var item in transaction.Items)
         {
             var projectInventory = await GetOrCreateProjectInventoryAsync(
                 projectCode, item.MaterialCode, ct);
-            var available = projectInventory.ActualInventoryQty - projectInventory.PlannedExportQty;
+            pendingHl.TryGetValue(item.MaterialCode, out var hold);
+            var available = projectInventory.ActualInventoryQty - projectInventory.PlannedExportQty - hold;
             if (item.Quantity > available)
                 throw new InvalidOperationException(
                     $"Vật tư {item.MaterialCode} vượt tồn khả dụng ({available}).");
@@ -235,13 +310,16 @@ public class InventoryDomainService(WarehouseDbContext db) : IInventoryDomainSer
         var projectCode = transaction.ProjectCode ?? transaction.BeneficiaryProjectCode;
         if (!string.IsNullOrWhiteSpace(projectCode))
         {
+            var pendingHl = await GetPendingStockDefectQtyByMaterialAsync(projectCode, null, ct);
             foreach (var item in transaction.Items)
             {
                 var projectInventory = await GetOrCreateProjectInventoryAsync(
                     projectCode, item.MaterialCode, ct);
-                if (item.Quantity > projectInventory.ActualInventoryQty)
+                pendingHl.TryGetValue(item.MaterialCode, out var hold);
+                var available = projectInventory.ActualInventoryQty - hold;
+                if (item.Quantity > available)
                     throw new InvalidOperationException(
-                        $"Vật tư {item.MaterialCode} không đủ tồn thực tế ({projectInventory.ActualInventoryQty}).");
+                        $"Vật tư {item.MaterialCode} vượt tồn khả dụng ({available}).");
 
                 var removePlanned = Math.Min(item.Quantity, projectInventory.PlannedExportQty);
                 if (removePlanned > 0)
@@ -345,13 +423,16 @@ public class InventoryDomainService(WarehouseDbContext db) : IInventoryDomainSer
         var generalWarehouseId = await GetGeneralWarehouseIdAsync(ct);
         transaction.ToWarehouseId = generalWarehouseId;
 
+        var pendingHl = await GetPendingStockDefectQtyByMaterialAsync(projectCode, null, ct);
         foreach (var item in transaction.Items)
         {
             var projectInventory = await GetOrCreateProjectInventoryAsync(
                 projectCode, item.MaterialCode, ct);
-            if (item.Quantity > projectInventory.ActualInventoryQty)
+            pendingHl.TryGetValue(item.MaterialCode, out var hold);
+            var available = projectInventory.ActualInventoryQty - hold;
+            if (item.Quantity > available)
                 throw new InvalidOperationException(
-                    $"Vật tư {item.MaterialCode} không đủ tồn thực tế ({projectInventory.ActualInventoryQty}).");
+                    $"Vật tư {item.MaterialCode} vượt tồn khả dụng ({available}).");
 
             var removePlanned = Math.Min(item.Quantity, projectInventory.PlannedExportQty);
             if (removePlanned > 0)
@@ -372,12 +453,15 @@ public class InventoryDomainService(WarehouseDbContext db) : IInventoryDomainSer
         if (string.Equals(fromCode, toCode, StringComparison.OrdinalIgnoreCase))
             throw new InvalidOperationException("Kho nguồn và kho đích phải khác nhau.");
 
+        var pendingHl = await GetPendingStockDefectQtyByMaterialAsync(fromCode, null, ct);
         foreach (var item in transaction.Items)
         {
             var sourceInventory = await GetOrCreateProjectInventoryAsync(fromCode, item.MaterialCode, ct);
-            if (item.Quantity > sourceInventory.ActualInventoryQty)
+            pendingHl.TryGetValue(item.MaterialCode, out var hold);
+            var available = sourceInventory.ActualInventoryQty - hold;
+            if (item.Quantity > available)
                 throw new InvalidOperationException(
-                    $"Vật tư {item.MaterialCode} không đủ tồn thực tế tại kho nguồn ({sourceInventory.ActualInventoryQty}).");
+                    $"Vật tư {item.MaterialCode} vượt tồn khả dụng tại kho nguồn ({available}).");
 
             var removePlanned = Math.Min(item.Quantity, sourceInventory.PlannedExportQty);
             if (removePlanned > 0)
@@ -403,9 +487,12 @@ public class InventoryDomainService(WarehouseDbContext db) : IInventoryDomainSer
         }
 
         var exportQty = -diffQty;
-        if (exportQty > projectInventory.ActualInventoryQty)
+        var pending = await GetPendingStockDefectQtyByMaterialAsync(projectCode, null, ct);
+        pending.TryGetValue(materialCode, out var hold);
+        var available = projectInventory.ActualInventoryQty - projectInventory.PlannedExportQty - hold;
+        if (exportQty > available)
             throw new InvalidOperationException(
-                $"Vật tư {materialCode} không đủ tồn để điều chỉnh kiểm kê ({projectInventory.ActualInventoryQty}).");
+                $"Vật tư {materialCode} không đủ tồn khả dụng để điều chỉnh kiểm kê ({available}).");
 
         projectInventory.ApplyActualExport(exportQty);
     }

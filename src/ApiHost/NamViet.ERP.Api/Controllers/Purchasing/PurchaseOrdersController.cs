@@ -135,6 +135,66 @@ public class PurchaseOrdersController(
         return ok ? NoContent() : NotFound();
     }
 
+    [HttpGet("{code}/comments")]
+    [RequirePermission("purchasing.orders.view")]
+    public async Task<ActionResult<IReadOnlyList<PurchaseOrderCommentDto>>> ListComments(
+        string code, CancellationToken ct)
+    {
+        var items = await orders.ListCommentsAsync(code, ct);
+        return items is null ? NotFound() : Ok(items);
+    }
+
+    [HttpPost("{code}/comments")]
+    [RequirePermission("purchasing.orders.view")]
+    public async Task<ActionResult<PurchaseOrderCommentDto>> CreateComment(
+        string code, [FromBody] CreatePurchaseOrderCommentRequest request, CancellationToken ct)
+    {
+        try
+        {
+            var dto = await orders.CreateCommentAsync(code, request, ct);
+            return dto is null ? NotFound() : Ok(dto);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+    }
+
+    [HttpPut("{code}/comments/{id:guid}")]
+    [RequirePermission("purchasing.orders.view")]
+    public async Task<ActionResult<PurchaseOrderCommentDto>> UpdateComment(
+        string code, Guid id, [FromBody] UpdatePurchaseOrderCommentRequest request, CancellationToken ct)
+    {
+        try
+        {
+            var dto = await orders.UpdateCommentAsync(code, id, request, ct);
+            return dto is null ? NotFound() : Ok(dto);
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return Forbid();
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+    }
+
+    [HttpDelete("{code}/comments/{id:guid}")]
+    [RequirePermission("purchasing.orders.view")]
+    public async Task<IActionResult> DeleteComment(string code, Guid id, CancellationToken ct)
+    {
+        try
+        {
+            var ok = await orders.DeleteCommentAsync(code, id, ct);
+            return ok ? NoContent() : NotFound();
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return Forbid();
+        }
+    }
+
     [HttpGet("{code}/installments/{stageNumber:int}/documents")]
     [RequirePermission("purchasing.orders.view")]
     public async Task<ActionResult<IReadOnlyList<PurchaseOrderInstallmentDocumentDto>>> ListInstallmentDocuments(

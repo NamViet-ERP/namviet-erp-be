@@ -93,6 +93,7 @@ public sealed class ImportApplicationService(
         var approvalStatus = WmsMapper.FromClientApprovalStatus(dto.Status);
         var transaction = BuildTransaction(dto, ticketCode, approvalStatus);
         await ValidateAndSnapshotItemsAsync(transaction.Items, ct);
+        await poReceipt.EnsureImportLinesWithinPoAvailabilityAsync(transaction, ct);
 
         await using var tx = await db.Database.BeginTransactionAsync(ct);
         db.WarehouseTransactions.Add(transaction);
@@ -190,6 +191,7 @@ public sealed class ImportApplicationService(
             };
         }).ToList();
         await ValidateAndSnapshotItemsAsync(t.Items, ct);
+        await poReceipt.EnsureImportLinesWithinPoAvailabilityAsync(t, ct);
 
         if (HasPlannedInventory(t.ApprovalStatus))
             await CreateDraftReservationsAsync(t, ct);

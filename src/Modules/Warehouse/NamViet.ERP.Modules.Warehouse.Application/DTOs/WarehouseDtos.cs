@@ -84,9 +84,101 @@ public record ProjectInventoryDto(
     decimal PlannedImportQty, decimal PlannedExportQty,
     decimal ActualImportQty, decimal ActualExportQty,
     decimal ActualInventoryQty, decimal PlannedInventoryQty,
-    decimal ReservedQty, decimal MinStockQty);
+    decimal ReservedQty, decimal MinStockQty,
+    /// <summary>SL phiếu HL tồn kho chờ duyệt (giữ chỗ khả dụng, chưa trừ tồn thực tế).</summary>
+    decimal PendingDefectQty);
 
 public record UpdateProjectInventoryMinStockRequest(decimal MinStockQty);
+
+public record ProjectConstructionTaskDto(
+    Guid Id,
+    string ProjectCode,
+    string ProjectName,
+    string Name,
+    DateOnly PlannedStart,
+    DateOnly PlannedEnd,
+    DateOnly? ActualEnd,
+    int PercentComplete,
+    int SortOrder,
+    string Status);
+
+public record CreateProjectConstructionTaskRequest(
+    string Name,
+    DateOnly PlannedStart,
+    DateOnly PlannedEnd,
+    DateOnly? ActualEnd,
+    int PercentComplete = 0);
+
+public record UpdateProjectConstructionTaskRequest(
+    string Name,
+    DateOnly PlannedStart,
+    DateOnly PlannedEnd,
+    DateOnly? ActualEnd,
+    int PercentComplete,
+    int SortOrder);
+
+public record ProjectPurchasingProgressLineDto(
+    int Id,
+    string Name,
+    string Sku,
+    DateOnly PlannedStart,
+    DateOnly PlannedEnd,
+    DateOnly? ActualEnd,
+    decimal Ordered,
+    decimal Received,
+    int PercentComplete,
+    string Status);
+
+public record ProjectPurchasingProgressReceiptLineDto(
+    string Name,
+    string Sku,
+    decimal Quantity);
+
+public record ProjectPurchasingProgressReceiptDto(
+    string TicketCode,
+    string Status,
+    DateOnly Date,
+    decimal Quantity,
+    IReadOnlyList<ProjectPurchasingProgressReceiptLineDto> Lines);
+
+public record ProjectPurchasingProgressOrderDto(
+    string PoCode,
+    string? SupplierName,
+    string PlanCode,
+    DateOnly PlannedStart,
+    DateOnly PlannedEnd,
+    DateOnly? ActualEnd,
+    decimal Ordered,
+    decimal Received,
+    int PercentComplete,
+    string DeliveryStatus,
+    string Status,
+    IReadOnlyList<ProjectPurchasingProgressLineDto> Lines,
+    IReadOnlyList<ProjectPurchasingProgressReceiptDto> Receipts);
+
+public record ProjectPurchasingProgressPlanDto(
+    string PlanCode,
+    string Kind,
+    string PlanStatus,
+    DateOnly PlannedStart,
+    DateOnly PlannedEnd,
+    DateOnly? ActualEnd,
+    decimal Ordered,
+    decimal Received,
+    int PercentComplete,
+    string Status,
+    IReadOnlyList<ProjectPurchasingProgressOrderDto> Orders);
+
+public record ProjectPurchasingProgressDto(
+    string ProjectCode,
+    string ProjectName,
+    DateOnly? PlannedStart,
+    DateOnly? PlannedEnd,
+    DateOnly? ActualEnd,
+    int PercentComplete,
+    string Status,
+    IReadOnlyList<ProjectPurchasingProgressPlanDto> Plans,
+    IReadOnlyList<ProjectPurchasingProgressOrderDto> Orders);
 
 public record ProjectLedgerEntryDto(
     string Id,

@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
+using NamViet.ERP.Api.Application.Dtos.Purchasing;
 using NamViet.ERP.Api.Application.Dtos.Wms;
 using NamViet.ERP.Api.Application.Services.Purchasing;
 using NamViet.ERP.Api.Application.Services.Shared;
@@ -63,6 +64,58 @@ internal sealed class FakeActivityEventWriter : IActivityEventWriter
         Task.CompletedTask;
 }
 
+internal sealed class FakePurchaseWarrantyService : IPurchaseWarrantyService
+{
+    public Task<IReadOnlyList<PurchaseWarrantyDto>> ListAsync(
+        string? projectCode, string? materialCode, int? supplierId, string? status, string? search,
+        CancellationToken ct = default) =>
+        Task.FromResult<IReadOnlyList<PurchaseWarrantyDto>>([]);
+
+    public Task<PurchaseWarrantyDetailDto?> GetByIdAsync(Guid id, CancellationToken ct = default) =>
+        Task.FromResult<PurchaseWarrantyDetailDto?>(null);
+
+    public Task<PurchaseWarrantyDetailDto?> UpdateAsync(
+        Guid id, UpdatePurchaseWarrantyRequest request, CancellationToken ct = default) =>
+        Task.FromResult<PurchaseWarrantyDetailDto?>(null);
+
+    public Task<IReadOnlyList<PurchaseWarrantyClaimListDto>> ListClaimsAsync(
+        string? kind, string? status, string? search, CancellationToken ct = default) =>
+        Task.FromResult<IReadOnlyList<PurchaseWarrantyClaimListDto>>([]);
+
+    public Task<PurchaseWarrantyClaimDto> CreateClaimAsync(
+        Guid warrantyId, CreatePurchaseWarrantyClaimRequest request, CancellationToken ct = default) =>
+        throw new NotImplementedException();
+
+    public Task<PurchaseWarrantyClaimDto?> SubmitClaimAsync(Guid claimId, CancellationToken ct = default) =>
+        Task.FromResult<PurchaseWarrantyClaimDto?>(null);
+
+    public Task<PurchaseWarrantyClaimDto?> CloseClaimAsync(
+        Guid claimId, ClosePurchaseWarrantyClaimRequest request, CancellationToken ct = default) =>
+        Task.FromResult<PurchaseWarrantyClaimDto?>(null);
+
+    public Task UpsertFromApprovedImportAsync(WarehouseTransaction import, CancellationToken ct = default) =>
+        Task.CompletedTask;
+
+    public Task<SyncPurchaseWarrantiesResult> SyncFromReceivedPoLinesAsync(CancellationToken ct = default) =>
+        Task.FromResult(new SyncPurchaseWarrantiesResult(0, 0));
+}
+
+internal sealed class FakeSupplierDeliveryEvaluationService : ISupplierDeliveryEvaluationService
+{
+    public Task<SupplierDeliveryEvaluationPagedResponse> ListAsync(
+        int? supplierId, string? poCode, string? status, string? search,
+        int page, int pageSize, CancellationToken ct = default) =>
+        Task.FromResult(new SupplierDeliveryEvaluationPagedResponse([], 0, page, pageSize, 1));
+
+    public Task EnsurePendingFromApprovedImportAsync(
+        WarehouseTransaction import, CancellationToken ct = default) =>
+        Task.CompletedTask;
+
+    public Task<SupplierDeliveryEvaluationDto> CompleteAsync(
+        int id, CompleteSupplierDeliveryEvaluationRequest request, CancellationToken ct = default) =>
+        throw new NotImplementedException();
+}
+
 internal sealed class FakeWmsCatalogQueryService : IWmsCatalogQueryService
 {
     public Task<decimal> GetLatestPriceAsync(string materialCode, CancellationToken ct = default) =>
@@ -102,7 +155,9 @@ internal sealed class WmsVoucherTestContext : IDisposable
         var fileStorage = new FakeFileStorage();
         Imports = new ImportApplicationService(
             Db, Inventory, new FakeProjectBudgetService(), stocktakeFreeze, CurrentUser,
-            new PurchaseOrderReceiptService(Db), fileStorage, new FakeActivityEventWriter());
+            new PurchaseOrderReceiptService(Db, new FakePurchaseWarrantyService()),
+            new FakeSupplierDeliveryEvaluationService(),
+            fileStorage, new FakeActivityEventWriter());
         Exports = new ExportApplicationService(
             Db, Inventory, stocktakeFreeze, CurrentUser, new FakeWmsCatalogQueryService());
         Transfers = new TransferApplicationService(Db, Inventory, stocktakeFreeze, CurrentUser);

@@ -10,12 +10,19 @@ namespace NamViet.ERP.Api.Application.Services.Purchasing;
 public interface IPurchaseOrderReceiptService
 {
     /// <summary>
-    /// After warehouse import is approved: bump PO.Received / plan.ReceivedQty and DeliveryStatus
-    /// when ReferenceCode matches a placed PO.
+    /// After warehouse import is approved: set PO.Received / plan.ReceivedQty and DeliveryStatus
+    /// from the sum of approved NK lines (idempotent; does not require PO to be placed).
     /// </summary>
     Task ApplyApprovedImportReceiptAsync(WarehouseTransaction import, CancellationToken ct = default);
 
-    /// <summary>Preview remaining PO lines (Ordered − Received − qty on pending NK).</summary>
+    /// <summary>
+    /// Heal PO.Received / DeliveryStatus from approved NK even when Apply was skipped historically.
+    /// </summary>
+    Task ReconcileReceivedFromApprovedImportsAsync(string poCode, CancellationToken ct = default);
+
+    /// <summary>
+    /// Preview remaining PO lines: Ordered − max(PO.Received, approved NK) − Defected − pending NK − pending HL.
+    /// </summary>
     Task<PoImportPreviewDto> PreviewImportFromPoAsync(
         string poCode,
         string? excludeTicketCode = null,
@@ -30,8 +37,8 @@ public interface IPurchaseOrderReceiptService
         CancellationToken ct = default);
 
     /// <summary>
-    /// Ensures import lines linked to a PO do not exceed available qty
-    /// (excludes draft NK; includes pending NK).
+    /// Ensures import lines linked to a PO do not exceed remaining qty.
+    /// Matches by poItem: notes, material code, or name. Draft NK does not reserve.
     /// </summary>
     Task EnsureImportLinesWithinPoAvailabilityAsync(
         WarehouseTransaction import,
@@ -44,101 +51,51 @@ public sealed class PurchaseOrderReceiptService(
 {
     public const string PoItemNotePrefix = "poItem:";
 
+    public static bool IsActualReceipt(WarehouseTransaction import) =>
+        import.ApprovalStatus == ApprovalStatus.Approved
+        || import.WarehouseApprovalStatus == WarehouseKeeperApprovalStatus.Approved;
+
     public async Task ApplyApprovedImportReceiptAsync(WarehouseTransaction import, CancellationToken ct = default)
     {
         var poCode = import.ReferenceCode?.Trim();
         if (string.IsNullOrWhiteSpace(poCode))
             return;
 
-        var order = await db.PurchaseOrders
-            .Include(o => o.Items)
-            .FirstOrDefaultAsync(o => o.Code == poCode, ct);
-        if (order is null)
-            return;
-
-        if (!string.Equals(order.OrderPlacementStatus, PurchaseOrderPlacementStatuses.Placed, StringComparison.OrdinalIgnoreCase))
-            return;
-
-        var planLineIds = order.Items
-            .Where(i => i.PlanLineId is int)
-            .Select(i => i.PlanLineId!.Value)
-            .Distinct()
-            .ToList();
-        var planLines = planLineIds.Count == 0
-            ? new Dictionary<int, PurchasePlanLine>()
-            : await db.PurchasePlanLines
-                .Where(l => planLineIds.Contains(l.Id))
-                .ToDictionaryAsync(l => l.Id, ct);
-
-        var anyApplied = false;
-        foreach (var item in import.Items)
-        {
-            var poItem = MatchPoItem(order.Items, item);
-            if (poItem is null)
-                continue;
-
-            var remaining = poItem.Ordered - poItem.Received;
-            if (remaining <= 0)
-                continue;
-
-            var receiveQty = Math.Min(item.Quantity, remaining);
-            if (receiveQty <= 0)
-                continue;
-
-            poItem.Received += receiveQty;
-            anyApplied = true;
-
-            if (poItem.PlanLineId is int planLineId && planLines.TryGetValue(planLineId, out var planLine))
-            {
-                planLine.ReceivedQty += receiveQty;
-                planLine.ActualReceiptDate ??= DateOnly.FromDateTime(DateTime.UtcNow);
-                planLine.PurchaseStatus = ResolvePurchaseStatus(planLine);
-            }
-        }
-
-        if (!anyApplied)
-            return;
-
-        order.DeliveryStatus = ResolveDeliveryStatus(order.Items);
-        order.UpdatedAt = DateTime.UtcNow;
-
+        await ReconcileReceivedFromApprovedImportsAsync(poCode, import, ct);
         await warranties.UpsertFromApprovedImportAsync(import, ct);
     }
+
+    public Task ReconcileReceivedFromApprovedImportsAsync(string poCode, CancellationToken ct = default) =>
+        ReconcileReceivedFromApprovedImportsAsync(poCode, extraImport: null, ct);
 
     public async Task<PoImportPreviewDto> PreviewImportFromPoAsync(
         string poCode,
         string? excludeTicketCode = null,
         CancellationToken ct = default)
     {
+        await ReconcileReceivedFromApprovedImportsAsync(poCode.Trim(), extraImport: null, ct);
+        await db.SaveChangesAsync(ct);
+
         var order = await LoadPlacedOrderAsync(poCode, ct);
-        var reserved = await GetPendingReservedQtyByPoItemAsync(order.Code, excludeTicketCode, ct);
-        var pendingDefect = await GetPendingDefectQtyByPoItemAsync(order.Code, null, ct);
+        var consumption = await GetConsumptionByPoItemAsync(order, excludeTicketCode, ct);
 
         var lines = order.Items
             .OrderBy(i => i.Id)
             .Select(line =>
             {
-                reserved.TryGetValue(line.Id, out var pendingQty);
-                pendingDefect.TryGetValue(line.Id, out var defectPending);
-                var available = Math.Max(0, line.Ordered - line.Received - line.Defected - pendingQty - defectPending);
-                return new
-                {
-                    Line = line,
-                    Available = available,
-                    PendingQty = pendingQty,
-                };
+                var row = consumption[line.Id];
+                return new PoImportLinePreviewDto(
+                    PoItemId: line.Id,
+                    Name: line.Name,
+                    MaterialCode: line.MaterialCode ?? line.Sku,
+                    Unit: line.Unit ?? "",
+                    Ordered: line.Ordered,
+                    Received: row.EffectiveReceived,
+                    ReservedPending: row.PendingQty,
+                    Available: row.Available,
+                    UnitPrice: line.PoPrice);
             })
-            .Where(x => x.Available > 0 || x.Line.Ordered > x.Line.Received + x.Line.Defected)
-            .Select(x => new PoImportLinePreviewDto(
-                PoItemId: x.Line.Id,
-                Name: x.Line.Name,
-                MaterialCode: x.Line.MaterialCode ?? x.Line.Sku,
-                Unit: x.Line.Unit ?? "",
-                Ordered: x.Line.Ordered,
-                Received: x.Line.Received,
-                ReservedPending: x.PendingQty,
-                Available: x.Available,
-                UnitPrice: x.Line.PoPrice))
+            .Where(l => l.Available > 0)
             .ToList();
 
         return new PoImportPreviewDto(
@@ -146,7 +103,7 @@ public sealed class PurchaseOrderReceiptService(
             PlanCode: order.PlanCode,
             ProjectCode: order.ProjectCode ?? "",
             SupplierName: order.SupplierNameSnapshot ?? order.Supplier?.SupplierName ?? "",
-            Lines: lines.Where(l => l.Available > 0).ToList());
+            Lines: lines);
     }
 
     public async Task<CreateImportDto> BuildImportDraftFromPoAsync(
@@ -154,9 +111,11 @@ public sealed class PurchaseOrderReceiptService(
         IReadOnlyList<CreateImportFromPoLineRequest>? selections = null,
         CancellationToken ct = default)
     {
+        await ReconcileReceivedFromApprovedImportsAsync(poCode.Trim(), extraImport: null, ct);
+        await db.SaveChangesAsync(ct);
+
         var order = await LoadPlacedOrderAsync(poCode, ct);
-        var reserved = await GetPendingReservedQtyByPoItemAsync(order.Code, excludeTicketCode: null, ct);
-        var pendingDefect = await GetPendingDefectQtyByPoItemAsync(order.Code, null, ct);
+        var consumption = await GetConsumptionByPoItemAsync(order, excludeTicketCode: null, ct);
 
         var selectionMap = selections is { Count: > 0 }
             ? selections
@@ -187,14 +146,12 @@ public sealed class PurchaseOrderReceiptService(
 
         foreach (var line in candidateItems)
         {
-            reserved.TryGetValue(line.Id, out var pendingQty);
-            pendingDefect.TryGetValue(line.Id, out var defectPending);
-            var available = Math.Max(0, line.Ordered - line.Received - line.Defected - pendingQty - defectPending);
+            var available = consumption[line.Id].Available;
             if (available <= 0)
             {
                 if (selectionMap is not null)
                     throw new PurchasingConflictException(
-                        $"Mặt hàng '{line.Name}' không còn SL để nhập (đã nhận / lỗi / đang chờ duyệt).");
+                        $"Mặt hàng '{line.Name}' không còn SL để nhập (đã nhận thực tế / lỗi / đang chờ duyệt).");
                 continue;
             }
 
@@ -203,7 +160,7 @@ public sealed class PurchaseOrderReceiptService(
                 throw new PurchasingConflictException($"SL nhập không hợp lệ cho '{line.Name}'.");
             if (qty > available)
                 throw new PurchasingConflictException(
-                    $"'{line.Name}': chỉ còn {available:0.##} (đã trừ NK chờ duyệt), không nhập được {qty:0.##}.");
+                    $"'{line.Name}': chỉ còn {available:0.##} (đã trừ NK thực tế và NK chờ duyệt), không nhập được {qty:0.##}.");
 
             Material? material = null;
             if (!string.IsNullOrWhiteSpace(line.MaterialCode) && byCode.TryGetValue(line.MaterialCode.Trim(), out var byMatCode))
@@ -237,7 +194,8 @@ public sealed class PurchaseOrderReceiptService(
                 ". Kiểm tra MaterialCode trên KHMH/PO (hoặc tạo vật tư trùng mã/tên) rồi thử lại.");
 
         if (importItems.Count == 0)
-            throw new PurchasingConflictException("Không có dòng nhập hợp lệ từ PO.");
+            throw new PurchasingConflictException(
+                "PO đã nhập đủ (phiếu thực tế / đang chờ duyệt) - không còn SL để tạo phiếu nhập.");
 
         var total = Math.Round(importItems.Sum(i => i.Qty * i.UnitPrice), 2);
         var supplierName = order.SupplierNameSnapshot ?? order.Supplier?.SupplierName ?? "";
@@ -272,12 +230,6 @@ public sealed class PurchaseOrderReceiptService(
         if (string.IsNullOrWhiteSpace(poCode))
             return;
 
-        var hasPoLinks = import.Items.Any(i =>
-            !string.IsNullOrWhiteSpace(i.Notes)
-            && i.Notes.StartsWith(PoItemNotePrefix, StringComparison.OrdinalIgnoreCase));
-        if (!hasPoLinks)
-            return;
-
         var order = await db.PurchaseOrders
             .AsNoTracking()
             .Include(o => o.Items)
@@ -285,8 +237,7 @@ public sealed class PurchaseOrderReceiptService(
         if (order is null)
             return;
 
-        var reserved = await GetPendingReservedQtyByPoItemAsync(poCode, import.TicketCode, ct);
-        var pendingDefect = await GetPendingDefectQtyByPoItemAsync(poCode, null, ct);
+        var consumption = await GetConsumptionByPoItemAsync(order, import.TicketCode, ct);
 
         foreach (var item in import.Items)
         {
@@ -294,12 +245,76 @@ public sealed class PurchaseOrderReceiptService(
             if (poItem is null)
                 continue;
 
-            reserved.TryGetValue(poItem.Id, out var pendingQty);
-            pendingDefect.TryGetValue(poItem.Id, out var defectPending);
-            var available = Math.Max(0, poItem.Ordered - poItem.Received - poItem.Defected - pendingQty - defectPending);
+            var available = consumption[poItem.Id].Available;
             if (item.Quantity > available)
                 throw new PurchasingConflictException(
-                    $"'{poItem.Name}': chỉ còn {available:0.##} để nhập (đã trừ NK/HL chờ duyệt), phiếu đang yêu cầu {item.Quantity:0.##}.");
+                    $"'{poItem.Name}': chỉ còn {available:0.##} để nhập (đã trừ NK thực tế và NK/HL chờ duyệt), phiếu đang yêu cầu {item.Quantity:0.##}.");
+        }
+    }
+
+    private async Task ReconcileReceivedFromApprovedImportsAsync(
+        string poCode,
+        WarehouseTransaction? extraImport,
+        CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(poCode))
+            return;
+
+        var order = await db.PurchaseOrders
+            .Include(o => o.Items)
+            .FirstOrDefaultAsync(o => o.Code == poCode, ct);
+        if (order is null)
+            return;
+
+        var imports = await db.WarehouseTransactions
+            .Include(t => t.Items)
+            .Where(t => t.TransactionType == TransactionType.Import && t.ReferenceCode == poCode)
+            .ToListAsync(ct);
+
+        if (extraImport is not null
+            && imports.All(t => !string.Equals(t.TicketCode, extraImport.TicketCode, StringComparison.OrdinalIgnoreCase)))
+        {
+            imports.Add(extraImport);
+        }
+
+        var approvedQty = SumQtyByPoItem(order, imports.Where(IsActualReceipt));
+
+        var planLineIds = order.Items
+            .Where(i => i.PlanLineId is int)
+            .Select(i => i.PlanLineId!.Value)
+            .Distinct()
+            .ToList();
+        var planLines = planLineIds.Count == 0
+            ? new Dictionary<int, PurchasePlanLine>()
+            : await db.PurchasePlanLines
+                .Where(l => planLineIds.Contains(l.Id))
+                .ToDictionaryAsync(l => l.Id, ct);
+
+        var anyChange = false;
+        foreach (var poItem in order.Items)
+        {
+            var fromNk = approvedQty.GetValueOrDefault(poItem.Id);
+            var nextReceived = Math.Max(poItem.Received, fromNk);
+            var delta = nextReceived - poItem.Received;
+            if (delta <= 0)
+                continue;
+
+            poItem.Received = nextReceived;
+            anyChange = true;
+
+            if (poItem.PlanLineId is int planLineId && planLines.TryGetValue(planLineId, out var planLine))
+            {
+                planLine.ReceivedQty += delta;
+                planLine.ActualReceiptDate ??= DateOnly.FromDateTime(DateTime.UtcNow);
+                planLine.PurchaseStatus = ResolvePurchaseStatus(planLine);
+            }
+        }
+
+        var nextStatus = ResolveDeliveryStatus(order.Items);
+        if (anyChange || !string.Equals(order.DeliveryStatus, nextStatus, StringComparison.OrdinalIgnoreCase))
+        {
+            order.DeliveryStatus = nextStatus;
+            order.UpdatedAt = DateTime.UtcNow;
         }
     }
 
@@ -317,42 +332,48 @@ public sealed class PurchaseOrderReceiptService(
             throw new PurchasingConflictException("Chỉ tạo phiếu nhập từ PO đã đặt hàng (placed).");
 
         if (string.IsNullOrWhiteSpace(order.ProjectCode))
-            throw new PurchasingConflictException("PO thiếu mã dự án — không thể tạo phiếu nhập.");
+            throw new PurchasingConflictException("PO thiếu mã dự án - không thể tạo phiếu nhập.");
 
         return order;
     }
 
-    /// <summary>
-    /// Qty already locked on pending (submitted) NK lines for this PO, keyed by PO item id.
-    /// Draft NK does not reserve. Approved qty is already in PO.Received.
-    /// </summary>
-    private async Task<Dictionary<int, decimal>> GetPendingReservedQtyByPoItemAsync(
-        string poCode,
+    private async Task<Dictionary<int, PoItemConsumption>> GetConsumptionByPoItemAsync(
+        PurchaseOrder order,
         string? excludeTicketCode,
         CancellationToken ct)
     {
-        var pendingImports = await db.WarehouseTransactions
+        var imports = await db.WarehouseTransactions
             .AsNoTracking()
             .Include(t => t.Items)
             .Where(t =>
                 t.TransactionType == TransactionType.Import
-                && t.ApprovalStatus == ApprovalStatus.Pending
-                && t.ReferenceCode == poCode
+                && t.ReferenceCode == order.Code
                 && (excludeTicketCode == null || t.TicketCode != excludeTicketCode))
             .ToListAsync(ct);
 
-        var map = new Dictionary<int, decimal>();
-        foreach (var nk in pendingImports)
-        {
-            foreach (var line in nk.Items)
-            {
-                if (string.IsNullOrWhiteSpace(line.Notes)
-                    || !line.Notes.StartsWith(PoItemNotePrefix, StringComparison.OrdinalIgnoreCase)
-                    || !int.TryParse(line.Notes[PoItemNotePrefix.Length..], out var poItemId))
-                    continue;
+        var approved = SumQtyByPoItem(order, imports.Where(IsActualReceipt));
+        var pending = SumQtyByPoItem(
+            order,
+            imports.Where(t =>
+                t.ApprovalStatus == ApprovalStatus.Pending
+                && !IsActualReceipt(t)));
+        var pendingDefect = await GetPendingDefectQtyByPoItemAsync(order.Code, null, ct);
 
-                map[poItemId] = map.GetValueOrDefault(poItemId) + line.Quantity;
-            }
+        var map = new Dictionary<int, PoItemConsumption>();
+        foreach (var line in order.Items)
+        {
+            var approvedQty = approved.GetValueOrDefault(line.Id);
+            var pendingQty = pending.GetValueOrDefault(line.Id);
+            var defectPending = pendingDefect.GetValueOrDefault(line.Id);
+            var effectiveReceived = Math.Max(line.Received, approvedQty);
+            var available = Math.Max(
+                0,
+                line.Ordered - effectiveReceived - line.Defected - pendingQty - defectPending);
+            map[line.Id] = new PoItemConsumption(
+                approvedQty,
+                pendingQty,
+                effectiveReceived,
+                available);
         }
 
         return map;
@@ -382,7 +403,26 @@ public sealed class PurchaseOrderReceiptService(
         return map;
     }
 
-    private static PurchaseOrderItem? MatchPoItem(
+    private static Dictionary<int, decimal> SumQtyByPoItem(
+        PurchaseOrder order,
+        IEnumerable<WarehouseTransaction> imports)
+    {
+        var map = new Dictionary<int, decimal>();
+        foreach (var import in imports)
+        {
+            foreach (var item in import.Items)
+            {
+                var poItem = MatchPoItem(order.Items, item);
+                if (poItem is null)
+                    continue;
+                map[poItem.Id] = map.GetValueOrDefault(poItem.Id) + item.Quantity;
+            }
+        }
+
+        return map;
+    }
+
+    public static PurchaseOrderItem? MatchPoItem(
         IEnumerable<PurchaseOrderItem> items,
         WarehouseTransactionItem importLine)
     {
@@ -436,4 +476,10 @@ public sealed class PurchaseOrderReceiptService(
 
     private static string NormalizeName(string? name) =>
         (name ?? string.Empty).Trim().ToLowerInvariant();
+
+    private readonly record struct PoItemConsumption(
+        decimal ApprovedQty,
+        decimal PendingQty,
+        decimal EffectiveReceived,
+        decimal Available);
 }

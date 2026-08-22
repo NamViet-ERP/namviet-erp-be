@@ -186,6 +186,128 @@ public class InventoryDomainServiceTests : IDisposable
         Assert.NotNull(import.LinkedTicketCode);
     }
 
+    [Fact]
+    public async Task GetProjectAvailableQtyAsync_subtracts_planned_export_and_pending_stock_hl()
+    {
+        SeedProjectOnHand(52m);
+        SeedStockDefect("HL-PEND-001", 12m, PurchaseDefectStatuses.Pending);
+        var row = await _db.ProjectInventories.SingleAsync(pi => pi.MaterialCode == "MAT-001");
+        row.AddPlannedExport(10m);
+        await _db.SaveChangesAsync();
+
+        var available = await _service.GetProjectAvailableQtyAsync("DA-TEST", "MAT-001");
+        Assert.Equal(30m, available);
+    }
+
+    [Fact]
+    public async Task CreateProjectExportPlannedAsync_cannot_take_qty_held_by_pending_stock_hl()
+    {
+        SeedProjectOnHand(52m);
+        SeedStockDefect("HL-PEND-001", 12m, PurchaseDefectStatuses.Pending);
+
+        await _service.CreateProjectExportPlannedAsync(ExportTx("XK-OK", 40m));
+        await _db.SaveChangesAsync();
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => _service.CreateProjectExportPlannedAsync(ExportTx("XK-OVER", 1m)));
+        Assert.Contains("khả dụng", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task CreateProjectExportPlannedAsync_ignores_draft_stock_hl()
+    {
+        SeedProjectOnHand(52m);
+        SeedStockDefect("HL-DRAFT-001", 12m, PurchaseDefectStatuses.Draft);
+
+        await _service.CreateProjectExportPlannedAsync(ExportTx("XK-ALL", 52m));
+        await _db.SaveChangesAsync();
+
+        var row = await _db.ProjectInventories.SingleAsync(pi => pi.MaterialCode == "MAT-001");
+        Assert.Equal(52m, row.PlannedExportQty);
+    }
+
+    [Fact]
+    public async Task CreateProjectExportPlannedAsync_allows_full_qty_after_pending_hl_cancelled()
+    {
+        SeedProjectOnHand(52m);
+        SeedStockDefect("HL-PEND-001", 12m, PurchaseDefectStatuses.Pending);
+        var hl = await _db.PurchaseDefects.SingleAsync();
+        hl.Status = PurchaseDefectStatuses.Rejected;
+        await _db.SaveChangesAsync();
+
+        await _service.CreateProjectExportPlannedAsync(ExportTx("XK-ALL", 52m));
+        await _db.SaveChangesAsync();
+
+        var row = await _db.ProjectInventories.SingleAsync(pi => pi.MaterialCode == "MAT-001");
+        Assert.Equal(52m, row.PlannedExportQty);
+    }
+
+    [Fact]
+    public async Task ApplyApprovedExportAsync_cannot_consume_pending_stock_hl_hold()
+    {
+        SeedProjectOnHand(52m);
+        SeedStockDefect("HL-PEND-001", 12m, PurchaseDefectStatuses.Pending);
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => _service.ApplyApprovedExportAsync(ExportTx("XK-STEAL", 41m)));
+        Assert.Contains("khả dụng", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static WarehouseTransaction ExportTx(string ticket, decimal qty) =>
+        new()
+        {
+            TicketCode = ticket,
+            TransactionType = TransactionType.Export,
+            ProjectCode = "DA-TEST",
+            BeneficiaryProjectCode = "DA-TEST",
+            ApprovalStatus = ApprovalStatus.Draft,
+            Items =
+            [
+                new WarehouseTransactionItem
+                {
+                    MaterialCode = "MAT-001",
+                    Quantity = qty,
+                }
+            ]
+        };
+
+    private void SeedProjectOnHand(decimal onHand)
+    {
+        _db.ProjectInventories.Add(new ProjectInventory
+        {
+            ProjectCode = "DA-TEST",
+            MaterialCode = "MAT-001",
+            ActualImportQty = onHand,
+        });
+        _db.SaveChanges();
+    }
+
+    private void SeedStockDefect(string ticket, decimal qty, string status)
+    {
+        _db.PurchaseDefects.Add(new PurchaseDefect
+        {
+            TicketCode = ticket,
+            SourceType = PurchaseDefectSourceTypes.Stock,
+            PlanCode = "",
+            ProjectCode = "DA-TEST",
+            Status = status,
+            CreatedByName = "Test",
+            Items =
+            [
+                new PurchaseDefectItem
+                {
+                    TicketCode = ticket,
+                    PoItemId = 0,
+                    MaterialCode = "MAT-001",
+                    Name = "Vật tư test",
+                    Unit = "Cái",
+                    Quantity = qty,
+                }
+            ]
+        });
+        _db.SaveChanges();
+    }
+
     private void SeedBaseline()
     {
         _db.WmsWarehouses.Add(new WmsWarehouse

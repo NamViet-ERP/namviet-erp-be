@@ -6,7 +6,9 @@ public record StockMatrixProjectColumnDto(
     string ProjectName,
     decimal ActualQty,
     decimal PlannedImportQty,
-    decimal PlannedExportQty);
+    decimal PlannedExportQty,
+    /// <summary>SL phiếu HL tồn kho chờ duyệt tại dự án này (giữ chỗ khả dụng).</summary>
+    decimal PendingDefectQty);
 
 public record StockMatrixRowDto(
     string MaterialCode,

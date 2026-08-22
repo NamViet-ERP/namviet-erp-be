@@ -37,34 +37,40 @@ public sealed class PurchasingDashboardService(
     {
         var (rangeFrom, rangeTo, periodKey) = ResolveRange(period, from, to);
 
-        var plansQ = db.PurchasePlans.AsNoTracking()
-            .Where(p => p.CreatedAt >= rangeFrom && p.CreatedAt < rangeTo);
-        var planCount = await plansQ.CountAsync(ct);
-        var planAmount = await plansQ.SumAsync(p => (decimal?)p.PurchaseTotal, ct) ?? 0m;
+        var planGroups = await db.PurchasePlans.AsNoTracking()
+            .Where(p => p.CreatedAt >= rangeFrom && p.CreatedAt < rangeTo)
+            .GroupBy(p => p.Status)
+            .Select(g => new { Status = g.Key, Count = g.Count() })
+            .ToListAsync(ct);
+        var planRows = planGroups
+            .Select(g => new StatusCount(g.Status, g.Count))
+            .ToList();
 
-        var ordersQ = db.PurchaseOrders.AsNoTracking()
-            .Where(o => o.CreatedAt >= rangeFrom && o.CreatedAt < rangeTo);
-        var orderCount = await ordersQ.CountAsync(ct);
-        var orderAmount = await ordersQ.SumAsync(o => (decimal?)o.TotalAmount, ct) ?? 0m;
+        var orderGroups = await db.PurchaseOrders.AsNoTracking()
+            .Where(o => o.CreatedAt >= rangeFrom && o.CreatedAt < rangeTo)
+            .GroupBy(o => o.DeliveryStatus)
+            .Select(g => new { Status = g.Key, Count = g.Count() })
+            .ToListAsync(ct);
+        var orderRows = orderGroups
+            .Select(g => new StatusCount(g.Status, g.Count))
+            .ToList();
 
-        var importTickets = db.WarehouseTransactions.AsNoTracking()
+        var importGroups = await db.WarehouseTransactions.AsNoTracking()
             .Where(t => t.TransactionType == TransactionType.Import
                         && t.CreatedAt >= rangeFrom
                         && t.CreatedAt < rangeTo
-                        && (t.PurchasePlanCode != null || (t.ReferenceCode != null && t.ReferenceCode.StartsWith("PO-"))));
-
-        var importCount = await importTickets.CountAsync(ct);
-        var importCodes = await importTickets.Select(t => t.TicketCode).ToListAsync(ct);
-        var importAmount = importCodes.Count == 0
-            ? 0m
-            : await db.WarehouseTransactionItems.AsNoTracking()
-                .Where(i => importCodes.Contains(i.TicketCode))
-                .SumAsync(i => (decimal?)(i.Quantity * i.UnitPrice), ct) ?? 0m;
+                        && (t.PurchasePlanCode != null || (t.ReferenceCode != null && t.ReferenceCode.StartsWith("PO-"))))
+            .GroupBy(t => t.ApprovalStatus)
+            .Select(g => new { Status = g.Key, Count = g.Count() })
+            .ToListAsync(ct);
+        var importRows = importGroups
+            .Select(g => new StatusCount(g.Status.ToString(), g.Count))
+            .ToList();
 
         return new PurchasingDashboardSummaryDto(
-            new PurchasingKpiMetricDto(planCount, Math.Round(planAmount, 2)),
-            new PurchasingKpiMetricDto(orderCount, Math.Round(orderAmount, 2)),
-            new PurchasingKpiMetricDto(importCount, Math.Round(importAmount, 2)),
+            BuildMetric(planRows, PlanStatusSpecs),
+            BuildMetric(orderRows, OrderStatusSpecs),
+            BuildMetric(importRows, ImportStatusSpecs),
             rangeFrom,
             rangeTo,
             periodKey,
@@ -86,21 +92,29 @@ public sealed class PurchasingDashboardService(
             })
             .ToListAsync(ct);
 
-        decimal production = 0m;
-        decimal stock = 0m;
+        decimal productionAmount = 0m;
+        decimal stockAmount = 0m;
+        var productionCount = 0;
+        var stockCount = 0;
         foreach (var row in rows)
         {
             if (row.ProjectType == ProjectType.Project)
-                production += row.TotalAmount;
+            {
+                productionAmount += row.TotalAmount;
+                productionCount += 1;
+            }
             else
-                stock += row.TotalAmount;
+            {
+                stockAmount += row.TotalAmount;
+                stockCount += 1;
+            }
         }
 
-        var bars = new List<PurchasingDashboardChartBarDto>
-        {
-            new("production", "Lượng mua sản xuất", Math.Round(production, 2)),
-            new("stock", "Lượng mua dự trữ", Math.Round(stock, 2)),
-        };
+        var bars = new List<PurchasingDashboardChartBarDto>();
+        if (productionCount > 0)
+            bars.Add(new("production", "Lượng mua sản xuất", productionCount, Math.Round(productionAmount, 2)));
+        if (stockCount > 0)
+            bars.Add(new("stock", "Lượng mua dự trữ", stockCount, Math.Round(stockAmount, 2)));
 
         return new PurchasingDashboardChartDto(bars, rangeFrom, rangeTo, periodKey, DateTime.UtcNow);
     }
@@ -223,4 +237,69 @@ public sealed class PurchasingDashboardService(
             DateTimeKind.Local => value.ToUniversalTime(),
             _ => DateTime.SpecifyKind(value, DateTimeKind.Utc),
         };
+
+    private readonly record struct StatusCount(string Status, int Count);
+
+    private readonly record struct StatusSpec(string[] Match, string Key, string Label);
+
+    private static readonly StatusSpec[] PlanStatusSpecs =
+    [
+        new([PurchasePlanStatuses.Draft], "draft", "Nháp"),
+        new([PurchasePlanStatuses.PendingL1, PurchasePlanStatuses.PendingL2], "pending", "Chờ duyệt"),
+        new([PurchasePlanStatuses.Approved, PurchasePlanStatuses.ActiveLegacy], "approved", "Đã duyệt"),
+        new([PurchasePlanStatuses.Rejected], "rejected", "Từ chối"),
+        new([PurchasePlanStatuses.Closed], "closed", "Đã đóng"),
+    ];
+
+    private static readonly StatusSpec[] OrderStatusSpecs =
+    [
+        new([PurchaseOrderDeliveryStatuses.None], "none", "Chưa giao"),
+        new([PurchaseOrderDeliveryStatuses.Partial], "partial", "Giao 1 phần"),
+        new([PurchaseOrderDeliveryStatuses.Complete], "complete", "Đã giao đủ"),
+    ];
+
+    private static readonly StatusSpec[] ImportStatusSpecs =
+    [
+        new([nameof(ApprovalStatus.Draft)], "draft", "Nháp"),
+        new([nameof(ApprovalStatus.Pending)], "pending", "Chờ duyệt"),
+        new([nameof(ApprovalStatus.Approved)], "approved", "Đã duyệt"),
+        new([nameof(ApprovalStatus.Rejected)], "rejected", "Từ chối"),
+    ];
+
+    private static PurchasingKpiMetricDto BuildMetric(IReadOnlyList<StatusCount> rows, StatusSpec[] specs)
+    {
+        var counts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        foreach (var row in rows)
+        {
+            var key = string.IsNullOrWhiteSpace(row.Status) ? string.Empty : row.Status.Trim();
+            counts[key] = counts.GetValueOrDefault(key) + row.Count;
+        }
+
+        var used = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var lines = new List<PurchasingKpiLineDto>();
+        var total = 0;
+        foreach (var spec in specs)
+        {
+            var n = 0;
+            foreach (var match in spec.Match)
+            {
+                n += counts.GetValueOrDefault(match);
+                used.Add(match);
+            }
+
+            total += n;
+            if (n > 0)
+                lines.Add(new PurchasingKpiLineDto(spec.Key, spec.Label, n));
+        }
+
+        foreach (var (status, n) in counts)
+        {
+            if (n <= 0 || used.Contains(status))
+                continue;
+            total += n;
+            lines.Add(new PurchasingKpiLineDto(status, status, n));
+        }
+
+        return new PurchasingKpiMetricDto(total, lines);
+    }
 }

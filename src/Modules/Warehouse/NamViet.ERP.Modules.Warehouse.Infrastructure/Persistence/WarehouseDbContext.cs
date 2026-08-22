@@ -3,6 +3,7 @@ using NamViet.ERP.Modules.Warehouse.Domain.Entities;
 using NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence.Converters;
 using NamViet.ERP.Modules.Warehouse.Domain.Enums;
 using NamViet.ERP.SharedKernel.Common;
+using System.Text.Json;
 
 namespace NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence;
 
@@ -48,6 +49,7 @@ public class WarehouseDbContext(DbContextOptions<WarehouseDbContext> options) : 
     public DbSet<SupplierDeliveryEvaluation> SupplierDeliveryEvaluations => Set<SupplierDeliveryEvaluation>();
     public DbSet<Project> Projects => Set<Project>();
     public DbSet<ProjectWarehouseKeeper> ProjectWarehouseKeepers => Set<ProjectWarehouseKeeper>();
+    public DbSet<ProjectConstructionTask> ProjectConstructionTasks => Set<ProjectConstructionTask>();
     public DbSet<ProjectInventory> ProjectInventories => Set<ProjectInventory>();
     public DbSet<ProjectMaterialLoan> ProjectMaterialLoans => Set<ProjectMaterialLoan>();
     public DbSet<WarehouseTransaction> WarehouseTransactions => Set<WarehouseTransaction>();
@@ -65,6 +67,7 @@ public class WarehouseDbContext(DbContextOptions<WarehouseDbContext> options) : 
     public DbSet<PurchaseOrder> PurchaseOrders => Set<PurchaseOrder>();
     public DbSet<PurchaseOrderItem> PurchaseOrderItems => Set<PurchaseOrderItem>();
     public DbSet<PurchaseOrderAttachment> PurchaseOrderAttachments => Set<PurchaseOrderAttachment>();
+    public DbSet<PurchaseOrderComment> PurchaseOrderComments => Set<PurchaseOrderComment>();
     public DbSet<PurchaseOrderInstallment> PurchaseOrderInstallments => Set<PurchaseOrderInstallment>();
     public DbSet<PurchaseOrderInstallmentDocument> PurchaseOrderInstallmentDocuments => Set<PurchaseOrderInstallmentDocument>();
     public DbSet<PurchaseDefect> PurchaseDefects => Set<PurchaseDefect>();
@@ -222,7 +225,15 @@ public class WarehouseDbContext(DbContextOptions<WarehouseDbContext> options) : 
             e.Property(v => v.SupplierNameSnapshot).HasMaxLength(255);
             e.Property(v => v.Period).HasMaxLength(30).IsRequired();
             e.Property(v => v.Score).HasColumnType("numeric(5,2)");
-            e.Property(v => v.CriteriaScores).HasColumnType("jsonb").IsRequired();
+            var criteriaScores = e.Property(v => v.CriteriaScores).HasColumnType("jsonb").IsRequired();
+            if (Database.ProviderName is not null
+                && !Database.ProviderName.Contains("Npgsql", StringComparison.OrdinalIgnoreCase))
+            {
+                criteriaScores.HasConversion(
+                    v => JsonSerializer.Serialize(v, (JsonSerializerOptions?)null),
+                    v => JsonSerializer.Deserialize<Dictionary<string, int>>(v, (JsonSerializerOptions?)null)
+                         ?? new Dictionary<string, int>(StringComparer.Ordinal));
+            }
             e.Property(v => v.Grade).HasMaxLength(10).IsRequired();
             e.Property(v => v.Note).HasMaxLength(2000);
             e.Property(v => v.EvaluatedByName).HasMaxLength(200);
@@ -279,6 +290,19 @@ public class WarehouseDbContext(DbContextOptions<WarehouseDbContext> options) : 
             e.HasQueryFilter(p => p.DeletedAt == null);
             e.HasMany(p => p.WarehouseKeepers).WithOne(k => k.Project)
              .HasForeignKey(k => k.ProjectCode).OnDelete(DeleteBehavior.Cascade);
+            e.HasMany(p => p.ConstructionTasks).WithOne(t => t.Project)
+             .HasForeignKey(t => t.ProjectCode).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        model.Entity<ProjectConstructionTask>(e =>
+        {
+            e.ToTable("project_construction_tasks");
+            e.HasKey(t => t.Id);
+            e.Property(t => t.ProjectCode).HasMaxLength(50).IsRequired();
+            e.Property(t => t.Name).HasMaxLength(255).IsRequired();
+            e.HasIndex(t => t.ProjectCode);
+            e.HasIndex(t => new { t.ProjectCode, t.SortOrder });
+            e.HasQueryFilter(t => t.DeletedAt == null);
         });
 
         model.Entity<ProjectWarehouseKeeper>(e =>
@@ -820,6 +844,20 @@ public class WarehouseDbContext(DbContextOptions<WarehouseDbContext> options) : 
             e.HasIndex(a => new { a.PoCode, a.DocType });
             e.HasOne(a => a.PurchaseOrder).WithMany(p => p.Attachments)
              .HasForeignKey(a => a.PoCode).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        model.Entity<PurchaseOrderComment>(e =>
+        {
+            e.ToTable("purchase_order_comments");
+            e.HasKey(c => c.Id);
+            e.Property(c => c.PoCode).HasMaxLength(50).IsRequired();
+            e.Property(c => c.AuthorName).HasMaxLength(200).IsRequired();
+            e.Property(c => c.Body).HasMaxLength(4000).IsRequired();
+            e.HasIndex(c => c.PoCode);
+            e.HasIndex(c => new { c.PoCode, c.CreatedAt });
+            e.HasQueryFilter(c => c.DeletedAt == null);
+            e.HasOne(c => c.PurchaseOrder).WithMany(p => p.Comments)
+             .HasForeignKey(c => c.PoCode).OnDelete(DeleteBehavior.Cascade);
         });
 
         model.Entity<PurchaseOrderInstallment>(e =>

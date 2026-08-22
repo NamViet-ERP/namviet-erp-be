@@ -24,7 +24,10 @@ public class ProjectInventory : BaseEntity
     /// <summary>Tồn thực tế = nhập đã duyệt − xuất đã duyệt (gồm hoàn trả / chuyển kho đã duyệt).</summary>
     public decimal ActualInventoryQty => ActualImportQty - ActualExportQty;
 
-    /// <summary>Khả dụng = tồn thực tế − xuất/chuyển kho dự kiến.</summary>
+    /// <summary>
+    /// Khả dụng chưa trừ HL chờ duyệt = tồn thực tế − xuất/chuyển kho dự kiến.
+    /// Cổng XK/CK/HL dùng <c>IInventoryDomainService.GetProjectAvailableQtyAsync</c> (có trừ phiếu HL tồn kho chờ duyệt).
+    /// </summary>
     public decimal AvailableQty => ActualInventoryQty - PlannedExportQty;
 
     /// <summary>Tồn dự kiến = tồn thực tế + nhập/hoàn trả/chuyển kho dự kiến (không trừ xuất dự kiến).</summary>

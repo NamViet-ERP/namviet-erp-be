@@ -101,6 +101,7 @@ public class ProjectsController(
     [RequirePermission("wms.projects.view:all")]
     public async Task<ActionResult<List<ProjectInventoryDto>>> GetInventory(string code, CancellationToken ct)
     {
+        var pendingHl = await inventory.GetPendingStockDefectQtyByMaterialAsync(code, null, ct);
         var items = await db.ProjectInventories
             .Include(pi => pi.Material)
             .Where(pi => pi.ProjectCode == code)
@@ -113,9 +114,14 @@ public class ProjectsController(
                 pi.ActualImportQty - pi.ActualExportQty,
                 (pi.ActualImportQty - pi.ActualExportQty) + pi.PlannedImportQty,
                 pi.ReservedQty,
-                pi.MinStockQty))
+                pi.MinStockQty,
+                0m))
             .ToListAsync(ct);
-        return Ok(items);
+
+        return Ok(items.Select(pi => pi with
+        {
+            PendingDefectQty = pendingHl.GetValueOrDefault(pi.MaterialCode),
+        }).ToList());
     }
 
     [HttpPatch("{code}/inventory/{materialCode}/min-stock")]

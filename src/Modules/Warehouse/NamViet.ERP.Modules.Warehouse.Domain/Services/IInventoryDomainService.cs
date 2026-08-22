@@ -4,8 +4,28 @@ namespace NamViet.ERP.Modules.Warehouse.Domain.Services;
 
 public record ReservationResult(decimal ReservedFromStock, decimal Shortfall);
 
+/// <summary>Phiếu HL nguồn tồn kho, trạng thái chờ duyệt - giữ chỗ khả dụng kho dự án.</summary>
+public readonly record struct PendingStockDefectHold(string ProjectCode, string MaterialCode, decimal Quantity);
+
 public interface IInventoryDomainService
 {
+    /// <summary>
+    /// Tồn khả dụng kho dự án = tồn thực tế − xuất/chuyển dự kiến − phiếu HL tồn kho chờ duyệt.
+    /// </summary>
+    Task<decimal> GetProjectAvailableQtyAsync(
+        string projectCode,
+        string materialCode,
+        string? excludeStockDefectTicketCode = null,
+        CancellationToken ct = default);
+
+    Task<IReadOnlyDictionary<string, decimal>> GetPendingStockDefectQtyByMaterialAsync(
+        string projectCode,
+        string? excludeStockDefectTicketCode = null,
+        CancellationToken ct = default);
+
+    Task<IReadOnlyList<PendingStockDefectHold>> ListPendingStockDefectHoldsAsync(
+        CancellationToken ct = default);
+
     Task<ReservationResult> CreateReservationAsync(
         string warehouseId,
         string projectCode,

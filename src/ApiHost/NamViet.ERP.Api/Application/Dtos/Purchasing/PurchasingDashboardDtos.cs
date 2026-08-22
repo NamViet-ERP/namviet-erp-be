@@ -1,6 +1,8 @@
 namespace NamViet.ERP.Api.Application.Dtos.Purchasing;
 
-public record PurchasingKpiMetricDto(int Count, decimal Amount);
+public record PurchasingKpiLineDto(string Key, string Label, int Count);
+
+public record PurchasingKpiMetricDto(int Count, IReadOnlyList<PurchasingKpiLineDto> Lines);
 
 public record PurchasingDashboardSummaryDto(
     PurchasingKpiMetricDto Plans,
@@ -11,7 +13,7 @@ public record PurchasingDashboardSummaryDto(
     string Period,
     DateTime GeneratedAt);
 
-public record PurchasingDashboardChartBarDto(string Key, string Label, decimal Amount);
+public record PurchasingDashboardChartBarDto(string Key, string Label, int Count, decimal Amount);
 
 public record PurchasingDashboardChartDto(
     IReadOnlyList<PurchasingDashboardChartBarDto> Bars,

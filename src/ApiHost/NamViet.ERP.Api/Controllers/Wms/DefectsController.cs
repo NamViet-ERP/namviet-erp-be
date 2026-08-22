@@ -85,6 +85,25 @@ public class DefectsController(
         return item is null ? NotFound() : Ok(item);
     }
 
+    [HttpPut("{id}/items")]
+    [RequirePermission("wms.defects.create")]
+    public async Task<ActionResult<PurchaseDefectDto>> UpdateItems(
+        string id,
+        [FromBody] UpdateDefectItemsRequest request,
+        CancellationToken ct)
+    {
+        var item = await defects.UpdateItemsAsync(id, request, ct);
+        return item is null ? NotFound() : Ok(item);
+    }
+
+    [HttpPost("{id}/cancel")]
+    [RequirePermission("wms.defects.create")]
+    public async Task<ActionResult<PurchaseDefectDto>> Cancel(string id, CancellationToken ct)
+    {
+        var item = await defects.CancelAsync(id, ct);
+        return item is null ? NotFound() : Ok(item);
+    }
+
     [HttpPut("{id}/processing")]
     [RequirePermission("wms.defects.approve")]
     public async Task<ActionResult<PurchaseDefectDto>> UpdateProcessing(
