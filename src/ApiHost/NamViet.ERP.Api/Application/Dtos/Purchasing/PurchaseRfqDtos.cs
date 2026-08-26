@@ -29,7 +29,7 @@ public record UpsertPurchaseRfqQuoteRequest(
     string? ProjectCode,
     DateOnly QuoteDate,
     decimal UnitPrice,
-    DateOnly? ValidUntil,
+    DateOnly ValidUntil,
     int? LeadTimeDays,
     string? PaymentTerm,
     string? Status,

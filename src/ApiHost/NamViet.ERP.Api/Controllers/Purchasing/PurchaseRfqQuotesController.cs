@@ -29,13 +29,21 @@ public class PurchaseRfqQuotesController(IPurchaseRfqService rfq) : ControllerBa
     public async Task<ActionResult<IReadOnlyList<PurchaseRfqAverageDto>>> Averages(
         [FromQuery] string groupBy = "quarter",
         [FromQuery] int? year = null,
+        [FromQuery] int? quarter = null,
+        [FromQuery] int? supplierId = null,
+        [FromQuery] string? status = null,
         CancellationToken ct = default) =>
-        Ok(await rfq.AveragesAsync(groupBy, year, ct));
+        Ok(await rfq.AveragesAsync(groupBy, year, quarter, supplierId, status, ct));
 
     [HttpGet("win-rates")]
     [RequirePermission("purchasing.rfq.view")]
-    public async Task<ActionResult<IReadOnlyList<PurchaseRfqWinRateDto>>> WinRates(CancellationToken ct) =>
-        Ok(await rfq.WinRatesAsync(ct));
+    public async Task<ActionResult<IReadOnlyList<PurchaseRfqWinRateDto>>> WinRates(
+        [FromQuery] int? supplierId = null,
+        [FromQuery] string? status = null,
+        [FromQuery] int? year = null,
+        [FromQuery] int? quarter = null,
+        CancellationToken ct = default) =>
+        Ok(await rfq.WinRatesAsync(supplierId, status, year, quarter, ct));
 
     [HttpGet("{id:guid}")]
     [RequirePermission("purchasing.rfq.view")]

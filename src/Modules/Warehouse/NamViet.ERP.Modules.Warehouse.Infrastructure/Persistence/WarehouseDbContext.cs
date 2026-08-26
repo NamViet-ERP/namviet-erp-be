@@ -750,6 +750,7 @@ public class WarehouseDbContext(DbContextOptions<WarehouseDbContext> options) : 
             e.Property(x => x.Unit).HasMaxLength(50);
             e.Property(x => x.OldQty).HasColumnType("numeric(18,4)");
             e.Property(x => x.NewQty).HasColumnType("numeric(18,4)");
+            e.Property(x => x.EstimateUnitPrice).HasColumnType("numeric(18,2)");
             e.HasIndex(x => new { x.VersionId, x.MaterialCode });
             e.HasQueryFilter(x => x.DeletedAt == null);
             e.HasOne(x => x.Version).WithMany(v => v.Lines)

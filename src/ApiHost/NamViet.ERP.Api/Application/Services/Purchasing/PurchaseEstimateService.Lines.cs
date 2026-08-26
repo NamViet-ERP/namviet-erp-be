@@ -39,18 +39,6 @@ public sealed partial class PurchaseEstimateService
             await db.SaveChangesAsync(ct);
     }
 
-    private async Task<IReadOnlyList<PurchaseEstimateLineInput>> CatalogInputsAsync(CancellationToken ct)
-    {
-        var codes = await db.Materials.AsNoTracking()
-            .Where(m => m.IsActive)
-            .OrderBy(m => m.MaterialCode)
-            .Select(m => m.MaterialCode)
-            .ToListAsync(ct);
-        if (codes.Count == 0)
-            throw new PurchasingConflictException("Chưa có vật tư trong danh mục để tạo mẫu.");
-        return codes.Select(c => new PurchaseEstimateLineInput(c, 0)).ToList();
-    }
-
     private async Task AddLinesAsync(
         Guid versionId,
         PurchaseEstimateVersion? previous,
@@ -84,6 +72,8 @@ public sealed partial class PurchaseEstimateService
                 throw new PurchasingConflictException($"Không tìm thấy vật tư {code}.");
             if (input.NewQty < 0)
                 throw new PurchasingConflictException($"Số lượng mới của {code} không hợp lệ.");
+            if (input.EstimateUnitPrice < 0)
+                throw new PurchasingConflictException($"Giá dự toán của {code} không hợp lệ.");
 
             prevByCode.TryGetValue(code, out var oldQty);
             cats.TryGetValue(mat.CategoryId, out var leaf);
@@ -99,6 +89,7 @@ public sealed partial class PurchaseEstimateService
                 Unit = mat.Unit,
                 OldQty = oldQty,
                 NewQty = input.NewQty,
+                EstimateUnitPrice = input.EstimateUnitPrice,
                 CreatedAt = now,
                 UpdatedAt = now,
             });

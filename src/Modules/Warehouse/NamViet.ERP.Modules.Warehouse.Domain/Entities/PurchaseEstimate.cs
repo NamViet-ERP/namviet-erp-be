@@ -52,6 +52,8 @@ public static class PurchaseEstimateStatuses
 
     public static bool CanEditLines(string? status) =>
         string.Equals(status, Draft, StringComparison.OrdinalIgnoreCase)
+        || string.Equals(status, Rejected, StringComparison.OrdinalIgnoreCase)
+        // Legacy statuses from old public-fill flow — still editable until migrated.
         || string.Equals(status, Shared, StringComparison.OrdinalIgnoreCase)
         || string.Equals(status, Submitted, StringComparison.OrdinalIgnoreCase)
         || string.Equals(status, Reviewed, StringComparison.OrdinalIgnoreCase);
@@ -79,6 +81,8 @@ public class PurchaseEstimateLine : BaseEntity
     public string Unit { get; set; } = string.Empty;
     public decimal OldQty { get; set; }
     public decimal NewQty { get; set; }
+    /// <summary>Đơn giá dự toán (VND).</summary>
+    public decimal EstimateUnitPrice { get; set; }
 
     public PurchaseEstimateVersion? Version { get; set; }
 }

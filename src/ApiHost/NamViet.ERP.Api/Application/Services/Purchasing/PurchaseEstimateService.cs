@@ -50,8 +50,7 @@ public sealed partial class PurchaseEstimateService(
 {
     private static readonly (int Level, string Name)[] ApprovalTemplate =
     [
-        (1, "Trưởng nhóm Mua hàng"),
-        (2, "Trưởng phòng Cung ứng"),
+        (1, "Trưởng bộ phận CSKH"),
     ];
 
     private static readonly TimeSpan ShareLinkTtl = TimeSpan.FromDays(7);
@@ -125,10 +124,21 @@ public sealed partial class PurchaseEstimateService(
         var projectCode = request.ProjectCode.Trim();
         if (string.IsNullOrWhiteSpace(projectCode))
             throw new PurchasingConflictException("Chọn dự án.");
-        if (string.IsNullOrWhiteSpace(request.Title))
-            throw new PurchasingConflictException("Nhập tiêu đề dự toán.");
-        if (!await db.Projects.AnyAsync(p => p.ProjectCode == projectCode, ct))
-            throw new PurchasingConflictException("Dự án không tồn tại.");
+        var project = await db.Projects.AsNoTracking()
+            .FirstOrDefaultAsync(p => p.ProjectCode == projectCode, ct)
+            ?? throw new PurchasingConflictException("Dự án không tồn tại.");
+        if (request.Lines is null || request.Lines.Count == 0)
+            throw new PurchasingConflictException("Thêm ít nhất một dòng vật tư.");
+        if (request.Lines.Any(l => l.NewQty <= 0))
+            throw new PurchasingConflictException("Số lượng mỗi dòng phải lớn hơn 0.");
+        if (request.Lines.Any(l => l.EstimateUnitPrice < 0))
+            throw new PurchasingConflictException("Giá dự toán không hợp lệ.");
+
+        var title = string.IsNullOrWhiteSpace(request.Title)
+            ? project.ProjectName
+            : request.Title.Trim();
+        if (string.IsNullOrWhiteSpace(title))
+            title = projectCode;
 
         var now = DateTime.UtcNow;
         var (userId, userName) = Actor();
@@ -138,7 +148,7 @@ public sealed partial class PurchaseEstimateService(
         {
             Code = PurchaseEstimate.GenerateCode(seq),
             ProjectCode = projectCode,
-            Title = request.Title.Trim(),
+            Title = title,
             Status = PurchaseEstimateStatuses.Draft,
             CurrentVersion = 1,
             CreatedById = userId,
@@ -153,10 +163,7 @@ public sealed partial class PurchaseEstimateService(
         var version = NewVersion(header.Id, 1, userId, userName, now);
         db.PurchaseEstimateVersions.Add(version);
 
-        var inputs = request.Lines is { Count: > 0 }
-            ? request.Lines
-            : await CatalogInputsAsync(ct);
-        await AddLinesAsync(version.Id, previous: null, inputs, now, ct);
+        await AddLinesAsync(version.Id, previous: null, request.Lines, now, ct);
         await db.SaveChangesAsync(ct);
         return (await GetByIdAsync(header.Id, 1, ct))!;
     }
@@ -171,9 +178,10 @@ public sealed partial class PurchaseEstimateService(
         if (request.Lines is null || request.Lines.Count == 0)
             throw new PurchasingConflictException("Dự toán phải còn ít nhất một dòng vật tư.");
 
-        if (string.Equals(header.Status, PurchaseEstimateStatuses.Reviewed, StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(header.Status, PurchaseEstimateStatuses.Reviewed, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(header.Status, PurchaseEstimateStatuses.Rejected, StringComparison.OrdinalIgnoreCase))
         {
-            header.Status = PurchaseEstimateStatuses.Submitted;
+            header.Status = PurchaseEstimateStatuses.Draft;
             header.ReviewedById = null;
             header.ReviewedByName = null;
             header.ReviewedAt = null;
@@ -235,8 +243,22 @@ public sealed partial class PurchaseEstimateService(
     {
         var header = await db.PurchaseEstimates.FirstOrDefaultAsync(e => e.Id == id, ct);
         if (header is null) return null;
-        if (header.Status != PurchaseEstimateStatuses.Reviewed)
-            throw new PurchasingConflictException("Cần double check trước khi gửi duyệt.");
+        var canSubmit =
+            header.Status is PurchaseEstimateStatuses.Draft
+                or PurchaseEstimateStatuses.Rejected
+                or PurchaseEstimateStatuses.Reviewed
+                or PurchaseEstimateStatuses.Submitted
+                or PurchaseEstimateStatuses.Shared;
+        if (!canSubmit)
+            throw new PurchasingConflictException("Chỉ gửi duyệt khi dự toán còn nháp hoặc bị từ chối.");
+
+        var ver = await db.PurchaseEstimateVersions.AsNoTracking()
+            .FirstOrDefaultAsync(v => v.EstimateId == id && v.VersionNumber == header.CurrentVersion, ct)
+            ?? throw new PurchasingConflictException("Không tìm thấy version hiện hành.");
+        var hasQty = await db.PurchaseEstimateLines.AsNoTracking()
+            .AnyAsync(l => l.VersionId == ver.Id && l.NewQty > 0, ct);
+        if (!hasQty)
+            throw new PurchasingConflictException("Cần ít nhất một dòng có số lượng trước khi gửi duyệt.");
 
         var now = DateTime.UtcNow;
         var existing = await db.PurchaseEstimateApprovals.Where(a => a.EstimateId == id).ToListAsync(ct);
@@ -255,6 +277,8 @@ public sealed partial class PurchaseEstimateService(
         }
 
         header.Status = PurchaseEstimateStatuses.PendingApproval;
+        header.ShareToken = null;
+        header.ShareTokenExpiresAt = null;
         Touch(header);
         await db.SaveChangesAsync(ct);
         return await GetByIdAsync(id, null, ct);
@@ -382,6 +406,7 @@ public sealed partial class PurchaseEstimateService(
                 ProductName = line.MaterialName,
                 Unit = string.IsNullOrWhiteSpace(line.Unit) ? "cái" : line.Unit,
                 Quantity = line.NewQty,
+                BudgetUnitPrice = line.EstimateUnitPrice > 0 ? line.EstimateUnitPrice : null,
                 PurchaseStatus = PurchaseLineStatuses.NotPurchased,
             });
         }
@@ -460,7 +485,8 @@ public sealed partial class PurchaseEstimateService(
         var merged = (prev?.Lines ?? [])
             .Select(l => new PurchaseEstimateLineInput(
                 l.MaterialCode,
-                qtyByCode.TryGetValue(l.MaterialCode, out var qty) ? qty : l.NewQty))
+                qtyByCode.TryGetValue(l.MaterialCode, out var qty) ? qty : l.NewQty,
+                l.EstimateUnitPrice))
             .ToList();
 
         await AppendVersionAsync(header, null, merged, ct, actorName: name, actorId: Guid.Empty, persist: false);

@@ -36,7 +36,8 @@ public record PurchaseEstimateLineDto(
     string? CategoryName,
     string Unit,
     decimal OldQty,
-    decimal NewQty);
+    decimal NewQty,
+    decimal EstimateUnitPrice);
 
 public record PurchaseEstimateProposalDto(
     Guid Id,
@@ -79,7 +80,7 @@ public record PurchaseEstimateDetailDto(
     IReadOnlyList<PurchaseEstimateProposalDto> Proposals,
     IReadOnlyList<PurchaseEstimateApprovalDto> Approvals);
 
-public record PurchaseEstimateLineInput(string MaterialCode, decimal NewQty);
+public record PurchaseEstimateLineInput(string MaterialCode, decimal NewQty, decimal EstimateUnitPrice);
 
 public record PurchaseEstimateProposalInput(
     string Name,
@@ -90,7 +91,7 @@ public record PurchaseEstimateProposalInput(
 
 public record CreatePurchaseEstimateRequest(
     string ProjectCode,
-    string Title,
+    string? Title = null,
     IReadOnlyList<PurchaseEstimateLineInput>? Lines = null);
 
 public record UpdatePurchaseEstimateRequest(

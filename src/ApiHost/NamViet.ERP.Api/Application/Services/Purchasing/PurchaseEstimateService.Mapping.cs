@@ -27,7 +27,7 @@ public sealed partial class PurchaseEstimateService
                 .Where(l => l.VersionId == ver.Id)
                 .OrderBy(l => l.CategoryName).ThenBy(l => l.MaterialName)
                 .Select(l => new PurchaseEstimateLineDto(
-                    l.Id, l.MaterialCode, l.MaterialName, l.CategoryName, l.Unit, l.OldQty, l.NewQty))
+                    l.Id, l.MaterialCode, l.MaterialName, l.CategoryName, l.Unit, l.OldQty, l.NewQty, l.EstimateUnitPrice))
                 .ToListAsync(ct);
 
         var proposals = await db.PurchaseEstimateProposals.AsNoTracking()
