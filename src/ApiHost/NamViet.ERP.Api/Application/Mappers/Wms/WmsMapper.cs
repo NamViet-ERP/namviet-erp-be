@@ -102,7 +102,14 @@ public static class WmsMapper
             i.MaterialCode, i.MaterialCode,
             TransactionItemHelper.ResolveName(i),
             i.Quantity, TransactionItemHelper.ResolveUnit(i), i.UnitPrice,
-            i.SupplierName, i.SupplierId, i.Notes)).ToList();
+            i.SupplierName, i.SupplierId, i.Notes,
+            i.Id,
+            i.PlannedQuantity > 0 ? i.PlannedQuantity : i.Quantity,
+            i.AcceptedQty,
+            i.DefectQty,
+            i.ShortageQty,
+            i.DefectLineReason,
+            i.ShortageLineReason)).ToList();
         var attachments = t.Attachments
             .OrderByDescending(a => a.UploadedAt)
             .Select(a => new ImportAttachmentDto(
@@ -126,7 +133,9 @@ public static class WmsMapper
             FormatCreatedAt(t.CreatedAt),
             t.PurchasePlanCode,
             t.ReceiptEvaluation,
-            attachments);
+            attachments,
+            t.ShortageReport,
+            t.LinkedDefectTicketCode);
     }
 
     public static ExportDto ToExport(

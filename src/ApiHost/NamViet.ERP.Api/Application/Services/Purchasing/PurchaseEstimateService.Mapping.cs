@@ -71,10 +71,9 @@ public sealed partial class PurchaseEstimateService
             .Where(p => p.EstimateId == header.Id)
             .Select(p => new PurchaseEstimateProposalDto(p.Id, p.Name, p.Spec, p.Unit, p.Qty, p.Note))
             .ToListAsync(ct);
-        var canFill = PurchaseEstimateStatuses.CanFill(header.Status);
-        var preparers = canFill
-            ? await ListPreparersAsync(ct)
-            : Array.Empty<PublicPurchaseEstimatePreparerDto>();
+        /* Link chia sẻ chỉ để xem Ver mới nhất — không mở form điền công khai */
+        var canFill = false;
+        var preparers = Array.Empty<PublicPurchaseEstimatePreparerDto>();
         return new PublicPurchaseEstimateDto(
             header.Code, header.Title, header.ProjectCode, projectName, header.Status,
             canFill,

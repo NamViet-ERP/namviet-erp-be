@@ -39,10 +39,13 @@ public interface IPurchaseOrderReceiptService
     /// <summary>
     /// Ensures import lines linked to a PO do not exceed remaining qty.
     /// Matches by poItem: notes, material code, or name. Draft NK does not reserve.
+    /// When <paramref name="forApproveSettlement"/> is true, compares against
+    /// AcceptedQty + DefectQty (SL thực tế + lỗi) instead of Planned Quantity.
     /// </summary>
     Task EnsureImportLinesWithinPoAvailabilityAsync(
         WarehouseTransaction import,
-        CancellationToken ct = default);
+        CancellationToken ct = default,
+        bool forApproveSettlement = false);
 }
 
 public sealed class PurchaseOrderReceiptService(
@@ -151,16 +154,16 @@ public sealed class PurchaseOrderReceiptService(
             {
                 if (selectionMap is not null)
                     throw new PurchasingConflictException(
-                        $"Mặt hàng '{line.Name}' không còn SL để nhập (đã nhận thực tế / lỗi / đang chờ duyệt).");
+                        $"Mặt hàng '{line.Name}' không còn số lượng để nhập trên PO (đã nhận đủ hoặc đang bị giữ bởi NK/HL chờ duyệt).");
                 continue;
             }
 
             var qty = selectionMap is not null ? selectionMap[line.Id] : available;
             if (qty <= 0)
-                throw new PurchasingConflictException($"SL nhập không hợp lệ cho '{line.Name}'.");
+                throw new PurchasingConflictException($"Số lượng nhập không hợp lệ cho '{line.Name}'.");
             if (qty > available)
                 throw new PurchasingConflictException(
-                    $"'{line.Name}': chỉ còn {available:0.##} (đã trừ NK thực tế và NK chờ duyệt), không nhập được {qty:0.##}.");
+                    $"'{line.Name}': trên PO chỉ còn {available:0.##} để nhập (đã trừ NK đã duyệt và NK/HL đang chờ). Không thể nhập {qty:0.##}.");
 
             Material? material = null;
             if (!string.IsNullOrWhiteSpace(line.MaterialCode) && byCode.TryGetValue(line.MaterialCode.Trim(), out var byMatCode))
@@ -224,7 +227,8 @@ public sealed class PurchaseOrderReceiptService(
 
     public async Task EnsureImportLinesWithinPoAvailabilityAsync(
         WarehouseTransaction import,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        bool forApproveSettlement = false)
     {
         var poCode = import.ReferenceCode?.Trim();
         if (string.IsNullOrWhiteSpace(poCode))
@@ -246,9 +250,28 @@ public sealed class PurchaseOrderReceiptService(
                 continue;
 
             var available = consumption[poItem.Id].Available;
-            if (item.Quantity > available)
+            // Duyệt: chỉ SL thực tế + lỗi chiếm phần còn lại trên PO (thiếu không nhập kho).
+            // Tạo/chốt: so với SL trên phiếu (Quantity / dự kiến).
+            var requested = forApproveSettlement
+                ? (item.AcceptedQty ?? 0) + (item.DefectQty ?? 0)
+                : item.Quantity;
+
+            if (requested <= 0)
+                continue;
+
+            if (requested > available)
+            {
+                if (forApproveSettlement)
+                {
+                    throw new PurchasingConflictException(
+                        $"'{poItem.Name}': trên PO chỉ còn {available:0.##} để nhập kho (đã trừ NK đã duyệt và NK/HL đang chờ). " +
+                        $"Phiếu này đang duyệt SL thực tế + lỗi = {requested:0.##}.");
+                }
+
                 throw new PurchasingConflictException(
-                    $"'{poItem.Name}': chỉ còn {available:0.##} để nhập (đã trừ NK thực tế và NK/HL chờ duyệt), phiếu đang yêu cầu {item.Quantity:0.##}.");
+                    $"'{poItem.Name}': trên PO chỉ còn {available:0.##} để nhập (đã trừ NK đã duyệt và NK/HL đang chờ). " +
+                    $"Phiếu đang ghi SL = {requested:0.##}.");
+            }
         }
     }
 

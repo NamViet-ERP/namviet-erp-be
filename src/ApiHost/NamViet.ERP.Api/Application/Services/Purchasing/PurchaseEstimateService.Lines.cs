@@ -70,10 +70,10 @@ public sealed partial class PurchaseEstimateService
             if (code.Length == 0) continue;
             if (!materials.TryGetValue(code, out var mat))
                 throw new PurchasingConflictException($"Không tìm thấy vật tư {code}.");
-            if (input.NewQty < 0)
-                throw new PurchasingConflictException($"Số lượng mới của {code} không hợp lệ.");
-            if (input.EstimateUnitPrice < 0)
-                throw new PurchasingConflictException($"Giá dự toán của {code} không hợp lệ.");
+            if (input.NewQty <= 0)
+                throw new PurchasingConflictException($"Số lượng của {code} phải lớn hơn 0.");
+            if (input.EstimateUnitPrice <= 0)
+                throw new PurchasingConflictException($"Giá dự toán của {code} phải lớn hơn 0.");
 
             prevByCode.TryGetValue(code, out var oldQty);
             cats.TryGetValue(mat.CategoryId, out var leaf);

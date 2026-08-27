@@ -39,6 +39,10 @@ public class WarehouseTransaction : BaseEntity
     public string? BeneficiaryProjectCode { get; set; }
     public string? SupplierName { get; set; }
     public string? ReceiptEvaluation { get; set; }
+    /// <summary>Báo cáo thiếu hàng khi duyệt (bắt buộc nếu có ShortageQty &gt; 0).</summary>
+    public string? ShortageReport { get; set; }
+    /// <summary>Mã HL tạo khi duyệt NK có hàng lỗi.</summary>
+    public string? LinkedDefectTicketCode { get; set; }
     /// <summary>Liên kết cặp phiếu NK↔XK cho Direct Issue.</summary>
     public string? LinkedTicketCode { get; set; }
 

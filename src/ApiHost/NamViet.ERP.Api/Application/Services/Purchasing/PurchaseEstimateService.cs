@@ -50,7 +50,7 @@ public sealed partial class PurchaseEstimateService(
 {
     private static readonly (int Level, string Name)[] ApprovalTemplate =
     [
-        (1, "Trưởng bộ phận CSKH"),
+        (1, "Trưởng dự án"),
     ];
 
     private static readonly TimeSpan ShareLinkTtl = TimeSpan.FromDays(7);
@@ -131,8 +131,8 @@ public sealed partial class PurchaseEstimateService(
             throw new PurchasingConflictException("Thêm ít nhất một dòng vật tư.");
         if (request.Lines.Any(l => l.NewQty <= 0))
             throw new PurchasingConflictException("Số lượng mỗi dòng phải lớn hơn 0.");
-        if (request.Lines.Any(l => l.EstimateUnitPrice < 0))
-            throw new PurchasingConflictException("Giá dự toán không hợp lệ.");
+        if (request.Lines.Any(l => l.EstimateUnitPrice <= 0))
+            throw new PurchasingConflictException("Giá dự toán mỗi dòng phải lớn hơn 0.");
 
         var title = string.IsNullOrWhiteSpace(request.Title)
             ? project.ProjectName
@@ -177,6 +177,10 @@ public sealed partial class PurchaseEstimateService(
             throw new PurchasingConflictException("Chỉ sửa dòng khi dự toán chưa gửi duyệt.");
         if (request.Lines is null || request.Lines.Count == 0)
             throw new PurchasingConflictException("Dự toán phải còn ít nhất một dòng vật tư.");
+        if (request.Lines.Any(l => l.NewQty <= 0))
+            throw new PurchasingConflictException("Số lượng mỗi dòng phải lớn hơn 0.");
+        if (request.Lines.Any(l => l.EstimateUnitPrice <= 0))
+            throw new PurchasingConflictException("Giá dự toán mỗi dòng phải lớn hơn 0.");
 
         if (string.Equals(header.Status, PurchaseEstimateStatuses.Reviewed, StringComparison.OrdinalIgnoreCase)
             || string.Equals(header.Status, PurchaseEstimateStatuses.Rejected, StringComparison.OrdinalIgnoreCase))
@@ -195,14 +199,10 @@ public sealed partial class PurchaseEstimateService(
     {
         var header = await db.PurchaseEstimates.FirstOrDefaultAsync(e => e.Id == id, ct);
         if (header is null) return null;
-        if (!PurchaseEstimateStatuses.CanFill(header.Status)
-            && header.Status != PurchaseEstimateStatuses.Submitted)
-            throw new PurchasingConflictException("Không lấy link khi dự toán đã khóa điền.");
 
+        /* Link xem Ver mới nhất — không đổi trạng thái phiếu */
         header.ShareToken = Guid.NewGuid();
         header.ShareTokenExpiresAt = DateTime.UtcNow.Add(ShareLinkTtl);
-        if (header.Status == PurchaseEstimateStatuses.Draft)
-            header.Status = PurchaseEstimateStatuses.Shared;
         Touch(header);
         await db.SaveChangesAsync(ct);
         return new PurchaseEstimateShareLinkDto(
@@ -259,6 +259,14 @@ public sealed partial class PurchaseEstimateService(
             .AnyAsync(l => l.VersionId == ver.Id && l.NewQty > 0, ct);
         if (!hasQty)
             throw new PurchasingConflictException("Cần ít nhất một dòng có số lượng trước khi gửi duyệt.");
+        var hasPrice = await db.PurchaseEstimateLines.AsNoTracking()
+            .AnyAsync(l => l.VersionId == ver.Id && l.EstimateUnitPrice > 0, ct);
+        if (!hasPrice)
+            throw new PurchasingConflictException("Cần ít nhất một dòng có giá dự toán trước khi gửi duyệt.");
+        var incomplete = await db.PurchaseEstimateLines.AsNoTracking()
+            .AnyAsync(l => l.VersionId == ver.Id && (l.NewQty <= 0 || l.EstimateUnitPrice <= 0), ct);
+        if (incomplete)
+            throw new PurchasingConflictException("Mỗi dòng phải có số lượng và giá dự toán lớn hơn 0 trước khi gửi duyệt.");
 
         var now = DateTime.UtcNow;
         var existing = await db.PurchaseEstimateApprovals.Where(a => a.EstimateId == id).ToListAsync(ct);

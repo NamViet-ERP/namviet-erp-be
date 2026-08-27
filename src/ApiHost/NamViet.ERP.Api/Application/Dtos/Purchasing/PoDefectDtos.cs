@@ -93,7 +93,8 @@ public record PurchaseDefectDto(
     string? ProcessedByName,
     DateTime? ProcessedAt,
     IReadOnlyList<PurchaseDefectItemDto> Items,
-    IReadOnlyList<PurchaseDefectAttachmentDto> Attachments);
+    IReadOnlyList<PurchaseDefectAttachmentDto> Attachments,
+    string? ImportTicketCode = null);
 
 public record UpdateDefectReasonRequest(string? Reason);
 

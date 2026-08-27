@@ -17,15 +17,16 @@ public class WmsNotificationsController(
     [HttpGet("pending")]
     public async Task<ActionResult<WmsPendingNotificationsDto>> Pending(CancellationToken ct)
     {
-        if (!HasAnyWarehouseNotificationPermission(currentUser.Permissions))
+        if (!HasAnyNotificationPermission(currentUser.Permissions))
             return Ok(new WmsPendingNotificationsDto(0, 0, 0, 0, 0, []));
 
         return Ok(await notifications.GetPendingAsync(currentUser.Permissions, ct));
     }
 
-    private static bool HasAnyWarehouseNotificationPermission(IReadOnlyList<string> permissions) =>
+    private static bool HasAnyNotificationPermission(IReadOnlyList<string> permissions) =>
         permissions.Contains("wms.imports.view:all")
         || permissions.Contains("wms.exports.view:all")
         || permissions.Contains("wms.transfers.view:all")
-        || permissions.Contains("wms.stocktakes.view:all");
+        || permissions.Contains("wms.stocktakes.view:all")
+        || permissions.Contains("purchasing.estimates.approve_l1");
 }

@@ -12,7 +12,14 @@ public record UpdateWarehouseDto(
 
 public record ImportItemDto(
     string ProductId, string Sku, string Name, decimal Qty, string Unit, decimal UnitPrice,
-    string? Supplier = null, int? SupplierId = null, string? Notes = null);
+    string? Supplier = null, int? SupplierId = null, string? Notes = null,
+    int? LineId = null,
+    decimal? PlannedQty = null,
+    decimal? AcceptedQty = null,
+    decimal? DefectQty = null,
+    decimal? ShortageQty = null,
+    string? DefectLineReason = null,
+    string? ShortageLineReason = null);
 public record ImportAttachmentDto(
     Guid Id,
     string Kind,
@@ -33,9 +40,23 @@ public record ImportDto(
     string CreatedAt,
     string? PlanCode = null,
     string? ReceiptEvaluation = null,
-    List<ImportAttachmentDto>? Attachments = null);
+    List<ImportAttachmentDto>? Attachments = null,
+    string? ShortageReport = null,
+    string? LinkedDefectTicketCode = null);
 
-public record ApproveImportRequest(bool ConfirmOverBudget = false);
+public record ApproveImportLineSettlementRequest(
+    int LineId,
+    decimal AcceptedQty,
+    decimal DefectQty,
+    decimal ShortageQty,
+    string? DefectLineReason = null,
+    string? ShortageLineReason = null);
+
+public record ApproveImportRequest(
+    bool ConfirmOverBudget = false,
+    IReadOnlyList<ApproveImportLineSettlementRequest>? Lines = null,
+    string? ShortageReport = null,
+    string? DefectReason = null);
 public record UpdateImportReceiptEvaluationRequest(string? Evaluation);
 
 public record ImportBudgetExceededDto(

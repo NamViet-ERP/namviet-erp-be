@@ -203,10 +203,9 @@ public class ImportsController(
         [FromBody] ApproveImportRequest? request,
         CancellationToken ct)
     {
-        var confirmOverBudget = request?.ConfirmOverBudget ?? false;
         try
         {
-            var item = await imports.ApproveAsync(id, confirmOverBudget, ct);
+            var item = await imports.ApproveAsync(id, request, ct);
             return item is null ? NotFound() : Ok(MaskImportPrices(item));
         }
         catch (ImportBudgetExceededException ex)
@@ -221,6 +220,10 @@ public class ImportsController(
                 ex.OverflowAmount));
         }
         catch (InvalidOperationException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+        catch (PurchasingConflictException ex)
         {
             return BadRequest(ex.Message);
         }

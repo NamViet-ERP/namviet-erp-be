@@ -161,7 +161,7 @@ public static class PermissionCatalog
         new("purchasing.estimates.view", "Purchasing", "Estimates", "Xem dự toán mua hàng"),
         new("purchasing.estimates.create", "Purchasing", "Estimates", "Tạo dự toán mua hàng"),
         new("purchasing.estimates.update", "Purchasing", "Estimates", "Sửa dự toán (tạo version mới)"),
-        new("purchasing.estimates.approve_l1", "Purchasing", "Estimates", "Duyệt / từ chối dự toán (Trưởng bộ phận CSKH)"),
+        new("purchasing.estimates.approve_l1", "Purchasing", "Estimates", "Duyệt / từ chối dự toán (Trưởng dự án)"),
         new("purchasing.estimates.approve_l2", "Purchasing", "Estimates", "Duyệt / từ chối dự toán cấp 2 (không dùng)"),
         new("purchasing.rfq.view", "Purchasing", "Rfq", "Xem giá chào thầu"),
         new("purchasing.rfq.create", "Purchasing", "Rfq", "Ghi nhận báo giá chào thầu"),

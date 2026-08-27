@@ -21,7 +21,10 @@ public interface IImportApplicationService
     Task<ImportDto?> GetByIdAsync(string id, CancellationToken ct = default);
     Task<ImportDto> CreateAsync(CreateImportDto dto, CancellationToken ct = default);
     Task<ImportDto?> UpdateAsync(string id, CreateImportDto dto, CancellationToken ct = default);
-    Task<ImportDto?> ApproveAsync(string id, bool confirmOverBudget = false, CancellationToken ct = default);
+    Task<ImportDto?> ApproveAsync(
+        string id,
+        ApproveImportRequest? request = null,
+        CancellationToken ct = default);
     Task<ImportDto?> SubmitAsync(string id, CancellationToken ct = default);
     Task<bool> DeleteAsync(string id, CancellationToken ct = default);
     Task<ImportDto> CreateDraftFromPurchaseOrderAsync(
@@ -59,6 +62,7 @@ public sealed class ImportApplicationService(
     IStocktakeFreezeGuard stocktakeFreeze,
     ICurrentUser currentUser,
     IPurchaseOrderReceiptService poReceipt,
+    IPurchaseDefectApplicationService defects,
     ISupplierDeliveryEvaluationService deliveryEvaluations,
     IFileStorage fileStorage,
     IActivityEventWriter activity) : IImportApplicationService
@@ -184,6 +188,7 @@ public sealed class ImportApplicationService(
                 TicketCode = t.TicketCode,
                 MaterialCode = materialCode,
                 Quantity = i.Qty,
+                PlannedQuantity = i.Qty,
                 UnitPrice = unitPrice,
                 SupplierId = i.SupplierId,
                 SupplierName = ResolveLineSupplierName(i, dto.Supplier),
@@ -201,22 +206,42 @@ public sealed class ImportApplicationService(
         return WmsMapper.ToImport(t);
     }
 
-    public async Task<ImportDto?> ApproveAsync(string id, bool confirmOverBudget = false, CancellationToken ct = default)
+    public async Task<ImportDto?> ApproveAsync(
+        string id,
+        ApproveImportRequest? request = null,
+        CancellationToken ct = default)
     {
+        var confirmOverBudget = request?.ConfirmOverBudget ?? false;
         var t = await FindImportAsync(id, ct);
         if (t is null) return null;
         if (t.ApprovalStatus is ApprovalStatus.Approved or ApprovalStatus.Rejected)
-            throw new InvalidOperationException($"Phiếu đã ở trạng thái '{t.ApprovalStatus}', không thể duyệt lại.");
+            throw new InvalidOperationException(
+                t.ApprovalStatus == ApprovalStatus.Approved
+                    ? "Phiếu đã duyệt, không thể duyệt lại."
+                    : "Phiếu đã từ chối, không thể duyệt lại.");
         if (t.ApprovalStatus != ApprovalStatus.Pending)
             throw new InvalidOperationException("Chỉ phiếu đã chốt dự kiến (Pending) mới được duyệt kho.");
 
         await stocktakeFreeze.EnsureProjectsNotFrozenAsync([t.BeneficiaryProjectCode], ct);
-        await poReceipt.EnsureImportLinesWithinPoAvailabilityAsync(t, ct);
         EnsureApprovalEvidence(t);
+
+        ApplyReceiveSettlement(t, request);
+        await poReceipt.EnsureImportLinesWithinPoAvailabilityAsync(t, ct, forApproveSettlement: true);
+
+        await using var tx = await db.Database.BeginTransactionAsync(ct);
+
+        if (HasPlannedInventory(t.ApprovalStatus))
+            await inventory.CancelProjectImportPlannedAsync(t, ct);
+
+        foreach (var item in t.Items)
+        {
+            var planned = item.PlannedQuantity > 0 ? item.PlannedQuantity : item.Quantity;
+            item.PlannedQuantity = planned;
+            item.Quantity = item.AcceptedQty ?? planned;
+        }
 
         await projectBudget.EnsureImportApprovalWithinBudgetAsync(t, confirmOverBudget, ct);
 
-        await using var tx = await db.Database.BeginTransactionAsync(ct);
         t.ApprovalStatus = ApprovalStatus.Approved;
         t.WarehouseApprovalStatus = WarehouseKeeperApprovalStatus.Approved;
         t.ApprovedById = currentUser.Id;
@@ -225,6 +250,11 @@ public sealed class ImportApplicationService(
         t.UpdatedAt = DateTime.UtcNow;
 
         await inventory.ApplyApprovedImportAsync(t, ct);
+
+        var defectTicket = await defects.CreateAndApproveFromImportAsync(t, request?.DefectReason, ct);
+        if (!string.IsNullOrWhiteSpace(defectTicket))
+            t.LinkedDefectTicketCode = defectTicket;
+
         await poReceipt.ApplyApprovedImportReceiptAsync(t, ct);
         await deliveryEvaluations.EnsurePendingFromApprovedImportAsync(t, ct);
         await db.SaveChangesAsync(ct);
@@ -237,6 +267,101 @@ public sealed class ImportApplicationService(
             ct);
 
         return WmsMapper.ToImport(t);
+    }
+
+    /// <summary>
+    /// Gán Đạt / Lỗi / Thiếu trên từng dòng. Mặc định (không gửi Lines) = toàn bộ đạt.
+    /// </summary>
+    private static void ApplyReceiveSettlement(WarehouseTransaction t, ApproveImportRequest? request)
+    {
+        foreach (var item in t.Items)
+        {
+            if (item.PlannedQuantity <= 0)
+                item.PlannedQuantity = item.Quantity;
+        }
+
+        var lines = request?.Lines;
+        if (lines is null || lines.Count == 0)
+        {
+            foreach (var item in t.Items)
+            {
+                item.AcceptedQty = item.PlannedQuantity;
+                item.DefectQty = 0;
+                item.ShortageQty = 0;
+                item.DefectLineReason = null;
+                item.ShortageLineReason = null;
+            }
+            t.ShortageReport = null;
+            return;
+        }
+
+        if (lines.Count != t.Items.Count)
+            throw new InvalidOperationException("Phải gửi đủ mọi dòng kiểm nhận (Đạt / Lỗi / Thiếu).");
+
+        var byId = new Dictionary<int, ApproveImportLineSettlementRequest>();
+        foreach (var line in lines)
+        {
+            if (!byId.TryAdd(line.LineId, line))
+                throw new InvalidOperationException("Dòng kiểm nhận bị trùng.");
+        }
+
+        decimal totalDefect = 0;
+        decimal totalShortage = 0;
+
+        foreach (var item in t.Items)
+        {
+            if (!byId.TryGetValue(item.Id, out var settle))
+                throw new InvalidOperationException($"Thiếu kiểm nhận cho dòng '{item.MaterialCode}'.");
+
+            var planned = item.PlannedQuantity > 0 ? item.PlannedQuantity : item.Quantity;
+            if (settle.AcceptedQty < 0 || settle.DefectQty < 0 || settle.ShortageQty < 0)
+                throw new InvalidOperationException($"'{item.MaterialCode}': số lượng không được âm.");
+            if (Math.Abs(settle.AcceptedQty + settle.DefectQty + settle.ShortageQty - planned) > 0.0001m)
+                throw new InvalidOperationException(
+                    $"'{item.MaterialCode}': Đạt + Lỗi + Thiếu phải bằng SL dự kiến ({planned:0.##}).");
+
+            if (settle.DefectQty > 0 && string.IsNullOrWhiteSpace(settle.DefectLineReason))
+                throw new InvalidOperationException($"'{item.MaterialCode}': hàng lỗi cần lý do trên dòng.");
+            if (settle.ShortageQty > 0 && string.IsNullOrWhiteSpace(settle.ShortageLineReason))
+                throw new InvalidOperationException($"'{item.MaterialCode}': hàng thiếu cần lý do trên dòng.");
+
+            item.AcceptedQty = settle.AcceptedQty;
+            item.DefectQty = settle.DefectQty;
+            item.ShortageQty = settle.ShortageQty;
+            item.DefectLineReason = string.IsNullOrWhiteSpace(settle.DefectLineReason)
+                ? null
+                : settle.DefectLineReason.Trim();
+            item.ShortageLineReason = string.IsNullOrWhiteSpace(settle.ShortageLineReason)
+                ? null
+                : settle.ShortageLineReason.Trim();
+
+            totalDefect += settle.DefectQty;
+            totalShortage += settle.ShortageQty;
+        }
+
+        if (totalShortage > 0)
+        {
+            if (string.IsNullOrWhiteSpace(request?.ShortageReport))
+                throw new InvalidOperationException("Có hàng thiếu — bắt buộc nhập báo cáo thiếu hàng.");
+            t.ShortageReport = request!.ShortageReport.Trim();
+        }
+        else
+        {
+            t.ShortageReport = string.IsNullOrWhiteSpace(request?.ShortageReport)
+                ? null
+                : request.ShortageReport.Trim();
+        }
+
+        if (totalDefect > 0)
+        {
+            var hasDedicated = t.Attachments.Any(a =>
+                string.Equals(a.Kind, "defect_photo", StringComparison.OrdinalIgnoreCase));
+            if (!hasDedicated)
+                throw new InvalidOperationException(
+                    "Có hàng lỗi — cần ít nhất 1 ảnh hàng lỗi (mục Ảnh hàng lỗi).");
+            if (string.IsNullOrWhiteSpace(t.ReferenceCode))
+                throw new InvalidOperationException("Hàng lỗi chỉ hỗ trợ phiếu nhập gắn PO.");
+        }
     }
 
     public async Task<ImportDto?> UpdateReceiptEvaluationAsync(
@@ -415,15 +540,23 @@ public sealed class ImportApplicationService(
                 "Thiếu file chứng từ. Cần ít nhất 1 file chứng từ (PDF/Word/Excel).");
     }
 
-    private static string NormalizeAttachmentKind(string? kind) =>
-        string.Equals(kind?.Trim(), "photo", StringComparison.OrdinalIgnoreCase) ? "photo" : "document";
+    private static string NormalizeAttachmentKind(string? kind)
+    {
+        var k = kind?.Trim().ToLowerInvariant();
+        return k switch
+        {
+            "photo" => "photo",
+            "defect_photo" => "defect_photo",
+            _ => "document",
+        };
+    }
 
     private static void EnsureAllowedExtension(string ext, string kind)
     {
-        if (kind == "photo")
+        if (kind is "photo" or "defect_photo")
         {
             if (ext is not (".jpg" or ".jpeg" or ".png" or ".webp"))
-                throw new InvalidOperationException("Ảnh nhận hàng chỉ chấp nhận JPG, PNG, WEBP.");
+                throw new InvalidOperationException("Ảnh chỉ chấp nhận JPG, PNG, WEBP.");
             return;
         }
 
@@ -466,6 +599,7 @@ public sealed class ImportApplicationService(
             {
                 MaterialCode = string.IsNullOrEmpty(i.Sku) ? i.ProductId : i.Sku,
                 Quantity = i.Qty,
+                PlannedQuantity = i.Qty,
                 UnitPrice = i.UnitPrice,
                 SupplierId = i.SupplierId,
                 SupplierName = ResolveLineSupplierName(i, dto.Supplier),

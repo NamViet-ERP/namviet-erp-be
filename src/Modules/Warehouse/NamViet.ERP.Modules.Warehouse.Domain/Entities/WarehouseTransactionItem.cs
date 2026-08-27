@@ -11,6 +11,16 @@ public class WarehouseTransactionItem
     /// <summary>Đơn vị tại thời điểm lập phiếu.</summary>
     public string? UnitSnapshot { get; set; }
     public decimal Quantity { get; set; }
+    /// <summary>SL dự kiến khi chốt phiếu. Sau duyệt, <see cref="Quantity"/> = SL đạt vào tồn.</summary>
+    public decimal PlannedQuantity { get; set; }
+    /// <summary>SL đạt vào tồn (set khi duyệt thực tế).</summary>
+    public decimal? AcceptedQty { get; set; }
+    /// <summary>SL hàng lỗi → phiếu HL gắn NK.</summary>
+    public decimal? DefectQty { get; set; }
+    /// <summary>SL thiếu — còn trên PO, có báo cáo thiếu.</summary>
+    public decimal? ShortageQty { get; set; }
+    public string? DefectLineReason { get; set; }
+    public string? ShortageLineReason { get; set; }
     public decimal UnitPrice { get; set; }                      // Đơn giá tại thời điểm nhập
     public decimal TotalAmount => Quantity * UnitPrice;         // Thành tiền (tính toán)
     public string? ConstructionPhase { get; set; }              // Cấu phần thi công (Móng, Thân, Ống...)

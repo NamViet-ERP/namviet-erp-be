@@ -21,6 +21,7 @@ public interface IPurchasePlanService
         DateOnly? dateFrom,
         DateOnly? dateTo,
         string? kind = null,
+        bool orderableOnly = false,
         CancellationToken ct = default);
 
     Task<PurchasePlanDetailDto?> GetByCodeAsync(string code, CancellationToken ct = default);
@@ -59,6 +60,7 @@ public sealed class PurchasePlanService(
         DateOnly? dateFrom,
         DateOnly? dateTo,
         string? kind = null,
+        bool orderableOnly = false,
         CancellationToken ct = default)
     {
         page = Math.Max(1, page);
@@ -101,6 +103,10 @@ public sealed class PurchasePlanService(
                 (p.Note != null && p.Note.Contains(s)) ||
                 (p.Project != null && p.Project.ProjectName.Contains(s)));
         }
+
+        // Chỉ phiếu còn ít nhất 1 dòng Quantity > OrderedQty (còn đặt được).
+        if (orderableOnly)
+            q = q.Where(p => p.Lines.Any(l => l.Quantity > l.OrderedQty));
 
         var total = await q.CountAsync(ct);
         var items = await q

@@ -292,13 +292,12 @@ public static class RolePermissionTemplates
         "wms.imports.update",
     ];
 
-    /** Trưởng cung ứng: quyền cung ứng + duyệt L1 + từ chối. */
+    /** Trưởng cung ứng: quyền cung ứng + duyệt L1 KHMH + từ chối. */
     private static readonly string[] ProcurementLeadPermissions =
     [
         ..ProcurementPermissions,
         "purchasing.plans.approve_l1",
         "purchasing.plans.reject",
-        "purchasing.estimates.approve_l1",
     ];
 
     /** Sếp: xem mua hàng + duyệt L2 + từ chối. */
@@ -333,6 +332,8 @@ public static class RolePermissionTemplates
                 ..ProjectProductionPermissions,
                 "purchasing.pricebook.view",
                 "purchasing.rfq.view",
+                "purchasing.estimates.view",
+                "purchasing.estimates.approve_l1",
             ],
             [ProductionRole] = ProjectProductionPermissions,
         };

@@ -11,6 +11,8 @@ public class PurchaseDefect : BaseEntity
     public string SourceType { get; set; } = PurchaseDefectSourceTypes.Po;
     /// <summary>Null khi SourceType = stock.</summary>
     public string? PoCode { get; set; }
+    /// <summary>Phiếu NK nguồn khi HL tạo lúc kiểm nhận nhập kho.</summary>
+    public string? ImportTicketCode { get; set; }
     public string PlanCode { get; set; } = string.Empty;
     public string ProjectCode { get; set; } = string.Empty;
     public string? SupplierName { get; set; }

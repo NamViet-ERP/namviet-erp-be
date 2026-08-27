@@ -26,8 +26,10 @@ public class PurchasePlansController(
         [FromQuery] DateOnly? dateFrom = null,
         [FromQuery] DateOnly? dateTo = null,
         [FromQuery] string? kind = null,
+        [FromQuery] bool orderableOnly = false,
         CancellationToken ct = default) =>
-        Ok(await plans.ListAsync(page, pageSize, code, projectCode, status, search, dateFrom, dateTo, kind, ct));
+        Ok(await plans.ListAsync(
+            page, pageSize, code, projectCode, status, search, dateFrom, dateTo, kind, orderableOnly, ct));
 
     [HttpGet("variance")]
     [RequirePermission("purchasing.plans.view")]

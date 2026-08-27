@@ -18,6 +18,13 @@ public interface IPurchaseDefectApplicationService
     Task<PurchaseDefectDto> CreateFromPoAsync(string poCode, CreateDefectFromPoRequest request, CancellationToken ct = default);
     Task<StockDefectPreviewDto> PreviewFromStockAsync(string projectCode, CancellationToken ct = default);
     Task<PurchaseDefectDto> CreateFromStockAsync(CreateDefectFromStockRequest request, CancellationToken ct = default);
+    /// <summary>
+    /// Tạo + duyệt HL từ kiểm nhận NK (đã set DefectQty trên dòng). Trả mã HL hoặc null nếu không có lỗi.
+    /// </summary>
+    Task<string?> CreateAndApproveFromImportAsync(
+        WarehouseTransaction import,
+        string? defectReason,
+        CancellationToken ct = default);
     Task<PurchaseDefectDto?> SubmitAsync(string id, CancellationToken ct = default);
     Task<PurchaseDefectDto?> ApproveAsync(string id, CancellationToken ct = default);
     Task<PurchaseDefectDto?> UpdateReasonAsync(string id, string? reason, CancellationToken ct = default);
@@ -168,7 +175,7 @@ public sealed class PurchaseDefectApplicationService(
                 throw new PurchasingConflictException($"SL lỗi không hợp lệ cho '{line.Name}'.");
             if (sel.Qty > available)
                 throw new PurchasingConflictException(
-                    $"'{line.Name}': chỉ còn {available:0.##} (đã trừ NK/HL chờ duyệt), không ghi lỗi {sel.Qty:0.##}.");
+                    $"'{line.Name}': trên PO chỉ còn {available:0.##} để ghi lỗi (đã trừ NK/HL đang chờ). Không thể ghi {sel.Qty:0.##}.");
 
             defectItems.Add(new PurchaseDefectItem
             {
@@ -335,6 +342,124 @@ public sealed class PurchaseDefectApplicationService(
         db.PurchaseDefects.Add(defect);
         await db.SaveChangesAsync(ct);
         return ToDto(await FindAsync(ticket, ct) ?? defect);
+    }
+
+    public async Task<string?> CreateAndApproveFromImportAsync(
+        WarehouseTransaction import,
+        string? defectReason,
+        CancellationToken ct = default)
+    {
+        var defectLines = import.Items
+            .Where(i => (i.DefectQty ?? 0) > 0)
+            .ToList();
+        if (defectLines.Count == 0)
+            return null;
+
+        var poCode = import.ReferenceCode?.Trim();
+        if (string.IsNullOrWhiteSpace(poCode))
+            throw new PurchasingConflictException("Phiếu NK không gắn PO — không tạo HL từ kiểm nhận.");
+
+        var order = await LoadPlacedOrderAsync(poCode, ct);
+        // NK đã Approved trước khi gọi — không còn trong pending NK.
+        var pendingNk = await GetPendingNkQtyByPoItemAsync(order.Code, null, ct);
+        var pendingHl = await GetPendingDefectQtyByPoItemAsync(order.Code, null, ct);
+
+        var defectItems = new List<PurchaseDefectItem>();
+        foreach (var line in defectLines)
+        {
+            var poItemId = TryParsePoItemId(line.Notes);
+            if (poItemId is null)
+                throw new PurchasingConflictException(
+                    $"Dòng '{line.MaterialCode}' thiếu liên kết PO (poItem) — không ghi hàng lỗi.");
+
+            var poItem = order.Items.FirstOrDefault(i => i.Id == poItemId.Value)
+                ?? throw new PurchasingConflictException($"Dòng PO #{poItemId} không còn trên {poCode}.");
+
+            pendingNk.TryGetValue(poItem.Id, out var nkQty);
+            pendingHl.TryGetValue(poItem.Id, out var hlQty);
+            var available = Math.Max(0, poItem.Ordered - poItem.Received - poItem.Defected - nkQty - hlQty);
+            var qty = line.DefectQty!.Value;
+            if (qty > available)
+                throw new PurchasingConflictException(
+                    $"'{poItem.Name}': chỉ còn {available:0.##} để ghi lỗi, không ghi {qty:0.##}.");
+
+            if (string.IsNullOrWhiteSpace(line.DefectLineReason))
+                throw new PurchasingConflictException($"'{poItem.Name}': cần lý do hàng lỗi.");
+
+            defectItems.Add(new PurchaseDefectItem
+            {
+                PoItemId = poItem.Id,
+                MaterialCode = poItem.MaterialCode ?? poItem.Sku ?? line.MaterialCode,
+                Name = poItem.Name,
+                Unit = poItem.Unit ?? "",
+                Quantity = qty,
+                LineReason = line.DefectLineReason.Trim(),
+            });
+        }
+
+        var photos = import.Attachments
+            .Where(a => string.Equals(a.Kind, "defect_photo", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        if (photos.Count == 0)
+            throw new PurchasingConflictException("Cần ảnh hàng lỗi trước khi tạo HL.");
+
+        var ticket = await NextTicketCodeAsync(ct);
+        var defect = new PurchaseDefect
+        {
+            TicketCode = ticket,
+            SourceType = PurchaseDefectSourceTypes.Po,
+            PoCode = order.Code,
+            ImportTicketCode = import.TicketCode,
+            PlanCode = order.PlanCode,
+            ProjectCode = order.ProjectCode ?? import.BeneficiaryProjectCode ?? "",
+            SupplierName = order.SupplierNameSnapshot ?? order.Supplier?.SupplierName ?? import.SupplierName,
+            Status = PurchaseDefectStatuses.Pending,
+            Reason = string.IsNullOrWhiteSpace(defectReason)
+                ? $"Tạo từ kiểm nhận {import.TicketCode}"
+                : defectReason.Trim(),
+            Note = string.IsNullOrWhiteSpace(import.ShortageReport) ? null : $"Thiếu hàng (NK): {import.ShortageReport}",
+            CreatedById = currentUser.Id,
+            CreatedByName = currentUser.Name ?? "System",
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow,
+            Items = defectItems,
+        };
+
+        foreach (var item in defectItems)
+            item.TicketCode = ticket;
+
+        foreach (var photo in photos)
+        {
+            defect.Attachments.Add(new PurchaseDefectAttachment
+            {
+                TicketCode = ticket,
+                Kind = "photo",
+                StorageKey = photo.StorageKey,
+                FileName = photo.FileName,
+                UploadedAt = photo.UploadedAt,
+            });
+        }
+
+        db.PurchaseDefects.Add(defect);
+        await db.SaveChangesAsync(ct);
+
+        await ApplyPoDefectApprovalAsync(defect, ct);
+        defect.Status = PurchaseDefectStatuses.Approved;
+        defect.ApprovedById = currentUser.Id;
+        defect.ApprovedByName = currentUser.Name ?? "System";
+        defect.ApprovedAt = DateTime.UtcNow;
+        defect.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
+
+        return ticket;
+    }
+
+    private static int? TryParsePoItemId(string? notes)
+    {
+        if (string.IsNullOrWhiteSpace(notes)) return null;
+        const string prefix = PurchaseOrderReceiptService.PoItemNotePrefix;
+        if (!notes.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) return null;
+        return int.TryParse(notes[prefix.Length..].Trim(), out var id) ? id : null;
     }
 
     public async Task<PurchaseDefectDto?> SubmitAsync(string id, CancellationToken ct = default)
@@ -680,8 +805,8 @@ public sealed class PurchaseDefectApplicationService(
             var available = Math.Max(0, poItem.Ordered - poItem.Received - poItem.Defected - nkQty - hlQty);
             if (item.Quantity > available)
                 throw new PurchasingConflictException(
-                    $"'{poItem.Name}': chỉ còn {available:0.##} (đã trừ NK/HL chờ duyệt), phiếu yêu cầu {item.Quantity:0.##}.");
-        }
+                    $"'{poItem.Name}': trên PO chỉ còn {available:0.##} để ghi lỗi (đã trừ NK/HL đang chờ). Phiếu đang ghi {item.Quantity:0.##}.");
+            }
     }
 
     private async Task<PurchaseOrder> LoadPlacedOrderAsync(string poCode, CancellationToken ct)
@@ -830,7 +955,8 @@ public sealed class PurchaseDefectApplicationService(
         Items: d.Items.OrderBy(i => i.Id).Select(i => new PurchaseDefectItemDto(
             i.Id, i.PoItemId, i.MaterialCode, i.Name, i.Unit, i.Quantity, i.LineReason)).ToList(),
         Attachments: d.Attachments.OrderBy(a => a.UploadedAt).Select(a => new PurchaseDefectAttachmentDto(
-            a.Id, a.Kind, a.FileName, a.StorageKey, a.UploadedAt)).ToList());
+            a.Id, a.Kind, a.FileName, a.StorageKey, a.UploadedAt)).ToList(),
+        ImportTicketCode: d.ImportTicketCode);
 
     private static string ResolveDeliveryStatus(IEnumerable<PurchaseOrderItem> items)
     {

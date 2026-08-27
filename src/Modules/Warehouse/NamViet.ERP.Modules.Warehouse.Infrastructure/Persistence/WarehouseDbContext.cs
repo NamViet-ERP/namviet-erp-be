@@ -379,6 +379,8 @@ public class WarehouseDbContext(DbContextOptions<WarehouseDbContext> options) : 
             e.Property(t => t.BeneficiaryProjectCode).HasMaxLength(50);
             e.Property(t => t.SupplierName).HasMaxLength(255);
             e.Property(t => t.ReceiptEvaluation).HasMaxLength(2000);
+            e.Property(t => t.ShortageReport).HasMaxLength(2000);
+            e.Property(t => t.LinkedDefectTicketCode).HasMaxLength(50);
             e.Property(t => t.LinkedTicketCode).HasMaxLength(50);
             e.HasOne(t => t.LinkedTransaction).WithMany()
              .HasForeignKey(t => t.LinkedTicketCode)
@@ -399,6 +401,12 @@ public class WarehouseDbContext(DbContextOptions<WarehouseDbContext> options) : 
             e.Property(i => i.MaterialNameSnapshot).HasMaxLength(255);
             e.Property(i => i.UnitSnapshot).HasMaxLength(50);
             e.Property(i => i.Quantity).HasColumnType("numeric(18,4)").IsRequired();
+            e.Property(i => i.PlannedQuantity).HasColumnType("numeric(18,4)").IsRequired();
+            e.Property(i => i.AcceptedQty).HasColumnType("numeric(18,4)");
+            e.Property(i => i.DefectQty).HasColumnType("numeric(18,4)");
+            e.Property(i => i.ShortageQty).HasColumnType("numeric(18,4)");
+            e.Property(i => i.DefectLineReason).HasMaxLength(1000);
+            e.Property(i => i.ShortageLineReason).HasMaxLength(1000);
             e.Property(i => i.UnitPrice).HasColumnType("numeric(18,2)").IsRequired();
             e.Property(i => i.ConstructionPhase).HasMaxLength(255);
             e.Property(i => i.SupplierName).HasMaxLength(255);
@@ -897,6 +905,7 @@ public class WarehouseDbContext(DbContextOptions<WarehouseDbContext> options) : 
             e.Property(d => d.TicketCode).HasMaxLength(50);
             e.Property(d => d.SourceType).HasMaxLength(20).IsRequired();
             e.Property(d => d.PoCode).HasMaxLength(50);
+            e.Property(d => d.ImportTicketCode).HasMaxLength(50);
             e.Property(d => d.PlanCode).HasMaxLength(50);
             e.Property(d => d.ProjectCode).HasMaxLength(50);
             e.Property(d => d.SupplierName).HasMaxLength(255);
@@ -910,6 +919,7 @@ public class WarehouseDbContext(DbContextOptions<WarehouseDbContext> options) : 
             e.Property(d => d.ApprovedByName).HasMaxLength(255);
             e.Property(d => d.ProcessedByName).HasMaxLength(255);
             e.HasIndex(d => d.PoCode);
+            e.HasIndex(d => d.ImportTicketCode);
             e.HasIndex(d => d.Status);
             e.HasIndex(d => d.SourceType);
             e.HasOne(d => d.PurchaseOrder).WithMany()

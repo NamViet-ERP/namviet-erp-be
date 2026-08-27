@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using NamViet.ERP.Api.Application.Dtos.Wms;
+using NamViet.ERP.Modules.Warehouse.Domain.Entities;
 using NamViet.ERP.Modules.Warehouse.Domain.Enums;
 using NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence;
 
@@ -20,12 +21,14 @@ public sealed class WmsNotificationService(WarehouseDbContext db) : IWmsNotifica
         var canExport = permissions.Contains("wms.exports.view:all");
         var canTransfer = permissions.Contains("wms.transfers.view:all");
         var canStocktake = permissions.Contains("wms.stocktakes.view:all");
+        var canApproveEstimate = permissions.Contains("purchasing.estimates.approve_l1");
 
         var items = new List<WmsNotificationItemDto>();
         var importCount = 0;
         var exportCount = 0;
         var transferCount = 0;
         var stocktakeCount = 0;
+        var estimateCount = 0;
 
         if (canImport)
         {
@@ -152,13 +155,45 @@ public sealed class WmsNotificationService(WarehouseDbContext db) : IWmsNotifica
                 r.CreatedByName)));
         }
 
+        if (canApproveEstimate)
+        {
+            estimateCount = await db.PurchaseEstimates.CountAsync(
+                e => e.Status == PurchaseEstimateStatuses.PendingApproval, ct);
+
+            var rows = await db.PurchaseEstimates
+                .AsNoTracking()
+                .Where(e => e.Status == PurchaseEstimateStatuses.PendingApproval)
+                .OrderByDescending(e => e.UpdatedAt)
+                .Take(15)
+                .Select(e => new
+                {
+                    e.Id,
+                    e.Code,
+                    e.ProjectCode,
+                    e.Title,
+                    e.UpdatedByName,
+                    e.UpdatedAt,
+                })
+                .ToListAsync(ct);
+
+            items.AddRange(rows.Select(r => ToItem(
+                $"estimate:{r.Id:N}",
+                "estimate",
+                r.Code,
+                "Dự toán chờ duyệt",
+                $"/purchasing/estimate-procurement/{r.Id}",
+                r.UpdatedAt,
+                string.IsNullOrWhiteSpace(r.Title) ? r.ProjectCode : $"{r.ProjectCode} · {r.Title}",
+                r.UpdatedByName)));
+        }
+
         var ordered = items
             .OrderByDescending(i => i.TimeLabel)
             .Take(30)
             .ToList();
 
         return new WmsPendingNotificationsDto(
-            importCount + exportCount + transferCount + stocktakeCount,
+            importCount + exportCount + transferCount + stocktakeCount + estimateCount,
             importCount,
             exportCount,
             transferCount,
