@@ -3,6 +3,7 @@ using NamViet.ERP.Api.Application.Dtos.Purchasing;
 using NamViet.ERP.Modules.Warehouse.Domain.Entities;
 using NamViet.ERP.Modules.Warehouse.Domain.SupplierEvaluation;
 using NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence;
+using NamViet.ERP.SharedKernel.Common;
 
 namespace NamViet.ERP.Api.Application.Services.Purchasing;
 
@@ -21,8 +22,7 @@ public sealed class SupplierContactService(WarehouseDbContext db) : ISupplierCon
     public async Task<SupplierContactPagedResponse> ListAsync(
         int? supplierId, string? search, int page, int pageSize, CancellationToken ct = default)
     {
-        page = Math.Max(page, 1);
-        pageSize = Math.Clamp(pageSize, 1, 200);
+        (page, pageSize) = Paging.Normalize(page, pageSize);
 
         var query = db.SupplierContacts.AsNoTracking().Where(c => c.Supplier != null);
         if (supplierId is int sid)

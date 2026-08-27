@@ -13,5 +13,3 @@ public class PagedResult<T>
     public static PagedResult<T> Create(IReadOnlyList<T> items, int totalCount, int page, int pageSize)
         => new() { Items = items, TotalCount = totalCount, Page = page, PageSize = pageSize };
 }
-
-public record PagedQuery(int Page = 1, int PageSize = 20, string? Search = null);

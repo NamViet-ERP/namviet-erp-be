@@ -4,6 +4,7 @@ using NamViet.ERP.Modules.Identity.Infrastructure.Persistence;
 using NamViet.ERP.Modules.Warehouse.Domain.Entities;
 using NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence;
 using NamViet.ERP.SharedKernel.Interfaces;
+using NamViet.ERP.SharedKernel.Common;
 
 namespace NamViet.ERP.Api.Application.Services.Purchasing;
 
@@ -58,8 +59,7 @@ public sealed partial class PurchaseEstimateService(
     public async Task<PurchaseEstimatePagedResponse> ListAsync(
         int page, int pageSize, string? projectCode, string? search, CancellationToken ct = default)
     {
-        page = Math.Max(1, page);
-        pageSize = Math.Clamp(pageSize, 1, 100);
+        (page, pageSize) = Paging.Normalize(page, pageSize, 100);
 
         var query = db.PurchaseEstimates.AsNoTracking().AsQueryable();
         if (!string.IsNullOrWhiteSpace(projectCode))

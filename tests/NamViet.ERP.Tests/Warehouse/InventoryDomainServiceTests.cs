@@ -4,6 +4,7 @@ using NamViet.ERP.Modules.Warehouse.Domain.Entities;
 using NamViet.ERP.Modules.Warehouse.Domain.Enums;
 using NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence;
 using NamViet.ERP.Modules.Warehouse.Infrastructure.Services;
+using NamViet.ERP.SharedKernel.Common;
 
 namespace NamViet.ERP.Tests.Warehouse;
 
@@ -208,7 +209,7 @@ public class InventoryDomainServiceTests : IDisposable
         await _service.CreateProjectExportPlannedAsync(ExportTx("XK-OK", 40m));
         await _db.SaveChangesAsync();
 
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(
+        var ex = await Assert.ThrowsAsync<DomainRuleException>(
             () => _service.CreateProjectExportPlannedAsync(ExportTx("XK-OVER", 1m)));
         Assert.Contains("khả dụng", ex.Message, StringComparison.OrdinalIgnoreCase);
     }
@@ -248,7 +249,7 @@ public class InventoryDomainServiceTests : IDisposable
         SeedProjectOnHand(52m);
         SeedStockDefect("HL-PEND-001", 12m, PurchaseDefectStatuses.Pending);
 
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(
+        var ex = await Assert.ThrowsAsync<DomainRuleException>(
             () => _service.ApplyApprovedExportAsync(ExportTx("XK-STEAL", 41m)));
         Assert.Contains("khả dụng", ex.Message, StringComparison.OrdinalIgnoreCase);
     }

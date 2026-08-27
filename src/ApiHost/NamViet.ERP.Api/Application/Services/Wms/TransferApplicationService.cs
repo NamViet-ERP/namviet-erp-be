@@ -7,6 +7,7 @@ using NamViet.ERP.Modules.Warehouse.Domain.Services;
 using NamViet.ERP.Modules.Warehouse.Infrastructure.Helpers;
 using NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence;
 using NamViet.ERP.SharedKernel.Interfaces;
+using NamViet.ERP.SharedKernel.Common;
 
 namespace NamViet.ERP.Api.Application.Services.Wms;
 
@@ -51,7 +52,7 @@ public sealed class TransferApplicationService(
     {
         var validationError = await ValidateTransferRequestAsync(dto, ct);
         if (validationError is not null)
-            throw new InvalidOperationException(validationError);
+            throw new DomainRuleException(validationError);
 
         await stocktakeFreeze.EnsureProjectsNotFrozenAsync([dto.Project, ResolveBeneficiaryProjectCode(dto)], ct);
 
@@ -81,14 +82,14 @@ public sealed class TransferApplicationService(
     {
         var validationError = await ValidateTransferRequestAsync(dto, ct);
         if (validationError is not null)
-            throw new InvalidOperationException(validationError);
+            throw new DomainRuleException(validationError);
 
         await stocktakeFreeze.EnsureProjectsNotFrozenAsync([dto.Project, ResolveBeneficiaryProjectCode(dto)], ct);
 
         var t = await FindAsync(id, ct);
         if (t is null) return null;
         if (t.ApprovalStatus == ApprovalStatus.Approved)
-            throw new InvalidOperationException("Phiếu đã duyệt, không thể chỉnh sửa.");
+            throw new DomainRuleException("Phiếu đã duyệt, không thể chỉnh sửa.");
 
         await using var tx = await db.Database.BeginTransactionAsync(ct);
 
@@ -102,7 +103,7 @@ public sealed class TransferApplicationService(
         t.Notes = dto.Note;
         var nextStatus = WmsMapper.FromClientApprovalStatus(dto.Status);
         if (nextStatus == ApprovalStatus.Approved)
-            throw new InvalidOperationException("Không thể duyệt phiếu qua cập nhật. Hãy dùng thao tác Duyệt kho.");
+            throw new DomainRuleException("Không thể duyệt phiếu qua cập nhật. Hãy dùng thao tác Duyệt kho.");
         t.ApprovalStatus = nextStatus;
         t.UpdatedAt = DateTime.UtcNow;
 
@@ -124,9 +125,9 @@ public sealed class TransferApplicationService(
         var t = await FindAsync(id, ct);
         if (t is null) return null;
         if (t.ApprovalStatus is ApprovalStatus.Approved or ApprovalStatus.Rejected)
-            throw new InvalidOperationException($"Phiếu đã ở trạng thái '{t.ApprovalStatus}', không thể duyệt lại.");
+            throw new DomainRuleException($"Phiếu đã ở trạng thái '{t.ApprovalStatus}', không thể duyệt lại.");
         if (t.ApprovalStatus != ApprovalStatus.Pending)
-            throw new InvalidOperationException("Chỉ phiếu đã chốt dự kiến (Pending) mới được duyệt kho.");
+            throw new DomainRuleException("Chỉ phiếu đã chốt dự kiến (Pending) mới được duyệt kho.");
 
         await stocktakeFreeze.EnsureProjectsNotFrozenAsync([t.ProjectCode, t.BeneficiaryProjectCode], ct);
 
@@ -149,7 +150,7 @@ public sealed class TransferApplicationService(
         var t = await FindAsync(id, ct);
         if (t is null) return null;
         if (t.ApprovalStatus != ApprovalStatus.Draft)
-            throw new InvalidOperationException("Chỉ phiếu nháp mới được PM chốt.");
+            throw new DomainRuleException("Chỉ phiếu nháp mới được PM chốt.");
 
         await stocktakeFreeze.EnsureProjectsNotFrozenAsync([t.ProjectCode, t.BeneficiaryProjectCode], ct);
 
@@ -165,7 +166,7 @@ public sealed class TransferApplicationService(
         var t = await FindAsync(id, ct);
         if (t is null) return false;
         if (t.ApprovalStatus == ApprovalStatus.Approved)
-            throw new InvalidOperationException("Phiếu đã duyệt, không thể xóa.");
+            throw new DomainRuleException("Phiếu đã duyệt, không thể xóa.");
 
         await using var tx = await db.Database.BeginTransactionAsync(ct);
         if (IsProjectOutbound(t) && HasPlannedInventory(t.ApprovalStatus))

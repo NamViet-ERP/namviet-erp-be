@@ -12,6 +12,7 @@ using NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence;
 using NamViet.ERP.SharedKernel.Authorization;
 using NamViet.ERP.SharedKernel.Interfaces;
 using NamViet.ERP.Api.Services.Storage;
+using NamViet.ERP.SharedKernel.Common;
 
 namespace NamViet.ERP.Api.Application.Services.Wms;
 
@@ -92,7 +93,7 @@ public sealed class ImportApplicationService(
             : dto.VoucherCode;
 
         if (dto.Items.Any(i => i.UnitPrice <= 0))
-            throw new InvalidOperationException("Đơn giá phải lớn hơn 0.");
+            throw new DomainRuleException("Đơn giá phải lớn hơn 0.");
 
         var approvalStatus = WmsMapper.FromClientApprovalStatus(dto.Status);
         var transaction = BuildTransaction(dto, ticketCode, approvalStatus);
@@ -130,7 +131,7 @@ public sealed class ImportApplicationService(
         var t = await FindImportAsync(id, ct);
         if (t is null) return null;
         if (t.ApprovalStatus == ApprovalStatus.Approved)
-            throw new InvalidOperationException("Phiếu đã duyệt, không thể chỉnh sửa.");
+            throw new DomainRuleException("Phiếu đã duyệt, không thể chỉnh sửa.");
 
         await stocktakeFreeze.EnsureProjectsNotFrozenAsync([dto.Project], ct);
 
@@ -154,7 +155,7 @@ public sealed class ImportApplicationService(
         t.Notes = dto.Note;
         var nextStatus = WmsMapper.FromClientApprovalStatus(dto.Status);
         if (nextStatus == ApprovalStatus.Approved)
-            throw new InvalidOperationException("Không thể duyệt phiếu qua cập nhật. Hãy dùng thao tác Duyệt kho.");
+            throw new DomainRuleException("Không thể duyệt phiếu qua cập nhật. Hãy dùng thao tác Duyệt kho.");
         t.ApprovalStatus = nextStatus;
         t.UpdatedAt = DateTime.UtcNow;
 
@@ -166,7 +167,7 @@ public sealed class ImportApplicationService(
             : null;
 
         if (!preservePrices && dto.Items.Any(i => i.UnitPrice <= 0))
-            throw new InvalidOperationException("Đơn giá phải lớn hơn 0.");
+            throw new DomainRuleException("Đơn giá phải lớn hơn 0.");
 
         db.WarehouseTransactionItems.RemoveRange(t.Items);
         t.Items = dto.Items.Select(i =>
@@ -181,7 +182,7 @@ public sealed class ImportApplicationService(
                 unitPrice = kept;
             }
             if (unitPrice <= 0)
-                throw new InvalidOperationException(
+                throw new DomainRuleException(
                     $"Dòng {materialCode}: thiếu đơn giá đã lưu — liên hệ cung ứng cập nhật phiếu.");
             return new WarehouseTransactionItem
             {
@@ -215,12 +216,12 @@ public sealed class ImportApplicationService(
         var t = await FindImportAsync(id, ct);
         if (t is null) return null;
         if (t.ApprovalStatus is ApprovalStatus.Approved or ApprovalStatus.Rejected)
-            throw new InvalidOperationException(
+            throw new DomainRuleException(
                 t.ApprovalStatus == ApprovalStatus.Approved
                     ? "Phiếu đã duyệt, không thể duyệt lại."
                     : "Phiếu đã từ chối, không thể duyệt lại.");
         if (t.ApprovalStatus != ApprovalStatus.Pending)
-            throw new InvalidOperationException("Chỉ phiếu đã chốt dự kiến (Pending) mới được duyệt kho.");
+            throw new DomainRuleException("Chỉ phiếu đã chốt dự kiến (Pending) mới được duyệt kho.");
 
         await stocktakeFreeze.EnsureProjectsNotFrozenAsync([t.BeneficiaryProjectCode], ct);
         EnsureApprovalEvidence(t);
@@ -296,13 +297,13 @@ public sealed class ImportApplicationService(
         }
 
         if (lines.Count != t.Items.Count)
-            throw new InvalidOperationException("Phải gửi đủ mọi dòng kiểm nhận (Đạt / Lỗi / Thiếu).");
+            throw new DomainRuleException("Phải gửi đủ mọi dòng kiểm nhận (Đạt / Lỗi / Thiếu).");
 
         var byId = new Dictionary<int, ApproveImportLineSettlementRequest>();
         foreach (var line in lines)
         {
             if (!byId.TryAdd(line.LineId, line))
-                throw new InvalidOperationException("Dòng kiểm nhận bị trùng.");
+                throw new DomainRuleException("Dòng kiểm nhận bị trùng.");
         }
 
         decimal totalDefect = 0;
@@ -311,19 +312,19 @@ public sealed class ImportApplicationService(
         foreach (var item in t.Items)
         {
             if (!byId.TryGetValue(item.Id, out var settle))
-                throw new InvalidOperationException($"Thiếu kiểm nhận cho dòng '{item.MaterialCode}'.");
+                throw new DomainRuleException($"Thiếu kiểm nhận cho dòng '{item.MaterialCode}'.");
 
             var planned = item.PlannedQuantity > 0 ? item.PlannedQuantity : item.Quantity;
             if (settle.AcceptedQty < 0 || settle.DefectQty < 0 || settle.ShortageQty < 0)
-                throw new InvalidOperationException($"'{item.MaterialCode}': số lượng không được âm.");
+                throw new DomainRuleException($"'{item.MaterialCode}': số lượng không được âm.");
             if (Math.Abs(settle.AcceptedQty + settle.DefectQty + settle.ShortageQty - planned) > 0.0001m)
-                throw new InvalidOperationException(
+                throw new DomainRuleException(
                     $"'{item.MaterialCode}': Đạt + Lỗi + Thiếu phải bằng SL dự kiến ({planned:0.##}).");
 
             if (settle.DefectQty > 0 && string.IsNullOrWhiteSpace(settle.DefectLineReason))
-                throw new InvalidOperationException($"'{item.MaterialCode}': hàng lỗi cần lý do trên dòng.");
+                throw new DomainRuleException($"'{item.MaterialCode}': hàng lỗi cần lý do trên dòng.");
             if (settle.ShortageQty > 0 && string.IsNullOrWhiteSpace(settle.ShortageLineReason))
-                throw new InvalidOperationException($"'{item.MaterialCode}': hàng thiếu cần lý do trên dòng.");
+                throw new DomainRuleException($"'{item.MaterialCode}': hàng thiếu cần lý do trên dòng.");
 
             item.AcceptedQty = settle.AcceptedQty;
             item.DefectQty = settle.DefectQty;
@@ -342,7 +343,7 @@ public sealed class ImportApplicationService(
         if (totalShortage > 0)
         {
             if (string.IsNullOrWhiteSpace(request?.ShortageReport))
-                throw new InvalidOperationException("Có hàng thiếu — bắt buộc nhập báo cáo thiếu hàng.");
+                throw new DomainRuleException("Có hàng thiếu — bắt buộc nhập báo cáo thiếu hàng.");
             t.ShortageReport = request!.ShortageReport.Trim();
         }
         else
@@ -357,10 +358,10 @@ public sealed class ImportApplicationService(
             var hasDedicated = t.Attachments.Any(a =>
                 string.Equals(a.Kind, "defect_photo", StringComparison.OrdinalIgnoreCase));
             if (!hasDedicated)
-                throw new InvalidOperationException(
+                throw new DomainRuleException(
                     "Có hàng lỗi — cần ít nhất 1 ảnh hàng lỗi (mục Ảnh hàng lỗi).");
             if (string.IsNullOrWhiteSpace(t.ReferenceCode))
-                throw new InvalidOperationException("Hàng lỗi chỉ hỗ trợ phiếu nhập gắn PO.");
+                throw new DomainRuleException("Hàng lỗi chỉ hỗ trợ phiếu nhập gắn PO.");
         }
     }
 
@@ -372,7 +373,7 @@ public sealed class ImportApplicationService(
         var t = await FindImportAsync(id, ct);
         if (t is null) return null;
         if (t.ApprovalStatus == ApprovalStatus.Approved)
-            throw new InvalidOperationException("Phiếu đã duyệt, không thể cập nhật đánh giá.");
+            throw new DomainRuleException("Phiếu đã duyệt, không thể cập nhật đánh giá.");
         t.ReceiptEvaluation = string.IsNullOrWhiteSpace(evaluation) ? null : evaluation.Trim();
         t.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
@@ -390,7 +391,7 @@ public sealed class ImportApplicationService(
         var t = await FindImportAsync(id, ct);
         if (t is null) return null;
         if (t.ApprovalStatus == ApprovalStatus.Approved)
-            throw new InvalidOperationException("Phiếu đã duyệt, không thể thêm file.");
+            throw new DomainRuleException("Phiếu đã duyệt, không thể thêm file.");
 
         var normalizedKind = NormalizeAttachmentKind(kind);
         var safeFileName = Path.GetFileName(fileName).Trim();
@@ -445,7 +446,7 @@ public sealed class ImportApplicationService(
         var t = await FindImportAsync(id, ct);
         if (t is null) return false;
         if (t.ApprovalStatus == ApprovalStatus.Approved)
-            throw new InvalidOperationException("Phiếu đã duyệt, không thể xóa file.");
+            throw new DomainRuleException("Phiếu đã duyệt, không thể xóa file.");
         var attachment = t.Attachments.FirstOrDefault(a => a.Id == attachmentId);
         if (attachment is null) return false;
         db.WarehouseTransactionAttachments.Remove(attachment);
@@ -474,7 +475,7 @@ public sealed class ImportApplicationService(
         var t = await FindImportAsync(id, ct);
         if (t is null) return null;
         if (t.ApprovalStatus != ApprovalStatus.Draft)
-            throw new InvalidOperationException("Chỉ phiếu nháp mới được PM chốt.");
+            throw new DomainRuleException("Chỉ phiếu nháp mới được PM chốt.");
 
         await stocktakeFreeze.EnsureProjectsNotFrozenAsync([t.BeneficiaryProjectCode], ct);
         await poReceipt.EnsureImportLinesWithinPoAvailabilityAsync(t, ct);
@@ -499,7 +500,7 @@ public sealed class ImportApplicationService(
         var t = await FindImportAsync(id, ct);
         if (t is null) return false;
         if (t.ApprovalStatus != ApprovalStatus.Draft)
-            throw new InvalidOperationException(
+            throw new DomainRuleException(
                 t.ApprovalStatus == ApprovalStatus.Approved
                     ? "Phiếu đã duyệt, không thể xóa."
                     : "Chỉ phiếu nháp mới được xóa. Phiếu chờ duyệt không thể xóa.");
@@ -530,13 +531,13 @@ public sealed class ImportApplicationService(
         var hasDocument = t.Attachments.Any(a => string.Equals(a.Kind, "document", StringComparison.OrdinalIgnoreCase));
 
         if (!hasEvaluation)
-            throw new InvalidOperationException(
+            throw new DomainRuleException(
                 "Thiếu đánh giá nhận hàng. Nhập đánh giá rồi lưu (hoặc bấm Duyệt kho để tự lưu).");
         if (!hasPhoto)
-            throw new InvalidOperationException(
+            throw new DomainRuleException(
                 "Thiếu ảnh nhận hàng. Cần ít nhất 1 ảnh nhận hàng.");
         if (!hasDocument)
-            throw new InvalidOperationException(
+            throw new DomainRuleException(
                 "Thiếu file chứng từ. Cần ít nhất 1 file chứng từ (PDF/Word/Excel).");
     }
 
@@ -556,12 +557,12 @@ public sealed class ImportApplicationService(
         if (kind is "photo" or "defect_photo")
         {
             if (ext is not (".jpg" or ".jpeg" or ".png" or ".webp"))
-                throw new InvalidOperationException("Ảnh chỉ chấp nhận JPG, PNG, WEBP.");
+                throw new DomainRuleException("Ảnh chỉ chấp nhận JPG, PNG, WEBP.");
             return;
         }
 
         if (ext is not (".pdf" or ".doc" or ".docx" or ".xls" or ".xlsx" or ".jpg" or ".jpeg" or ".png" or ".webp"))
-            throw new InvalidOperationException("File chứng từ không hợp lệ.");
+            throw new DomainRuleException("File chứng từ không hợp lệ.");
     }
 
     private static bool HasPlannedInventory(ApprovalStatus status) =>

@@ -8,6 +8,7 @@ using NamViet.ERP.Api.Infrastructure.Authorization;
 using NamViet.ERP.Modules.Warehouse.Domain.Entities;
 using NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence;
 using NamViet.ERP.SharedKernel.Interfaces;
+using NamViet.ERP.SharedKernel.Common;
 
 namespace NamViet.ERP.Api.Controllers.Wms;
 
@@ -96,9 +97,9 @@ public class StocktakesController(
         var s = await FindAsync(id, ct);
         if (s is null) return NotFound();
         if (s.Status == "approved")
-            throw new InvalidOperationException("Phiếu kiểm kê đã duyệt, không thể chỉnh sửa.");
+            throw new DomainRuleException("Phiếu kiểm kê đã duyệt, không thể chỉnh sửa.");
         if (s.Status == "cancelled")
-            throw new InvalidOperationException("Phiếu kiểm kê đã hủy, không thể chỉnh sửa.");
+            throw new DomainRuleException("Phiếu kiểm kê đã hủy, không thể chỉnh sửa.");
 
         if (!string.IsNullOrWhiteSpace(dto.WarehouseId))
         {
@@ -157,7 +158,7 @@ public class StocktakesController(
         var s = await FindAsync(id, ct);
         if (s is null) return NotFound();
         if (s.Status == "approved")
-            throw new InvalidOperationException("Phiếu kiểm kê đã duyệt, không thể xóa.");
+            throw new DomainRuleException("Phiếu kiểm kê đã duyệt, không thể xóa.");
         s.DeletedAt = DateTime.UtcNow;
         s.IsFrozen = false;
         await db.SaveChangesAsync(ct);

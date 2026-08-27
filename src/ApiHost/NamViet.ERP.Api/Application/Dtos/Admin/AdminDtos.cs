@@ -20,16 +20,6 @@ public record AdminUserDto(
     bool CanProvision,
     string CreatedAt);
 
-public record AdminUserHrProfileDto(
-    string? Gender,
-    string? BirthDate,
-    string? PersonalPhone,
-    string? PersonalEmail,
-    string? HrStatus,
-    string? JoinDate);
-
-public record AdminUserDetailDto(AdminUserDto User, AdminUserHrProfileDto? HrProfile);
-
 public record UpdateAdminUserRoleRequest(string Role);
 
 public record ProvisionAccountRequest(string EmployeeId, string Role, string Password);

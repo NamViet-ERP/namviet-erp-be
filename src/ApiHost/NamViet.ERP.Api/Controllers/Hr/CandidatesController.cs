@@ -13,6 +13,7 @@ using NamViet.ERP.Api.Infrastructure.RateLimiting;
 using NamViet.ERP.Api.Services.Storage;
 using NamViet.ERP.Modules.Hr.Domain.Entities;
 using NamViet.ERP.Modules.Hr.Infrastructure.Persistence;
+using NamViet.ERP.SharedKernel.Common;
 
 namespace NamViet.ERP.Api.Controllers.Hr;
 
@@ -40,8 +41,7 @@ public class CandidatesController(
         [FromQuery] DateOnly? dateTo = null,
         CancellationToken ct = default)
     {
-        page = Math.Max(1, page);
-        pageSize = Math.Clamp(pageSize, 1, 100);
+        (page, pageSize) = Paging.Normalize(page, pageSize, 100);
 
         var baseQuery = db.Candidates
             .Include(c => c.Position)

@@ -3,7 +3,7 @@ using Microsoft.AspNetCore.Identity;
 using NamViet.ERP.Modules.Identity.Application.Commands;
 using NamViet.ERP.Modules.Identity.Application.DTOs;
 using NamViet.ERP.Modules.Identity.Domain.Entities;
-using NamViet.ERP.Modules.Identity.Infrastructure.Services;
+using NamViet.ERP.SharedKernel.Common;
 
 namespace NamViet.ERP.Modules.Identity.Infrastructure.Handlers;
 
@@ -15,7 +15,7 @@ public class RegisterHandler(
     public async Task<UserDto> Handle(RegisterCommand request, CancellationToken ct)
     {
         if (await userManager.FindByEmailAsync(request.Email) is not null)
-            throw new InvalidOperationException($"Email '{request.Email}' đã được sử dụng.");
+            throw new DomainRuleException($"Email '{request.Email}' đã được sử dụng.");
 
         var roleExists = await roleManager.RoleExistsAsync(request.Role);
         var role = roleExists ? request.Role : "Employee";
@@ -33,7 +33,7 @@ public class RegisterHandler(
         if (!result.Succeeded)
         {
             var errors = string.Join("; ", result.Errors.Select(e => e.Description));
-            throw new InvalidOperationException($"Tạo tài khoản thất bại: {errors}");
+            throw new DomainRuleException($"Tạo tài khoản thất bại: {errors}");
         }
 
         await userManager.AddToRoleAsync(user, role);

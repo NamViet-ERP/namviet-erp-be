@@ -5,6 +5,7 @@ using NamViet.ERP.Modules.Warehouse.Domain.Entities;
 using NamViet.ERP.Modules.Warehouse.Domain.Enums;
 using NamViet.ERP.Modules.Warehouse.Domain.Services;
 using NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence;
+using NamViet.ERP.SharedKernel.Common;
 
 namespace NamViet.ERP.Modules.Warehouse.Infrastructure.Services;
 
@@ -230,7 +231,7 @@ public class InventoryDomainService(WarehouseDbContext db) : IInventoryDomainSer
     {
         var projectCode = transaction.ProjectCode ?? transaction.BeneficiaryProjectCode;
         if (string.IsNullOrWhiteSpace(projectCode))
-            throw new InvalidOperationException("Phiếu xuất dự án yêu cầu mã kho dự án.");
+            throw new DomainRuleException("Phiếu xuất dự án yêu cầu mã kho dự án.");
 
         var pendingHl = await GetPendingStockDefectQtyByMaterialAsync(projectCode, null, ct);
         foreach (var item in transaction.Items)
@@ -240,7 +241,7 @@ public class InventoryDomainService(WarehouseDbContext db) : IInventoryDomainSer
             pendingHl.TryGetValue(item.MaterialCode, out var hold);
             var available = projectInventory.ActualInventoryQty - projectInventory.PlannedExportQty - hold;
             if (item.Quantity > available)
-                throw new InvalidOperationException(
+                throw new DomainRuleException(
                     $"Vật tư {item.MaterialCode} vượt tồn khả dụng ({available}).");
 
             projectInventory.AddPlannedExport(item.Quantity);
@@ -318,7 +319,7 @@ public class InventoryDomainService(WarehouseDbContext db) : IInventoryDomainSer
                 pendingHl.TryGetValue(item.MaterialCode, out var hold);
                 var available = projectInventory.ActualInventoryQty - hold;
                 if (item.Quantity > available)
-                    throw new InvalidOperationException(
+                    throw new DomainRuleException(
                         $"Vật tư {item.MaterialCode} vượt tồn khả dụng ({available}).");
 
                 var removePlanned = Math.Min(item.Quantity, projectInventory.PlannedExportQty);
@@ -343,7 +344,7 @@ public class InventoryDomainService(WarehouseDbContext db) : IInventoryDomainSer
     {
         var projectCode = importTransaction.BeneficiaryProjectCode
             ?? importTransaction.ProjectCode
-            ?? throw new InvalidOperationException("Direct Issue yêu cầu mã dự án thụ hưởng.");
+            ?? throw new DomainRuleException("Direct Issue yêu cầu mã dự án thụ hưởng.");
 
         var exportCount = await db.WarehouseTransactions
             .CountAsync(t => t.TransactionType == TransactionType.Export, ct);
@@ -418,7 +419,7 @@ public class InventoryDomainService(WarehouseDbContext db) : IInventoryDomainSer
     {
         var projectCode = transaction.ProjectCode ?? transaction.BeneficiaryProjectCode;
         if (string.IsNullOrWhiteSpace(projectCode))
-            throw new InvalidOperationException("Phiếu hoàn trả yêu cầu mã kho dự án.");
+            throw new DomainRuleException("Phiếu hoàn trả yêu cầu mã kho dự án.");
 
         var generalWarehouseId = await GetGeneralWarehouseIdAsync(ct);
         transaction.ToWarehouseId = generalWarehouseId;
@@ -431,7 +432,7 @@ public class InventoryDomainService(WarehouseDbContext db) : IInventoryDomainSer
             pendingHl.TryGetValue(item.MaterialCode, out var hold);
             var available = projectInventory.ActualInventoryQty - hold;
             if (item.Quantity > available)
-                throw new InvalidOperationException(
+                throw new DomainRuleException(
                     $"Vật tư {item.MaterialCode} vượt tồn khả dụng ({available}).");
 
             var removePlanned = Math.Min(item.Quantity, projectInventory.PlannedExportQty);
@@ -449,9 +450,9 @@ public class InventoryDomainService(WarehouseDbContext db) : IInventoryDomainSer
         var fromCode = transaction.ProjectCode;
         var toCode = transaction.BeneficiaryProjectCode;
         if (string.IsNullOrWhiteSpace(fromCode) || string.IsNullOrWhiteSpace(toCode))
-            throw new InvalidOperationException("Phiếu chuyển dự án yêu cầu kho nguồn và kho đích.");
+            throw new DomainRuleException("Phiếu chuyển dự án yêu cầu kho nguồn và kho đích.");
         if (string.Equals(fromCode, toCode, StringComparison.OrdinalIgnoreCase))
-            throw new InvalidOperationException("Kho nguồn và kho đích phải khác nhau.");
+            throw new DomainRuleException("Kho nguồn và kho đích phải khác nhau.");
 
         var pendingHl = await GetPendingStockDefectQtyByMaterialAsync(fromCode, null, ct);
         foreach (var item in transaction.Items)
@@ -460,7 +461,7 @@ public class InventoryDomainService(WarehouseDbContext db) : IInventoryDomainSer
             pendingHl.TryGetValue(item.MaterialCode, out var hold);
             var available = sourceInventory.ActualInventoryQty - hold;
             if (item.Quantity > available)
-                throw new InvalidOperationException(
+                throw new DomainRuleException(
                     $"Vật tư {item.MaterialCode} vượt tồn khả dụng tại kho nguồn ({available}).");
 
             var removePlanned = Math.Min(item.Quantity, sourceInventory.PlannedExportQty);
@@ -491,7 +492,7 @@ public class InventoryDomainService(WarehouseDbContext db) : IInventoryDomainSer
         pending.TryGetValue(materialCode, out var hold);
         var available = projectInventory.ActualInventoryQty - projectInventory.PlannedExportQty - hold;
         if (exportQty > available)
-            throw new InvalidOperationException(
+            throw new DomainRuleException(
                 $"Vật tư {materialCode} không đủ tồn khả dụng để điều chỉnh kiểm kê ({available}).");
 
         projectInventory.ApplyActualExport(exportQty);
@@ -502,7 +503,7 @@ public class InventoryDomainService(WarehouseDbContext db) : IInventoryDomainSer
     {
         var projectCode = transaction.ProjectCode ?? transaction.BeneficiaryProjectCode;
         if (string.IsNullOrWhiteSpace(projectCode))
-            throw new InvalidOperationException("Phiếu hoàn trả yêu cầu mã kho dự án.");
+            throw new DomainRuleException("Phiếu hoàn trả yêu cầu mã kho dự án.");
 
         foreach (var item in transaction.Items)
         {
@@ -533,7 +534,7 @@ public class InventoryDomainService(WarehouseDbContext db) : IInventoryDomainSer
     {
         var projectCode = transaction.ProjectCode ?? transaction.BeneficiaryProjectCode;
         if (string.IsNullOrWhiteSpace(projectCode))
-            throw new InvalidOperationException("Phiếu hoàn trả yêu cầu mã kho dự án.");
+            throw new DomainRuleException("Phiếu hoàn trả yêu cầu mã kho dự án.");
 
         foreach (var item in transaction.Items)
         {

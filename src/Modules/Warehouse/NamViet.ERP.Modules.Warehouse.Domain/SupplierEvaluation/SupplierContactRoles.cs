@@ -31,11 +31,6 @@ public static class SupplierContactRoles
         return true;
     }
 
-    public static int SortRank(string role) =>
-        string.Equals(role, Primary, StringComparison.OrdinalIgnoreCase) ? 0
-        : string.Equals(role, Secondary, StringComparison.OrdinalIgnoreCase) ? 1
-        : 2;
-
     public static string ToClientLabel(string role) =>
         string.Equals(role, Primary, StringComparison.OrdinalIgnoreCase) ? "Chính"
         : string.Equals(role, Backup, StringComparison.OrdinalIgnoreCase) ? "Backup"

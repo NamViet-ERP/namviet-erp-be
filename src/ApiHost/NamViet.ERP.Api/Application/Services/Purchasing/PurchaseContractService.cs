@@ -5,6 +5,7 @@ using NamViet.ERP.Modules.Warehouse.Domain.Entities;
 using NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence;
 using NamViet.ERP.SharedKernel.Interfaces;
 using NamViet.ERP.SharedKernel.Time;
+using NamViet.ERP.SharedKernel.Common;
 
 namespace NamViet.ERP.Api.Application.Services.Purchasing;
 
@@ -66,8 +67,7 @@ public sealed class PurchaseContractService(
         string? search,
         CancellationToken ct = default)
     {
-        page = Math.Max(1, page);
-        pageSize = Math.Clamp(pageSize, 1, 100);
+        (page, pageSize) = Paging.Normalize(page, pageSize, 100);
 
         var today = VietnamClock.Today;
         var query = db.PurchaseContracts.AsNoTracking().AsQueryable();

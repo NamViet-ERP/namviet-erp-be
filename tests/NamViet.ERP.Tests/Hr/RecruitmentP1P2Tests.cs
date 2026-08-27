@@ -142,7 +142,7 @@ public class RecruitmentP1P2Tests
 
         context.Response.Body.Position = 0;
         using var body = await JsonDocument.ParseAsync(context.Response.Body);
-        Assert.Equal(StatusCodes.Status422UnprocessableEntity, context.Response.StatusCode);
+        Assert.Equal(StatusCodes.Status500InternalServerError, context.Response.StatusCode);
         Assert.DoesNotContain(sensitiveMessage, body.RootElement.GetProperty("detail").GetString());
     }
 

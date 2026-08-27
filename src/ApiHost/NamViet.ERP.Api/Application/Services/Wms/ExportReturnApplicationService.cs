@@ -7,6 +7,7 @@ using NamViet.ERP.Modules.Warehouse.Domain.Services;
 using NamViet.ERP.Modules.Warehouse.Infrastructure.Helpers;
 using NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence;
 using NamViet.ERP.SharedKernel.Interfaces;
+using NamViet.ERP.SharedKernel.Common;
 
 namespace NamViet.ERP.Api.Application.Services.Wms;
 
@@ -68,7 +69,7 @@ public sealed class ExportReturnApplicationService(
         string projectCode, string? excludeReturnId = null, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(projectCode))
-            throw new InvalidOperationException("Vui lòng chọn kho dự án.");
+            throw new DomainRuleException("Vui lòng chọn kho dự án.");
 
         var exports = await db.WarehouseTransactions
             .AsNoTracking()
@@ -126,7 +127,7 @@ public sealed class ExportReturnApplicationService(
         string sourceExportId, string? excludeReturnId = null, CancellationToken ct = default)
     {
         var export = await FindSourceExportAsync(sourceExportId, ct)
-            ?? throw new InvalidOperationException("Không tìm thấy phiếu xuất nguồn.");
+            ?? throw new DomainRuleException("Không tìm thấy phiếu xuất nguồn.");
 
         await EnsureNoActiveReturnDraftAsync(export.TicketCode, ct, excludeReturnId);
 
@@ -135,7 +136,7 @@ public sealed class ExportReturnApplicationService(
             await LoadReturnsForSourceAsync(export.TicketCode, ct, excludeTicketCode));
         var lines = ExportReturnLineHelper.BuildReturnableLines(export, returnedByKey);
         if (lines.Count == 0)
-            throw new InvalidOperationException("Phiếu xuất đã được hoàn trả đủ — không còn vật tư để trả.");
+            throw new DomainRuleException("Phiếu xuất đã được hoàn trả đủ — không còn vật tư để trả.");
 
         return lines.Select(line => new ExportReturnableLineDto(
             line.MaterialCode,
@@ -150,19 +151,19 @@ public sealed class ExportReturnApplicationService(
     public async Task<ExportReturnDto> CreateAsync(CreateExportReturnDto dto, CancellationToken ct = default)
     {
         var export = await FindSourceExportAsync(dto.SourceExportId, ct)
-            ?? throw new InvalidOperationException("Không tìm thấy phiếu xuất nguồn.");
+            ?? throw new DomainRuleException("Không tìm thấy phiếu xuất nguồn.");
 
         if (export.ApprovalStatus != ApprovalStatus.Approved)
-            throw new InvalidOperationException("Chỉ hoàn trả theo phiếu xuất đã duyệt.");
+            throw new DomainRuleException("Chỉ hoàn trả theo phiếu xuất đã duyệt.");
         if (export.IsDirectProcurement)
-            throw new InvalidOperationException("Phiếu xuất Direct Issue không hỗ trợ hoàn trả.");
+            throw new DomainRuleException("Phiếu xuất Direct Issue không hỗ trợ hoàn trả.");
 
         var projectCode = export.ProjectCode ?? export.BeneficiaryProjectCode
-            ?? throw new InvalidOperationException("Phiếu xuất nguồn không thuộc kho dự án.");
+            ?? throw new DomainRuleException("Phiếu xuất nguồn không thuộc kho dự án.");
 
         if (!string.IsNullOrWhiteSpace(dto.Project)
             && !string.Equals(dto.Project.Trim(), projectCode, StringComparison.OrdinalIgnoreCase))
-            throw new InvalidOperationException("Kho dự án không khớp với phiếu xuất nguồn.");
+            throw new DomainRuleException("Kho dự án không khớp với phiếu xuất nguồn.");
 
         await stocktakeFreeze.EnsureProjectsNotFrozenAsync([projectCode], ct);
 
@@ -211,15 +212,15 @@ public sealed class ExportReturnApplicationService(
         var t = await FindAsync(id, ct);
         if (t is null) return null;
         if (t.ApprovalStatus == ApprovalStatus.Approved)
-            throw new InvalidOperationException("Phiếu đã duyệt, không thể chỉnh sửa.");
+            throw new DomainRuleException("Phiếu đã duyệt, không thể chỉnh sửa.");
 
         var export = await FindSourceExportAsync(dto.SourceExportId, ct)
-            ?? throw new InvalidOperationException("Không tìm thấy phiếu xuất nguồn.");
+            ?? throw new DomainRuleException("Không tìm thấy phiếu xuất nguồn.");
         if (!string.Equals(t.LinkedTicketCode, export.TicketCode, StringComparison.OrdinalIgnoreCase))
-            throw new InvalidOperationException("Không thể đổi phiếu xuất nguồn khi sửa phiếu hoàn trả.");
+            throw new DomainRuleException("Không thể đổi phiếu xuất nguồn khi sửa phiếu hoàn trả.");
 
         var projectCode = export.ProjectCode ?? export.BeneficiaryProjectCode
-            ?? throw new InvalidOperationException("Phiếu xuất nguồn không thuộc kho dự án.");
+            ?? throw new DomainRuleException("Phiếu xuất nguồn không thuộc kho dự án.");
         await stocktakeFreeze.EnsureProjectsNotFrozenAsync([projectCode], ct);
 
         await ValidateReturnItemsAsync(export, dto.Items, ct, excludeReturnTicketCode: t.TicketCode);
@@ -232,7 +233,7 @@ public sealed class ExportReturnApplicationService(
         t.Notes = dto.Note;
         var nextStatus = WmsMapper.FromClientApprovalStatus(dto.Status);
         if (nextStatus == ApprovalStatus.Approved)
-            throw new InvalidOperationException("Không thể duyệt phiếu qua cập nhật. Hãy dùng thao tác Duyệt kho.");
+            throw new DomainRuleException("Không thể duyệt phiếu qua cập nhật. Hãy dùng thao tác Duyệt kho.");
         t.ApprovalStatus = nextStatus;
         t.UpdatedAt = DateTime.UtcNow;
 
@@ -254,9 +255,9 @@ public sealed class ExportReturnApplicationService(
         var t = await FindAsync(id, ct);
         if (t is null) return null;
         if (t.ApprovalStatus is ApprovalStatus.Approved or ApprovalStatus.Rejected)
-            throw new InvalidOperationException($"Phiếu đã ở trạng thái '{t.ApprovalStatus}', không thể duyệt lại.");
+            throw new DomainRuleException($"Phiếu đã ở trạng thái '{t.ApprovalStatus}', không thể duyệt lại.");
         if (t.ApprovalStatus != ApprovalStatus.Pending)
-            throw new InvalidOperationException("Chỉ phiếu đã chốt dự kiến (Pending) mới được duyệt kho.");
+            throw new DomainRuleException("Chỉ phiếu đã chốt dự kiến (Pending) mới được duyệt kho.");
 
         await stocktakeFreeze.EnsureProjectsNotFrozenAsync(
             [t.ProjectCode ?? t.BeneficiaryProjectCode], ct);
@@ -264,7 +265,7 @@ public sealed class ExportReturnApplicationService(
         var export = await db.WarehouseTransactions
             .Include(e => e.Items)
             .FirstOrDefaultAsync(e => e.TicketCode == t.LinkedTicketCode, ct)
-            ?? throw new InvalidOperationException("Phiếu xuất nguồn không tồn tại.");
+            ?? throw new DomainRuleException("Phiếu xuất nguồn không tồn tại.");
         await ValidateReturnItemsAsync(
             export,
             t.Items,
@@ -291,11 +292,11 @@ public sealed class ExportReturnApplicationService(
         var t = await FindAsync(id, ct);
         if (t is null) return null;
         if (t.ApprovalStatus != ApprovalStatus.Draft)
-            throw new InvalidOperationException("Chỉ phiếu nháp mới được PM chốt.");
+            throw new DomainRuleException("Chỉ phiếu nháp mới được PM chốt.");
         if (string.IsNullOrWhiteSpace(t.Notes) || t.Notes.Trim().Length < 3)
-            throw new InvalidOperationException("Vui lòng nhập lý do hoàn trả trước khi gửi.");
+            throw new DomainRuleException("Vui lòng nhập lý do hoàn trả trước khi gửi.");
         if (!t.Attachments.Any(a => a.Kind == "photo"))
-            throw new InvalidOperationException("Vui lòng đính kèm ít nhất một ảnh hoàn trả trước khi gửi.");
+            throw new DomainRuleException("Vui lòng đính kèm ít nhất một ảnh hoàn trả trước khi gửi.");
 
         await stocktakeFreeze.EnsureProjectsNotFrozenAsync(
             [t.ProjectCode ?? t.BeneficiaryProjectCode], ct);
@@ -318,7 +319,7 @@ public sealed class ExportReturnApplicationService(
         var t = await FindAsync(id, ct);
         if (t is null) return null;
         if (t.ApprovalStatus == ApprovalStatus.Approved)
-            throw new InvalidOperationException("Phiếu đã duyệt, không thể thêm file.");
+            throw new DomainRuleException("Phiếu đã duyệt, không thể thêm file.");
 
         var normalizedKind = string.Equals(kind?.Trim(), "photo", StringComparison.OrdinalIgnoreCase)
             ? "photo"
@@ -371,7 +372,7 @@ public sealed class ExportReturnApplicationService(
         var t = await FindAsync(id, ct);
         if (t is null) return false;
         if (t.ApprovalStatus == ApprovalStatus.Approved)
-            throw new InvalidOperationException("Phiếu đã duyệt, không thể xóa file.");
+            throw new DomainRuleException("Phiếu đã duyệt, không thể xóa file.");
         var attachment = t.Attachments.FirstOrDefault(a => a.Id == attachmentId);
         if (attachment is null) return false;
         db.WarehouseTransactionAttachments.Remove(attachment);
@@ -385,12 +386,12 @@ public sealed class ExportReturnApplicationService(
         if (kind == "photo")
         {
             if (ext is not (".jpg" or ".jpeg" or ".png" or ".webp"))
-                throw new InvalidOperationException("Ảnh hoàn trả chỉ chấp nhận JPG, PNG, WEBP.");
+                throw new DomainRuleException("Ảnh hoàn trả chỉ chấp nhận JPG, PNG, WEBP.");
             return;
         }
 
         if (ext is not (".pdf" or ".doc" or ".docx" or ".xls" or ".xlsx" or ".jpg" or ".jpeg" or ".png" or ".webp"))
-            throw new InvalidOperationException("File chứng từ không hợp lệ.");
+            throw new DomainRuleException("File chứng từ không hợp lệ.");
     }
 
     public async Task<bool> DeleteAsync(string id, CancellationToken ct = default)
@@ -398,7 +399,7 @@ public sealed class ExportReturnApplicationService(
         var t = await FindAsync(id, ct);
         if (t is null) return false;
         if (t.ApprovalStatus == ApprovalStatus.Approved)
-            throw new InvalidOperationException("Phiếu đã duyệt, không thể xóa.");
+            throw new DomainRuleException("Phiếu đã duyệt, không thể xóa.");
 
         await using var tx = await db.Database.BeginTransactionAsync(ct);
         if (HasPlannedInventory(t.ApprovalStatus))
@@ -451,13 +452,13 @@ public sealed class ExportReturnApplicationService(
     {
         var itemList = items.ToList();
         if (itemList.Count == 0)
-            throw new InvalidOperationException("Phiếu hoàn trả phải có ít nhất một dòng vật tư.");
+            throw new DomainRuleException("Phiếu hoàn trả phải có ít nhất một dòng vật tư.");
 
         var returnedByKey = ExportReturnLineHelper.SumReturnedQtyByKey(
             await LoadReturnsForSourceAsync(export.TicketCode, ct, excludeReturnTicketCode));
         var expectedLines = ExportReturnLineHelper.BuildReturnableLines(export, returnedByKey);
         if (expectedLines.Count == 0)
-            throw new InvalidOperationException("Phiếu xuất đã được hoàn trả đủ.");
+            throw new DomainRuleException("Phiếu xuất đã được hoàn trả đủ.");
 
         var expectedByKey = expectedLines.ToDictionary(
             l => ExportReturnLineHelper.BuildKey(l.MaterialCode, l.ConstructionPhase),
@@ -469,13 +470,13 @@ public sealed class ExportReturnApplicationService(
         {
             var materialCode = item.MaterialCode?.Trim() ?? "";
             if (string.IsNullOrWhiteSpace(materialCode))
-                throw new InvalidOperationException("Mỗi dòng hoàn trả phải có mã vật tư.");
+                throw new DomainRuleException("Mỗi dòng hoàn trả phải có mã vật tư.");
             if (item.Qty <= 0)
-                throw new InvalidOperationException($"Số lượng hoàn trả vật tư {materialCode} phải lớn hơn 0.");
+                throw new DomainRuleException($"Số lượng hoàn trả vật tư {materialCode} phải lớn hơn 0.");
 
             var key = ExportReturnLineHelper.BuildKey(materialCode, item.ConstructionPhase);
             if (!expectedByKey.ContainsKey(key))
-                throw new InvalidOperationException(
+                throw new DomainRuleException(
                     $"Vật tư {materialCode} không còn trong phạm vi hoàn trả của phiếu xuất.");
 
             requestByKey[key] = requestByKey.GetValueOrDefault(key) + item.Qty;
@@ -489,7 +490,7 @@ public sealed class ExportReturnApplicationService(
             if (actualQty > remainingQty)
             {
                 var materialCode = key.Split('\u001f')[0];
-                throw new InvalidOperationException(
+                throw new DomainRuleException(
                     $"Vật tư {materialCode}: số lượng hoàn trả {actualQty} vượt phần còn lại {remainingQty}.");
             }
         }
@@ -518,7 +519,7 @@ public sealed class ExportReturnApplicationService(
 
         var hasDraft = await query.AnyAsync(ct);
         if (hasDraft)
-            throw new InvalidOperationException(
+            throw new DomainRuleException(
                 "Phiếu xuất đang có phiếu hoàn trả nháp/chờ duyệt — hãy xử lý trước khi tạo mới.");
     }
 

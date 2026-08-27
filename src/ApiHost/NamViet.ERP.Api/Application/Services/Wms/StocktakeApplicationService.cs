@@ -3,6 +3,7 @@ using NamViet.ERP.Api.Application.Dtos.Wms;
 using NamViet.ERP.Api.Application.Mappers.Wms;
 using NamViet.ERP.Modules.Warehouse.Domain.Services;
 using NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence;
+using NamViet.ERP.SharedKernel.Common;
 
 namespace NamViet.ERP.Api.Application.Services.Wms;
 
@@ -23,17 +24,17 @@ public sealed class StocktakeApplicationService(
 
         if (stocktake is null) return null;
         if (stocktake.Status == "approved")
-            throw new InvalidOperationException("Phiếu kiểm kê đã duyệt.");
+            throw new DomainRuleException("Phiếu kiểm kê đã duyệt.");
         if (stocktake.Status == "cancelled")
-            throw new InvalidOperationException("Phiếu kiểm kê đã hủy.");
+            throw new DomainRuleException("Phiếu kiểm kê đã hủy.");
 
         if (string.IsNullOrWhiteSpace(stocktake.WarehouseId))
-            throw new InvalidOperationException("Phiếu kiểm kê chưa chọn kho dự án.");
+            throw new DomainRuleException("Phiếu kiểm kê chưa chọn kho dự án.");
 
         var projectExists = await db.Projects
             .AnyAsync(p => p.ProjectCode == stocktake.WarehouseId && p.DeletedAt == null, ct);
         if (!projectExists)
-            throw new InvalidOperationException($"Không tìm thấy kho dự án '{stocktake.WarehouseId}'.");
+            throw new DomainRuleException($"Không tìm thấy kho dự án '{stocktake.WarehouseId}'.");
 
         await using var tx = await db.Database.BeginTransactionAsync(ct);
 

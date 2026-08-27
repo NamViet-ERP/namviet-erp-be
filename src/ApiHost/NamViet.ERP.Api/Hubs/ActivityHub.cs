@@ -20,11 +20,4 @@ public class ActivityHub : Hub
             return Task.CompletedTask;
         return Groups.AddToGroupAsync(Context.ConnectionId, GroupName(module));
     }
-
-    public Task LeaveModule(string module)
-    {
-        if (string.IsNullOrWhiteSpace(module))
-            return Task.CompletedTask;
-        return Groups.RemoveFromGroupAsync(Context.ConnectionId, GroupName(module));
-    }
 }

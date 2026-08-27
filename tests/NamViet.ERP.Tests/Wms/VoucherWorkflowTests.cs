@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using NamViet.ERP.Api.Application.Dtos.Wms;
 using NamViet.ERP.Api.Application.Services.Wms;
 using NamViet.ERP.Modules.Warehouse.Domain;
+using NamViet.ERP.SharedKernel.Common;
 
 namespace NamViet.ERP.Tests.Wms;
 
@@ -85,7 +86,7 @@ public class VoucherWorkflowTests : IDisposable
         var export = await _ctx.Exports.CreateAsync(NewPendingExport(10m));
         await _ctx.Exports.ApproveAsync(export.Id);
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+        await Assert.ThrowsAsync<DomainRuleException>(() =>
             _ctx.ExportReturns.CreateAsync(NewPendingExportReturn(export.Id, 11m)));
     }
 
@@ -127,7 +128,7 @@ public class VoucherWorkflowTests : IDisposable
     public async Task Import_approve_rejects_when_not_pending()
     {
         var created = await _ctx.Imports.CreateAsync(NewPendingImport(5m) with { Status = "draft" });
-        await Assert.ThrowsAsync<InvalidOperationException>(() => _ctx.Imports.ApproveAsync(created.Id));
+        await Assert.ThrowsAsync<DomainRuleException>(() => _ctx.Imports.ApproveAsync(created.Id));
     }
 
     [Fact]

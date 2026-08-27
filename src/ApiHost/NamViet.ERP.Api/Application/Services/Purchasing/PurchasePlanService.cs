@@ -6,6 +6,7 @@ using NamViet.ERP.Modules.Warehouse.Domain.Entities;
 using NamViet.ERP.Modules.Warehouse.Domain.SupplierEvaluation;
 using NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence;
 using NamViet.ERP.SharedKernel.Interfaces;
+using NamViet.ERP.SharedKernel.Common;
 
 namespace NamViet.ERP.Api.Application.Services.Purchasing;
 
@@ -63,8 +64,7 @@ public sealed class PurchasePlanService(
         bool orderableOnly = false,
         CancellationToken ct = default)
     {
-        page = Math.Max(1, page);
-        pageSize = Math.Clamp(pageSize, 1, 200);
+        (page, pageSize) = Paging.Normalize(page, pageSize);
 
         var q = db.PurchasePlans.AsNoTracking().Include(p => p.Project).AsQueryable();
 

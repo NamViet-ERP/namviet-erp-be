@@ -5,6 +5,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
 using NamViet.ERP.Api.Application.Services.Wms;
 using NamViet.ERP.Api.Middleware;
+using NamViet.ERP.SharedKernel.Common;
 
 namespace NamViet.ERP.Tests.Middleware;
 
@@ -29,7 +30,7 @@ public class ExceptionMiddlewareTests
     }
 
     [Fact]
-    public async Task Arbitrary_invalid_operation_detail_remains_masked()
+    public async Task Arbitrary_invalid_operation_is_server_error_and_masked()
     {
         const string unsafeDetail = "Internal workflow state and sensitive identifier.";
 
@@ -37,9 +38,22 @@ public class ExceptionMiddlewareTests
         using var problem = await ReadProblemAsync(context);
         var detail = problem.RootElement.GetProperty("detail").GetString();
 
-        Assert.Equal(StatusCodes.Status422UnprocessableEntity, context.Response.StatusCode);
-        Assert.Equal("Yêu cầu không thể thực hiện ở trạng thái hiện tại.", detail);
+        Assert.Equal(StatusCodes.Status500InternalServerError, context.Response.StatusCode);
+        Assert.Equal("Đã xảy ra lỗi, vui lòng thử lại sau.", detail);
         Assert.DoesNotContain(unsafeDetail, detail);
+    }
+
+    [Fact]
+    public async Task Domain_rule_exception_exposes_safe_vietnamese_detail()
+    {
+        const string detail = "Đơn giá phải lớn hơn 0.";
+
+        var context = await InvokeAsync(new DomainRuleException(detail));
+        using var problem = await ReadProblemAsync(context);
+
+        Assert.Equal(StatusCodes.Status422UnprocessableEntity, context.Response.StatusCode);
+        Assert.Equal("Thao tác không hợp lệ", problem.RootElement.GetProperty("title").GetString());
+        Assert.Equal(detail, problem.RootElement.GetProperty("detail").GetString());
     }
 
     [Fact]

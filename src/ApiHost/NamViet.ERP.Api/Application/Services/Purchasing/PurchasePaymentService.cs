@@ -6,6 +6,7 @@ using NamViet.ERP.Api.Application.Services.Shared;
 using NamViet.ERP.Modules.Warehouse.Domain.Entities;
 using NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence;
 using NamViet.ERP.SharedKernel.Interfaces;
+using NamViet.ERP.SharedKernel.Common;
 
 namespace NamViet.ERP.Api.Application.Services.Purchasing;
 
@@ -41,8 +42,7 @@ public sealed class PurchasePaymentService(
         string? search,
         CancellationToken ct = default)
     {
-        page = Math.Max(1, page);
-        pageSize = Math.Clamp(pageSize, 1, 200);
+        (page, pageSize) = Paging.Normalize(page, pageSize);
 
         var q = db.PurchasePayments.AsNoTracking().AsQueryable();
 

@@ -16,6 +16,9 @@ artifacts/
 _build_out/
 _build_verify/
 .build-check/
+_build_check*/
+_api_err.txt
+_api_out.txt
 .tmp-build-out*/
 .tmp-p*/
 .tmp-*/
@@ -56,6 +59,11 @@ src/ApiHost/NamViet.ERP.Api/wwwroot/uploads/
 .claude/
 .sixth/
 .vscode/
+
+# Test run output / local scratch
+**/TestResults/
+*.trx
+/tmp-*.xlsx
 
 # Local scratch under docs/ — only tracked runbooks are allowlisted
 docs/*

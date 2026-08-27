@@ -9,7 +9,6 @@ using NamViet.ERP.Api.Services.Storage;
 using NamViet.ERP.Modules.Warehouse.Domain;
 using NamViet.ERP.Modules.Warehouse.Domain.Entities;
 using NamViet.ERP.Modules.Warehouse.Domain.Enums;
-using NamViet.ERP.Modules.Warehouse.Domain.Services;
 using NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence;
 using NamViet.ERP.Modules.Warehouse.Infrastructure.Services;
 using NamViet.ERP.SharedKernel.Interfaces;
@@ -100,6 +99,71 @@ internal sealed class FakePurchaseWarrantyService : IPurchaseWarrantyService
         Task.FromResult(new SyncPurchaseWarrantiesResult(0, 0));
 }
 
+internal sealed class FakePurchaseDefectApplicationService : IPurchaseDefectApplicationService
+{
+    public Task<List<PurchaseDefectDto>> ListAsync(CancellationToken ct = default) =>
+        Task.FromResult(new List<PurchaseDefectDto>());
+
+    public Task<PurchaseDefectDto?> GetByIdAsync(string id, CancellationToken ct = default) =>
+        Task.FromResult<PurchaseDefectDto?>(null);
+
+    public Task<IReadOnlyList<PoDefectEligiblePurchaseOrderDto>> ListEligiblePurchaseOrdersAsync(
+        CancellationToken ct = default) =>
+        Task.FromResult<IReadOnlyList<PoDefectEligiblePurchaseOrderDto>>([]);
+
+    public Task<PoDefectPreviewDto> PreviewFromPoAsync(string poCode, CancellationToken ct = default) =>
+        throw new NotImplementedException();
+
+    public Task<PurchaseDefectDto> CreateFromPoAsync(
+        string poCode, CreateDefectFromPoRequest request, CancellationToken ct = default) =>
+        throw new NotImplementedException();
+
+    public Task<StockDefectPreviewDto> PreviewFromStockAsync(string projectCode, CancellationToken ct = default) =>
+        throw new NotImplementedException();
+
+    public Task<PurchaseDefectDto> CreateFromStockAsync(
+        CreateDefectFromStockRequest request, CancellationToken ct = default) =>
+        throw new NotImplementedException();
+
+    public Task<string?> CreateAndApproveFromImportAsync(
+        WarehouseTransaction import, string? defectReason, CancellationToken ct = default) =>
+        Task.FromResult<string?>(null);
+
+    public Task<PurchaseDefectDto?> SubmitAsync(string id, CancellationToken ct = default) =>
+        Task.FromResult<PurchaseDefectDto?>(null);
+
+    public Task<PurchaseDefectDto?> ApproveAsync(string id, CancellationToken ct = default) =>
+        Task.FromResult<PurchaseDefectDto?>(null);
+
+    public Task<PurchaseDefectDto?> UpdateReasonAsync(string id, string? reason, CancellationToken ct = default) =>
+        Task.FromResult<PurchaseDefectDto?>(null);
+
+    public Task<PurchaseDefectDto?> UpdateItemsAsync(
+        string id, UpdateDefectItemsRequest request, CancellationToken ct = default) =>
+        Task.FromResult<PurchaseDefectDto?>(null);
+
+    public Task<PurchaseDefectDto?> CancelAsync(string id, CancellationToken ct = default) =>
+        Task.FromResult<PurchaseDefectDto?>(null);
+
+    public Task<PurchaseDefectDto?> UpdateProcessingAsync(
+        string id, UpdateDefectProcessingRequest request, CancellationToken ct = default) =>
+        Task.FromResult<PurchaseDefectDto?>(null);
+
+    public Task<PurchaseDefectAttachmentDto?> UploadAttachmentAsync(
+        string id, string kind, string fileName, string contentType, Stream content, CancellationToken ct = default) =>
+        Task.FromResult<PurchaseDefectAttachmentDto?>(null);
+
+    public Task<PurchaseDefectAttachmentDto?> GetAttachmentAsync(
+        string id, Guid attachmentId, CancellationToken ct = default) =>
+        Task.FromResult<PurchaseDefectAttachmentDto?>(null);
+
+    public Task<bool> DeleteAttachmentAsync(string id, Guid attachmentId, CancellationToken ct = default) =>
+        Task.FromResult(false);
+
+    public Task<bool> DeleteAsync(string id, CancellationToken ct = default) =>
+        Task.FromResult(false);
+}
+
 internal sealed class FakeSupplierDeliveryEvaluationService : ISupplierDeliveryEvaluationService
 {
     public Task<SupplierDeliveryEvaluationPagedResponse> ListAsync(
@@ -156,6 +220,7 @@ internal sealed class WmsVoucherTestContext : IDisposable
         Imports = new ImportApplicationService(
             Db, Inventory, new FakeProjectBudgetService(), stocktakeFreeze, CurrentUser,
             new PurchaseOrderReceiptService(Db, new FakePurchaseWarrantyService()),
+            new FakePurchaseDefectApplicationService(),
             new FakeSupplierDeliveryEvaluationService(),
             fileStorage, new FakeActivityEventWriter());
         Exports = new ExportApplicationService(

@@ -1,4 +1,5 @@
 using NamViet.ERP.SharedKernel.Entities;
+using NamViet.ERP.SharedKernel.Common;
 
 namespace NamViet.ERP.Modules.Warehouse.Domain.Entities;
 
@@ -97,7 +98,7 @@ public class ProjectInventory : BaseEntity
     {
         ArgumentOutOfRangeException.ThrowIfNegative(qty);
         if (qty > ActualExportQty)
-            throw new InvalidOperationException(
+            throw new DomainRuleException(
                 $"Không thể hoàn trả {qty} — xuất thực tế hiện tại {ActualExportQty}.");
         ActualExportQty -= qty;
         UpdatedAt = DateTime.UtcNow;

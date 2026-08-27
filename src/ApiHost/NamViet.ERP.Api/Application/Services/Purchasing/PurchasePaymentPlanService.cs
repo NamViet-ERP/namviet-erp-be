@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using NamViet.ERP.Api.Application.Dtos.Purchasing;
 using NamViet.ERP.Modules.Warehouse.Domain.Entities;
 using NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence;
+using NamViet.ERP.SharedKernel.Common;
 
 namespace NamViet.ERP.Api.Application.Services.Purchasing;
 
@@ -28,8 +29,7 @@ public sealed class PurchasePaymentPlanService(WarehouseDbContext db) : IPurchas
         string? projectCode,
         CancellationToken ct = default)
     {
-        page = Math.Max(1, page);
-        pageSize = Math.Clamp(pageSize, 1, 200);
+        (page, pageSize) = Paging.Normalize(page, pageSize);
 
         // Kế hoạch thanh toán sinh từ PO đã duyệt và có đợt.
         var q = db.PurchaseOrders.AsNoTracking()

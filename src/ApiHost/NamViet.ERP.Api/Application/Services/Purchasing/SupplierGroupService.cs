@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using NamViet.ERP.Api.Application.Dtos.Purchasing;
 using NamViet.ERP.Modules.Warehouse.Domain.Entities;
 using NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence;
+using NamViet.ERP.SharedKernel.Common;
 
 namespace NamViet.ERP.Api.Application.Services.Purchasing;
 
@@ -32,8 +33,7 @@ public sealed class SupplierGroupService(WarehouseDbContext db) : ISupplierGroup
     public async Task<SupplierGroupPagedResponse> ListAsync(
         string? search, int page, int pageSize, CancellationToken ct = default)
     {
-        page = Math.Max(page, 1);
-        pageSize = Math.Clamp(pageSize, 1, 200);
+        (page, pageSize) = Paging.Normalize(page, pageSize);
 
         var query = db.SupplierGroups.AsNoTracking();
         if (!string.IsNullOrWhiteSpace(search))

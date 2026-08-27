@@ -5,6 +5,7 @@ using NamViet.ERP.Modules.Warehouse.Domain.Enums;
 using NamViet.ERP.Modules.Warehouse.Domain.Services;
 using NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence;
 using NamViet.ERP.SharedKernel.Interfaces;
+using NamViet.ERP.SharedKernel.Common;
 
 namespace NamViet.ERP.Modules.Warehouse.Infrastructure.Handlers;
 
@@ -22,7 +23,7 @@ public class ApproveTransactionHandler(
             ?? throw new KeyNotFoundException($"Phiếu '{command.TicketCode}' không tồn tại.");
 
         if (transaction.ApprovalStatus != ApprovalStatus.Pending)
-            throw new InvalidOperationException(
+            throw new DomainRuleException(
                 "Chỉ phiếu đã chốt dự kiến (Pending) mới được duyệt kho.");
 
         transaction.ApprovalStatus = command.Approve ? ApprovalStatus.Approved : ApprovalStatus.Rejected;

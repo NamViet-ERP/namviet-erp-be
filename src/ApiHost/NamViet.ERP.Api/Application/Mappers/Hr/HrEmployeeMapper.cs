@@ -223,18 +223,6 @@ public static class HrEmployeeMapper
         }
     }
 
-    /// <summary>
-    /// Onboard công khai: không ép phòng mặc định. Create HR vẫn có thể để trống (chưa phân phòng).
-    /// </summary>
-    public static Task EnsureDefaultDepartmentAsync(Employee e, HrDbContext db, CancellationToken ct)
-    {
-        // Giữ tương thích chữ ký cũ — không còn tự tạo "Mặc định".
-        _ = e;
-        _ = db;
-        _ = ct;
-        return Task.CompletedTask;
-    }
-
     public static async Task<bool> IsCodeTakenAsync(
         HrDbContext db, string? code, int? excludeId, CancellationToken ct)
     {

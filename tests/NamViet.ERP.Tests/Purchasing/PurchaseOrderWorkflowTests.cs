@@ -46,7 +46,8 @@ public class PurchaseOrderWorkflowTests : IDisposable
                 Lines:
                 [
                     new CreatePurchaseOrderLineRequest(plan.Lines[0].Id, 5, 1000, null, null),
-                ]), CancellationToken.None));
+                ],
+                Installments: OneInstallment()), CancellationToken.None));
 
         Assert.Contains("không khớp", ex.Message, StringComparison.OrdinalIgnoreCase);
     }
@@ -64,7 +65,8 @@ public class PurchaseOrderWorkflowTests : IDisposable
                 null,
                 [
                     new CreatePurchaseOrderLineRequest(plan.Lines[0].Id, 15, 1000, null, null),
-                ]), CancellationToken.None));
+                ],
+                Installments: OneInstallment()), CancellationToken.None));
 
         Assert.Contains("vượt phần còn lại", ex.Message, StringComparison.OrdinalIgnoreCase);
     }
@@ -75,7 +77,8 @@ public class PurchaseOrderWorkflowTests : IDisposable
         var plan = await SeedPlanWithLineAsync(supplierName: "NCC Alpha", qty: 10);
         var order = await _orders.CreateAsync(new CreatePurchaseOrderRequest(
             plan.Code, 1, null, null,
-            [new CreatePurchaseOrderLineRequest(plan.Lines[0].Id, 4, 1200, null, null)]),
+            [new CreatePurchaseOrderLineRequest(plan.Lines[0].Id, 4, 1200, null, null)],
+            Installments: OneInstallment()),
             CancellationToken.None);
 
         await _orders.ApproveAsync(order.Code, CancellationToken.None);
@@ -96,7 +99,8 @@ public class PurchaseOrderWorkflowTests : IDisposable
         var plan = await SeedPlanWithLineAsync(supplierName: "NCC Alpha", qty: 10);
         var order = await _orders.CreateAsync(new CreatePurchaseOrderRequest(
             plan.Code, 1, null, null,
-            [new CreatePurchaseOrderLineRequest(plan.Lines[0].Id, 4, 1200, null, null)]),
+            [new CreatePurchaseOrderLineRequest(plan.Lines[0].Id, 4, 1200, null, null)],
+            Installments: OneInstallment()),
             CancellationToken.None);
         await _orders.ApproveAsync(order.Code, CancellationToken.None);
 
@@ -118,7 +122,8 @@ public class PurchaseOrderWorkflowTests : IDisposable
         var plan = await SeedPlanWithLineAsync(supplierName: "NCC Alpha", qty: 10);
         var order = await _orders.CreateAsync(new CreatePurchaseOrderRequest(
             plan.Code, 1, null, null,
-            [new CreatePurchaseOrderLineRequest(plan.Lines[0].Id, 2, 1000, null, null)]),
+            [new CreatePurchaseOrderLineRequest(plan.Lines[0].Id, 2, 1000, null, null)],
+            Installments: OneInstallment()),
             CancellationToken.None);
         await _orders.ApproveAsync(order.Code, CancellationToken.None);
         await _orders.PlaceAsync(order.Code, CancellationToken.None);
@@ -134,7 +139,8 @@ public class PurchaseOrderWorkflowTests : IDisposable
         var plan = await SeedPlanWithLineAsync(supplierName: "NCC Alpha", qty: 10);
         var order = await _orders.CreateAsync(new CreatePurchaseOrderRequest(
             plan.Code, 1, null, null,
-            [new CreatePurchaseOrderLineRequest(plan.Lines[0].Id, 2, 1000, null, null)]),
+            [new CreatePurchaseOrderLineRequest(plan.Lines[0].Id, 2, 1000, null, null)],
+            Installments: OneInstallment()),
             CancellationToken.None);
         await _orders.ApproveAsync(order.Code, CancellationToken.None);
 
@@ -188,7 +194,7 @@ public class PurchaseOrderWorkflowTests : IDisposable
             Installments:
             [
                 new(1, 50, ["CO"]),
-                new(2, 50, []),
+                new(2, 50, ["CQ"]),
             ]));
 
         await Assert.ThrowsAsync<PurchasingConflictException>(() =>
@@ -203,6 +209,9 @@ public class PurchaseOrderWorkflowTests : IDisposable
         var refreshed = await _orders.GetByCodeAsync(order.Code);
         Assert.Equal(PurchaseOrderInstallmentStatuses.Open, refreshed!.Installments[1].Status);
     }
+
+    private static List<PurchaseOrderInstallmentRequest> OneInstallment() =>
+        [new(1, 100, ["OTHER"])];
 
     private async Task<PurchasePlanDetailDto> SeedPlanWithLineAsync(string supplierName, decimal qty)
     {
@@ -241,8 +250,8 @@ public class PurchaseOrderWorkflowTests : IDisposable
             Status = ProjectStatus.Active,
         });
         _db.Suppliers.AddRange(
-            new Supplier { Id = 1, SupplierCode = "NCC-A", SupplierName = "NCC Alpha", MaxDebtDays = 45 },
-            new Supplier { Id = 2, SupplierCode = "NCC-B", SupplierName = "NCC Beta", MaxDebtDays = 30 });
+            new Supplier { Id = 1, SupplierCode = "NCC-A", SupplierName = "NCC Alpha", MaxDebtDays = 45, ApprovalStatus = SupplierApprovalStatuses.Approved },
+            new Supplier { Id = 2, SupplierCode = "NCC-B", SupplierName = "NCC Beta", MaxDebtDays = 30, ApprovalStatus = SupplierApprovalStatuses.Approved });
         _db.Materials.Add(new Material
         {
             MaterialCode = "VT-ONG",

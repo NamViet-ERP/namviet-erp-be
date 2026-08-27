@@ -55,7 +55,7 @@ public class ExceptionMiddleware(RequestDelegate next, ILogger<ExceptionMiddlewa
             or ConcurrencyConflictException
             or StocktakeFreezeConflictException
             or PurchasingConflictException
-            or InvalidOperationException;
+            or DomainRuleException;
 
     private static bool IsTransientFailure(Exception ex)
     {
@@ -102,8 +102,7 @@ public class ExceptionMiddleware(RequestDelegate next, ILogger<ExceptionMiddlewa
             ConcurrencyConflictException => (409, "Xung đột cập nhật", "Dữ liệu đã thay đổi. Vui lòng tải lại và thử lại."),
             StocktakeFreezeConflictException => (409, "Kho đang đóng băng kiểm kê", ex.Message),
             PurchasingConflictException => (409, "Xung đột mua hàng", ex.Message),
-            InvalidOperationException => (422, "Thao tác không hợp lệ",
-                isDevelopment ? ex.Message : "Yêu cầu không thể thực hiện ở trạng thái hiện tại."),
+            DomainRuleException => (422, "Thao tác không hợp lệ", ex.Message),
             OperationCanceledException => (503, "Yêu cầu bị gián đoạn", "Yêu cầu chưa thể hoàn tất."),
             _ => (500, "Lỗi hệ thống",
                 isDevelopment

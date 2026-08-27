@@ -68,8 +68,7 @@ public class ProjectsController(
         [FromQuery] string? search = null, [FromQuery] string? status = null,
         CancellationToken ct = default)
     {
-        page = Math.Max(1, page);
-        pageSize = Math.Clamp(pageSize, 1, 200);
+        (page, pageSize) = Paging.Normalize(page, pageSize);
         var query = db.Projects.AsQueryable();
         if (!string.IsNullOrWhiteSpace(search))
             query = query.Where(p => p.ProjectName.Contains(search) || p.ProjectCode.Contains(search));

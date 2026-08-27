@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using NamViet.ERP.Modules.Warehouse.Domain.Entities;
 using NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence;
+using NamViet.ERP.SharedKernel.Common;
 
 namespace NamViet.ERP.Modules.Warehouse.Infrastructure.Helpers;
 
@@ -59,9 +60,9 @@ public static class TransactionItemHelper
         foreach (var code in materialCodes.Distinct())
         {
             if (!materials.TryGetValue(code, out var material))
-                throw new InvalidOperationException($"Vật tư '{code}' không tồn tại.");
+                throw new DomainRuleException($"Vật tư '{code}' không tồn tại.");
             if (!material.IsActive)
-                throw new InvalidOperationException($"Vật tư '{code}' đã ngừng sử dụng.");
+                throw new DomainRuleException($"Vật tư '{code}' đã ngừng sử dụng.");
         }
     }
 }

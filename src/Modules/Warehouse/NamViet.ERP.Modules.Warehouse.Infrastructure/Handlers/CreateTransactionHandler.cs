@@ -7,6 +7,7 @@ using NamViet.ERP.Modules.Warehouse.Domain.Entities;
 using NamViet.ERP.Modules.Warehouse.Domain.Enums;
 using NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence;
 using NamViet.ERP.SharedKernel.Interfaces;
+using NamViet.ERP.SharedKernel.Common;
 
 namespace NamViet.ERP.Modules.Warehouse.Infrastructure.Handlers;
 
@@ -30,7 +31,7 @@ public class CreateTransactionHandler(
 
         foreach (var code in materialCodes)
             if (!materials.ContainsKey(code))
-                throw new InvalidOperationException($"Vật tư '{code}' không tồn tại.");
+                throw new DomainRuleException($"Vật tư '{code}' không tồn tại.");
         TransactionItemHelper.EnsureActiveMaterials(materialCodes, materials);
 
         var transaction = new WarehouseTransaction

@@ -4,6 +4,7 @@ using ClosedXML.Excel;
 using Microsoft.EntityFrameworkCore;
 using NamViet.ERP.Api.Application.Dtos.Wms;
 using NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence;
+using NamViet.ERP.SharedKernel.Common;
 
 namespace NamViet.ERP.Api.Application.Services.Wms;
 
@@ -59,23 +60,23 @@ public sealed class ImportExcelService(WarehouseDbContext db) : IImportExcelServ
         Stream stream, string fileName, CancellationToken ct = default)
     {
         if (stream.CanSeek && stream.Length > MaxFileBytes)
-            throw new InvalidOperationException("File vượt quá 2MB.");
+            throw new DomainRuleException("File vượt quá 2MB.");
 
         var extension = Path.GetExtension(fileName).ToLowerInvariant();
         var rows = extension switch
         {
             ".xlsx" or ".xls" => ReadExcelRows(stream),
             ".csv" => ReadCsvRows(stream),
-            _ => throw new InvalidOperationException("Chỉ chấp nhận file .xlsx, .xls hoặc .csv."),
+            _ => throw new DomainRuleException("Chỉ chấp nhận file .xlsx, .xls hoặc .csv."),
         };
 
         if (rows.Count == 0)
-            throw new InvalidOperationException("File không có dữ liệu.");
+            throw new DomainRuleException("File không có dữ liệu.");
 
         var headerRow = rows[0];
         var columnMap = MapColumns(headerRow);
         if (columnMap.MaterialCode < 0)
-            throw new InvalidOperationException("Không tìm thấy cột \"Mã vật tư\" trong file.");
+            throw new DomainRuleException("Không tìm thấy cột \"Mã vật tư\" trong file.");
 
         var dataRows = rows.Skip(1)
             .Where(r => !IsEmptyRow(r))
@@ -83,7 +84,7 @@ public sealed class ImportExcelService(WarehouseDbContext db) : IImportExcelServ
             .ToList();
 
         if (dataRows.Count == 0)
-            throw new InvalidOperationException("File không có dòng vật tư nào.");
+            throw new DomainRuleException("File không có dòng vật tư nào.");
 
         var parsed = new List<(int RowNumber, string Code, decimal Qty, decimal UnitPrice)>();
         var errors = new List<ImportParseErrorDto>();

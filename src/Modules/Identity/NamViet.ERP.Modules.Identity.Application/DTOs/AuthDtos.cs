@@ -10,8 +10,6 @@ public record RegisterRequest(
     string? Department,
     string Role = "employee");
 
-public record ChangePasswordRequest(string CurrentPassword, string NewPassword);
-
 public record RefreshTokenRequest(string RefreshToken);
 
 public record AuthResponse(
