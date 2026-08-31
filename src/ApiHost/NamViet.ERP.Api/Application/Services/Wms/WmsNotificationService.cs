@@ -34,12 +34,14 @@ public sealed class WmsNotificationService(WarehouseDbContext db) : IWmsNotifica
         {
             importCount = await db.WarehouseTransactions.CountAsync(
                 t => t.TransactionType == TransactionType.Import
-                     && t.ApprovalStatus == ApprovalStatus.Pending, ct);
+                     && t.ApprovalStatus == ApprovalStatus.Pending
+                     && !t.IsDirectProcurement, ct);
 
             var rows = await db.WarehouseTransactions
                 .AsNoTracking()
                 .Where(t => t.TransactionType == TransactionType.Import
-                            && t.ApprovalStatus == ApprovalStatus.Pending)
+                            && t.ApprovalStatus == ApprovalStatus.Pending
+                            && !t.IsDirectProcurement)
                 .OrderByDescending(t => t.CreatedAt)
                 .Take(15)
                 .Select(t => new
@@ -80,6 +82,7 @@ public sealed class WmsNotificationService(WarehouseDbContext db) : IWmsNotifica
                     ProjectCode = t.BeneficiaryProjectCode ?? t.ProjectCode,
                     t.CreatedByName,
                     t.CreatedAt,
+                    t.IsDirectProcurement,
                 })
                 .ToListAsync(ct);
 
@@ -87,7 +90,7 @@ public sealed class WmsNotificationService(WarehouseDbContext db) : IWmsNotifica
                 $"export:{r.TicketCode}",
                 "export",
                 r.TicketCode,
-                "Phiếu xuất chờ duyệt",
+                r.IsDirectProcurement ? "Xuất thẳng chờ duyệt" : "Phiếu xuất chờ duyệt",
                 "/warehouse/export",
                 r.CreatedAt,
                 r.ProjectCode,

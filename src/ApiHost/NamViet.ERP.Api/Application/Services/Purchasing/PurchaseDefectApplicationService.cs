@@ -858,6 +858,9 @@ public sealed class PurchaseDefectApplicationService(
         var map = new Dictionary<int, decimal>();
         foreach (var nk in pendingImports)
         {
+            if (!PurchaseOrderReceiptService.SettlesPurchaseOrder(nk))
+                continue;
+
             foreach (var line in nk.Items)
             {
                 if (string.IsNullOrWhiteSpace(line.Notes)

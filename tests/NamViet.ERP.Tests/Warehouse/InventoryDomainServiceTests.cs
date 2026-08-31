@@ -118,6 +118,72 @@ public class InventoryDomainServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task ApplyApprovedImport_directFromWarehouse_deducts_general_stock()
+    {
+        var import = new WarehouseTransaction
+        {
+            TicketCode = "NK-DI-GEN",
+            TransactionType = TransactionType.Import,
+            IsDirectProcurement = true,
+            WarehouseId = WmsWarehouseIds.General,
+            BeneficiaryProjectCode = "DA-TEST",
+            ApprovalStatus = ApprovalStatus.Approved,
+            Items =
+            [
+                new WarehouseTransactionItem
+                {
+                    MaterialCode = "MAT-001",
+                    Quantity = 10m,
+                    UnitPrice = 1000m
+                }
+            ]
+        };
+        _db.WarehouseTransactions.Add(import);
+        await _db.SaveChangesAsync();
+
+        await _service.ApplyApprovedImportAsync(import);
+        await _db.SaveChangesAsync();
+
+        var generalQty = await _db.WarehouseInventories
+            .Where(i => i.WarehouseId == WmsWarehouseIds.General && i.MaterialCode == "MAT-001")
+            .Select(i => i.Qty)
+            .SingleAsync();
+        Assert.Equal(70m, generalQty);
+
+        var projectInventory = await _db.ProjectInventories.SingleAsync();
+        Assert.Equal(0m, projectInventory.ActualImportQty - projectInventory.ActualExportQty);
+    }
+
+    [Fact]
+    public async Task ApplyApprovedImport_directFromWarehouse_rejects_when_insufficient()
+    {
+        var import = new WarehouseTransaction
+        {
+            TicketCode = "NK-DI-SHORT",
+            TransactionType = TransactionType.Import,
+            IsDirectProcurement = true,
+            WarehouseId = WmsWarehouseIds.General,
+            BeneficiaryProjectCode = "DA-TEST",
+            ApprovalStatus = ApprovalStatus.Approved,
+            Items =
+            [
+                new WarehouseTransactionItem
+                {
+                    MaterialCode = "MAT-001",
+                    Quantity = 90m,
+                    UnitPrice = 1000m
+                }
+            ]
+        };
+        _db.WarehouseTransactions.Add(import);
+        await _db.SaveChangesAsync();
+
+        var ex = await Assert.ThrowsAsync<DomainRuleException>(() =>
+            _service.ApplyApprovedImportAsync(import));
+        Assert.Contains("không đủ", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task ApplyDirectIssueAsync_clears_pending_planned_import()
     {
         var import = new WarehouseTransaction
@@ -185,6 +251,79 @@ public class InventoryDomainServiceTests : IDisposable
         Assert.Equal(10m, projectInventory.ActualExportQty);
         Assert.Equal(0m, projectInventory.ActualImportQty - projectInventory.ActualExportQty);
         Assert.NotNull(import.LinkedTicketCode);
+    }
+
+    [Fact]
+    public async Task ApplyDirectIssueAsync_reuses_pending_direct_export()
+    {
+        var import = new WarehouseTransaction
+        {
+            TicketCode = "NK-DI-002",
+            TransactionType = TransactionType.Import,
+            IsDirectProcurement = true,
+            BeneficiaryProjectCode = "DA-TEST",
+            ApprovalStatus = ApprovalStatus.Pending,
+            Items =
+            [
+                new WarehouseTransactionItem
+                {
+                    MaterialCode = "MAT-001",
+                    Quantity = 10m,
+                    UnitPrice = 1000m
+                }
+            ]
+        };
+        _db.WarehouseTransactions.Add(import);
+        await _db.SaveChangesAsync();
+
+        await _service.EnsurePendingDirectExportAsync(import);
+        await _db.SaveChangesAsync();
+        var pendingCode = import.LinkedTicketCode;
+        Assert.False(string.IsNullOrWhiteSpace(pendingCode));
+
+        import.ApprovalStatus = ApprovalStatus.Approved;
+        await _service.ApplyDirectIssueAsync(import);
+        await _db.SaveChangesAsync();
+
+        var exports = await _db.WarehouseTransactions
+            .Where(t => t.TransactionType == TransactionType.Export)
+            .ToListAsync();
+        Assert.Single(exports);
+        Assert.Equal(pendingCode, exports[0].TicketCode);
+        Assert.Equal(ApprovalStatus.Approved, exports[0].ApprovalStatus);
+    }
+
+    [Fact]
+    public async Task HealPendingDirectExportsAsync_creates_missing_xk()
+    {
+        var import = new WarehouseTransaction
+        {
+            TicketCode = "NK-DI-HEAL",
+            TransactionType = TransactionType.Import,
+            IsDirectProcurement = true,
+            BeneficiaryProjectCode = "DA-TEST",
+            ApprovalStatus = ApprovalStatus.Pending,
+            Items =
+            [
+                new WarehouseTransactionItem
+                {
+                    MaterialCode = "MAT-001",
+                    Quantity = 4m,
+                    UnitPrice = 1000m
+                }
+            ]
+        };
+        _db.WarehouseTransactions.Add(import);
+        await _db.SaveChangesAsync();
+
+        await _service.HealPendingDirectExportsAsync();
+
+        Assert.False(string.IsNullOrWhiteSpace(import.LinkedTicketCode));
+        Assert.StartsWith("XK-", import.LinkedTicketCode);
+        var xk = await _db.WarehouseTransactions.SingleAsync(t => t.TransactionType == TransactionType.Export);
+        Assert.Equal(import.LinkedTicketCode, xk.TicketCode);
+        Assert.True(xk.IsDirectProcurement);
+        Assert.Equal(ApprovalStatus.Pending, xk.ApprovalStatus);
     }
 
     [Fact]

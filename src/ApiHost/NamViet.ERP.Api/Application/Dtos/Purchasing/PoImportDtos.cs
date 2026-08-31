@@ -9,7 +9,9 @@ public record PoImportLinePreviewDto(
     decimal Received,
     decimal ReservedPending,
     decimal Available,
-    decimal UnitPrice);
+    decimal UnitPrice,
+    /// <summary>Tồn khả dụng kho trung tâm (tồn thực tế − giữ chỗ).</summary>
+    decimal GeneralAvailableQty = 0);
 
 public record PoImportPreviewDto(
     string PoCode,
@@ -20,4 +22,7 @@ public record PoImportPreviewDto(
 
 public record CreateImportFromPoLineRequest(int PoItemId, decimal Qty);
 
-public record CreateImportFromPoRequest(IReadOnlyList<CreateImportFromPoLineRequest>? Items = null);
+public record CreateImportFromPoRequest(
+    IReadOnlyList<CreateImportFromPoLineRequest>? Items = null,
+    bool IsDirectProcurement = false,
+    bool IssueFromGeneralWarehouse = false);

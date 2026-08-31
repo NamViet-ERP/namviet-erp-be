@@ -140,13 +140,19 @@ public class ImportsController(
     public async Task<ActionResult<ImportDto>> CreateFromPurchaseOrder(
         string poCode,
         [FromBody] CreateImportFromPoRequest? request,
-        CancellationToken ct)
+        [FromQuery] bool isDirectProcurement = false,
+        CancellationToken ct = default)
     {
         try
         {
             var preview = await imports.PreviewImportFromPurchaseOrderAsync(poCode, ct: ct);
             await projectAccess.EnsureCanOperateOnProjectAsync(preview.ProjectCode, ct);
-            var created = await imports.CreateDraftFromPurchaseOrderAsync(poCode, request, ct);
+            var effective = (request ?? new CreateImportFromPoRequest()) with
+            {
+                IsDirectProcurement = isDirectProcurement || (request?.IsDirectProcurement ?? false),
+                IssueFromGeneralWarehouse = request?.IssueFromGeneralWarehouse ?? false,
+            };
+            var created = await imports.CreateDraftFromPurchaseOrderAsync(poCode, effective, ct);
             return Ok(MaskImportPrices(created));
         }
         catch (UnauthorizedAccessException ex)

@@ -54,6 +54,14 @@ public interface IInventoryDomainService
     /// <summary>Hoàn trả vật tư về kho dự án khi duyệt phiếu hoàn trả theo phiếu xuất.</summary>
     Task ApplyApprovedExportReturnAsync(WarehouseTransaction transaction, CancellationToken ct = default);
     Task ApplyDirectIssueAsync(WarehouseTransaction importTransaction, CancellationToken ct = default);
+    /// <summary>
+    /// Chốt dự kiến xuất thẳng: tạo phiếu XK pending gắn NK (không trừ tồn kho).
+    /// </summary>
+    Task EnsurePendingDirectExportAsync(WarehouseTransaction importTransaction, CancellationToken ct = default);
+    /// <summary>
+    /// Tạo phiếu XK pending cho mọi phiếu nhận xuất thẳng đã chốt nhưng chưa có XK (heal).
+    /// </summary>
+    Task HealPendingDirectExportsAsync(CancellationToken ct = default);
     Task ApplyTransferAsync(WarehouseTransaction transaction, CancellationToken ct = default);
     /// <summary>Hoàn trả từ kho dự án về kho tổng khi duyệt phiếu chuyển.</summary>
     Task ApplyReturnToGeneralAsync(WarehouseTransaction transaction, CancellationToken ct = default);

@@ -70,6 +70,7 @@ public sealed class ImportApplicationService(
 {
     public async Task<List<ImportDto>> ListAsync(DateOnly? dateFrom = null, DateOnly? dateTo = null, CancellationToken ct = default)
     {
+        await inventory.HealPendingDirectExportsAsync(ct);
         var items = await ImportQuery()
             .WhereCreatedBetween(dateFrom, dateTo)
             .OrderByDescending(t => t.CreatedAt)
@@ -97,18 +98,23 @@ public sealed class ImportApplicationService(
 
         var approvalStatus = WmsMapper.FromClientApprovalStatus(dto.Status);
         var transaction = BuildTransaction(dto, ticketCode, approvalStatus);
+        transaction.WarehouseId = await ResolveImportWarehouseIdAsync(dto, ct);
         await ValidateAndSnapshotItemsAsync(transaction.Items, ct);
-        await poReceipt.EnsureImportLinesWithinPoAvailabilityAsync(transaction, ct);
+        if (PurchaseOrderReceiptService.SettlesPurchaseOrder(transaction))
+            await poReceipt.EnsureImportLinesWithinPoAvailabilityAsync(transaction, ct);
 
         await using var tx = await db.Database.BeginTransactionAsync(ct);
         db.WarehouseTransactions.Add(transaction);
 
         if (approvalStatus is ApprovalStatus.Draft or ApprovalStatus.Pending)
             await CreateDraftReservationsAsync(transaction, ct);
+        if (approvalStatus == ApprovalStatus.Pending)
+            await inventory.EnsurePendingDirectExportAsync(transaction, ct);
         else if (approvalStatus == ApprovalStatus.Approved)
         {
             await inventory.ApplyApprovedImportAsync(transaction, ct);
-            await poReceipt.ApplyApprovedImportReceiptAsync(transaction, ct);
+            if (PurchaseOrderReceiptService.SettlesPurchaseOrder(transaction))
+                await poReceipt.ApplyApprovedImportReceiptAsync(transaction, ct);
         }
 
         await db.SaveChangesAsync(ct);
@@ -143,7 +149,7 @@ public sealed class ImportApplicationService(
             await inventory.CancelProjectImportPlannedAsync(t, ct);
         }
 
-        t.WarehouseId = dto.WarehouseId;
+        t.WarehouseId = await ResolveImportWarehouseIdAsync(dto, ct);
         t.ReferenceCode = dto.ReferenceCode;
         if (!string.IsNullOrWhiteSpace(dto.PlanCode))
             t.PurchasePlanCode = dto.PlanCode.Trim();
@@ -197,10 +203,12 @@ public sealed class ImportApplicationService(
             };
         }).ToList();
         await ValidateAndSnapshotItemsAsync(t.Items, ct);
-        await poReceipt.EnsureImportLinesWithinPoAvailabilityAsync(t, ct);
+        if (PurchaseOrderReceiptService.SettlesPurchaseOrder(t))
+            await poReceipt.EnsureImportLinesWithinPoAvailabilityAsync(t, ct);
 
         if (HasPlannedInventory(t.ApprovalStatus))
             await CreateDraftReservationsAsync(t, ct);
+        await inventory.EnsurePendingDirectExportAsync(t, ct);
 
         await db.SaveChangesAsync(ct);
         await tx.CommitAsync(ct);
@@ -227,7 +235,8 @@ public sealed class ImportApplicationService(
         EnsureApprovalEvidence(t);
 
         ApplyReceiveSettlement(t, request);
-        await poReceipt.EnsureImportLinesWithinPoAvailabilityAsync(t, ct, forApproveSettlement: true);
+        if (PurchaseOrderReceiptService.SettlesPurchaseOrder(t))
+            await poReceipt.EnsureImportLinesWithinPoAvailabilityAsync(t, ct, forApproveSettlement: true);
 
         await using var tx = await db.Database.BeginTransactionAsync(ct);
 
@@ -256,8 +265,11 @@ public sealed class ImportApplicationService(
         if (!string.IsNullOrWhiteSpace(defectTicket))
             t.LinkedDefectTicketCode = defectTicket;
 
-        await poReceipt.ApplyApprovedImportReceiptAsync(t, ct);
-        await deliveryEvaluations.EnsurePendingFromApprovedImportAsync(t, ct);
+        if (PurchaseOrderReceiptService.SettlesPurchaseOrder(t))
+        {
+            await poReceipt.ApplyApprovedImportReceiptAsync(t, ct);
+            await deliveryEvaluations.EnsurePendingFromApprovedImportAsync(t, ct);
+        }
         await db.SaveChangesAsync(ct);
         await tx.CommitAsync(ct);
 
@@ -466,7 +478,21 @@ public sealed class ImportApplicationService(
         CreateImportFromPoRequest? request = null,
         CancellationToken ct = default)
     {
-        var dto = await poReceipt.BuildImportDraftFromPoAsync(poCode, request?.Items, ct);
+        var issueFromGeneral = request?.IssueFromGeneralWarehouse ?? false;
+        var isDirect = request?.IsDirectProcurement ?? false;
+        if (issueFromGeneral && !isDirect)
+            throw new DomainRuleException("Cấp từ kho trung tâm chỉ dùng cho xuất thẳng công trường.");
+        if (issueFromGeneral && (request?.Items is null || request.Items.Count == 0))
+            throw new DomainRuleException("Chọn ít nhất một dòng vật tư khi cấp từ kho trung tâm.");
+
+        var dto = await poReceipt.BuildImportDraftFromPoAsync(
+            poCode,
+            request?.Items,
+            isDirect,
+            ignorePoAvailability: issueFromGeneral,
+            ct);
+        if (issueFromGeneral)
+            dto = dto with { IssueFromGeneralWarehouse = true, IsDirectProcurement = true };
         return await CreateAsync(dto, ct);
     }
 
@@ -478,10 +504,12 @@ public sealed class ImportApplicationService(
             throw new DomainRuleException("Chỉ phiếu nháp mới được PM chốt.");
 
         await stocktakeFreeze.EnsureProjectsNotFrozenAsync([t.BeneficiaryProjectCode], ct);
-        await poReceipt.EnsureImportLinesWithinPoAvailabilityAsync(t, ct);
+        if (PurchaseOrderReceiptService.SettlesPurchaseOrder(t))
+            await poReceipt.EnsureImportLinesWithinPoAvailabilityAsync(t, ct);
 
         t.ApprovalStatus = ApprovalStatus.Pending;
         t.UpdatedAt = DateTime.UtcNow;
+        await inventory.EnsurePendingDirectExportAsync(t, ct);
         await db.SaveChangesAsync(ct);
 
         await activity.WriteAsync(new ActivityEventWriteRequest(
@@ -510,6 +538,17 @@ public sealed class ImportApplicationService(
         {
             await inventory.CancelReservationsAsync(t.TicketCode, ct);
             await inventory.CancelProjectImportPlannedAsync(t, ct);
+        }
+        if (!string.IsNullOrWhiteSpace(t.LinkedTicketCode))
+        {
+            var linkedExport = await db.WarehouseTransactions
+                .FirstOrDefaultAsync(
+                    x => x.TransactionType == TransactionType.Export
+                         && x.TicketCode == t.LinkedTicketCode
+                         && x.ApprovalStatus != ApprovalStatus.Approved,
+                    ct);
+            if (linkedExport is not null)
+                db.WarehouseTransactions.Remove(linkedExport);
         }
         db.WarehouseTransactions.Remove(t);
         await db.SaveChangesAsync(ct);
@@ -567,6 +606,18 @@ public sealed class ImportApplicationService(
 
     private static bool HasPlannedInventory(ApprovalStatus status) =>
         status is ApprovalStatus.Draft or ApprovalStatus.Pending;
+
+    private async Task<string> ResolveImportWarehouseIdAsync(CreateImportDto dto, CancellationToken ct)
+    {
+        if (dto.IssueFromGeneralWarehouse)
+        {
+            if (!(dto.IsDirectProcurement ?? false))
+                throw new DomainRuleException("Cấp từ kho trung tâm chỉ dùng cho xuất thẳng công trường.");
+            return await inventory.GetGeneralWarehouseIdAsync(ct);
+        }
+
+        return dto.WarehouseId ?? "";
+    }
 
     private async Task CreateDraftReservationsAsync(WarehouseTransaction transaction, CancellationToken ct)
     {

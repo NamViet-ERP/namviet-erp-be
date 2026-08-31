@@ -118,7 +118,8 @@ public sealed class WmsReportService(WarehouseDbContext db) : IWmsReportService
         var pendingImports = await db.WarehouseTransactions
             .AsNoTracking()
             .Where(t => t.TransactionType == TransactionType.Import
-                        && t.ApprovalStatus == ApprovalStatus.Pending)
+                        && t.ApprovalStatus == ApprovalStatus.Pending
+                        && !t.IsDirectProcurement)
             .OrderByDescending(t => t.CreatedAt)
             .Take(50)
             .Select(t => new WmsPendingVoucherRowDto(
@@ -171,7 +172,9 @@ public sealed class WmsReportService(WarehouseDbContext db) : IWmsReportService
             .ToListAsync(ct);
 
         var importCount = await db.WarehouseTransactions.CountAsync(
-            t => t.TransactionType == TransactionType.Import && t.ApprovalStatus == ApprovalStatus.Pending, ct);
+            t => t.TransactionType == TransactionType.Import
+                 && t.ApprovalStatus == ApprovalStatus.Pending
+                 && !t.IsDirectProcurement, ct);
         var exportCount = await db.WarehouseTransactions.CountAsync(
             t => t.TransactionType == TransactionType.Export && t.ApprovalStatus == ApprovalStatus.Pending, ct);
         var transferCount = await db.WarehouseTransactions.CountAsync(

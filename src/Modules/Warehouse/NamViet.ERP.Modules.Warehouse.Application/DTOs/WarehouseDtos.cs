@@ -86,7 +86,11 @@ public record ProjectInventoryDto(
     decimal ActualInventoryQty, decimal PlannedInventoryQty,
     decimal ReservedQty, decimal MinStockQty,
     /// <summary>SL phiếu HL tồn kho chờ duyệt (giữ chỗ khả dụng, chưa trừ tồn thực tế).</summary>
-    decimal PendingDefectQty);
+    decimal PendingDefectQty,
+    /// <summary>Đã cấp công trường qua NK / xuất thẳng gắn PO (quyết toán Đã nhận).</summary>
+    decimal IssuedFromPoQty = 0,
+    /// <summary>Đã cấp công trường bằng xuất thẳng lấy từ kho trung tâm.</summary>
+    decimal IssuedFromGeneralQty = 0);
 
 public record UpdateProjectInventoryMinStockRequest(decimal MinStockQty);
 

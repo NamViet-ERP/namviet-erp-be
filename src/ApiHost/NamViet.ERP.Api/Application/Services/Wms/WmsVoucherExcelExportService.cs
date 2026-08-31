@@ -16,14 +16,14 @@ public sealed class WmsVoucherExcelExportService : IWmsVoucherExcelExportService
         includePrices
             ? BuildWorkbook(
                 "Phieu nhap",
-                ["Mã chứng từ", "Ngày", "Kho dự án", "NCC", "Mã tham chiếu", "Tổng GT", "Trạng thái", "Người tạo", "Ghi chú"],
+                ["Mã chứng từ", "Ngày", "Kho dự án", "Mã đơn hàng", "NCC", "Tổng GT", "Trạng thái", "Người tạo", "Ghi chú"],
                 rows.Select(r => new object?[]
                 {
                     r.VoucherCode,
                     r.Date,
                     r.Project ?? "",
-                    r.Supplier,
                     r.ReferenceCode,
+                    r.Supplier,
                     r.TotalValue,
                     r.Status,
                     r.CreatedBy,
@@ -31,14 +31,14 @@ public sealed class WmsVoucherExcelExportService : IWmsVoucherExcelExportService
                 }))
             : BuildWorkbook(
                 "Phieu nhap",
-                ["Mã chứng từ", "Ngày", "Kho dự án", "NCC", "Mã tham chiếu", "Trạng thái", "Người tạo", "Ghi chú"],
+                ["Mã chứng từ", "Ngày", "Kho dự án", "Mã đơn hàng", "NCC", "Trạng thái", "Người tạo", "Ghi chú"],
                 rows.Select(r => new object?[]
                 {
                     r.VoucherCode,
                     r.Date,
                     r.Project ?? "",
-                    r.Supplier,
                     r.ReferenceCode,
+                    r.Supplier,
                     r.Status,
                     r.CreatedBy,
                     r.Note,
@@ -47,7 +47,7 @@ public sealed class WmsVoucherExcelExportService : IWmsVoucherExcelExportService
     public byte[] BuildExportWorkbook(IReadOnlyList<ExportDto> rows) =>
         BuildWorkbook(
             "Phieu xuat",
-            ["Mã chứng từ", "Ngày", "Kho dự án", "Khách hàng", "Mã SO", "Trạng thái", "Người tạo", "Ghi chú"],
+            ["Mã chứng từ", "Ngày", "Kho dự án", "Khách hàng", "Mã đơn hàng", "Trạng thái", "Người tạo", "Ghi chú"],
             rows.Select(r => new object?[]
             {
                 r.VoucherCode,

@@ -8,7 +8,7 @@ namespace NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence.Migrations;
 
 /// <summary>
 /// Placeholder migration — cây vật tư không seed tự động.
-/// Sau deploy, chạy tùy chọn: scripts/seed-material-category-tree.sql (khi business đã chốt taxonomy).
+/// Nhập taxonomy trên UI (SLC → Thiết lập).
 /// </summary>
 [DbContext(typeof(WarehouseDbContext))]
 [Migration("20260625140000_SeedMaterialCategoryTree")]
@@ -21,6 +21,6 @@ public class SeedMaterialCategoryTree : Migration
 
     protected override void Down(MigrationBuilder migrationBuilder)
     {
-        // No-op — tree data is managed via scripts/seed-material-category-tree.sql
+        // No-op — material category tree is entered in the app, not via SQL seed.
     }
 }

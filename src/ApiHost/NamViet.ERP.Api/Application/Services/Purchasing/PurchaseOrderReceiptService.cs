@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using NamViet.ERP.Api.Application.Dtos.Purchasing;
 using NamViet.ERP.Api.Application.Dtos.Wms;
+using NamViet.ERP.Modules.Warehouse.Domain;
 using NamViet.ERP.Modules.Warehouse.Domain.Entities;
 using NamViet.ERP.Modules.Warehouse.Domain.Enums;
 using NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence;
@@ -34,6 +35,8 @@ public interface IPurchaseOrderReceiptService
     Task<CreateImportDto> BuildImportDraftFromPoAsync(
         string poCode,
         IReadOnlyList<CreateImportFromPoLineRequest>? selections = null,
+        bool isDirectProcurement = false,
+        bool ignorePoAvailability = false,
         CancellationToken ct = default);
 
     /// <summary>
@@ -58,8 +61,21 @@ public sealed class PurchaseOrderReceiptService(
         import.ApprovalStatus == ApprovalStatus.Approved
         || import.WarehouseApprovalStatus == WarehouseKeeperApprovalStatus.Approved;
 
+    /// <summary>
+    /// Xuất thẳng lấy từ kho (WarehouseId) không quyết toán PO.Received / Còn lại.
+    /// Nguồn kho dự án (WarehouseId trống) vẫn quyết toán như cũ.
+    /// </summary>
+    public static bool IsIssueFromGeneralWarehouse(WarehouseTransaction import) =>
+        import.IsDirectProcurement && !string.IsNullOrWhiteSpace(import.WarehouseId);
+
+    public static bool SettlesPurchaseOrder(WarehouseTransaction import) =>
+        !IsIssueFromGeneralWarehouse(import);
+
     public async Task ApplyApprovedImportReceiptAsync(WarehouseTransaction import, CancellationToken ct = default)
     {
+        if (IsIssueFromGeneralWarehouse(import))
+            return;
+
         var poCode = import.ReferenceCode?.Trim();
         if (string.IsNullOrWhiteSpace(poCode))
             return;
@@ -81,24 +97,27 @@ public sealed class PurchaseOrderReceiptService(
 
         var order = await LoadPlacedOrderAsync(poCode, ct);
         var consumption = await GetConsumptionByPoItemAsync(order, excludeTicketCode, ct);
+        var generalAvailableByCode = await LoadGeneralAvailableByMaterialAsync(ct);
 
         var lines = order.Items
             .OrderBy(i => i.Id)
             .Select(line =>
             {
                 var row = consumption[line.Id];
+                var materialCode = line.MaterialCode ?? line.Sku;
+                var generalAvailable = LookupGeneralAvailable(generalAvailableByCode, materialCode);
                 return new PoImportLinePreviewDto(
                     PoItemId: line.Id,
                     Name: line.Name,
-                    MaterialCode: line.MaterialCode ?? line.Sku,
+                    MaterialCode: materialCode,
                     Unit: line.Unit ?? "",
                     Ordered: line.Ordered,
                     Received: row.EffectiveReceived,
                     ReservedPending: row.PendingQty,
                     Available: row.Available,
-                    UnitPrice: line.PoPrice);
+                    UnitPrice: line.PoPrice,
+                    GeneralAvailableQty: generalAvailable);
             })
-            .Where(l => l.Available > 0)
             .ToList();
 
         return new PoImportPreviewDto(
@@ -112,6 +131,8 @@ public sealed class PurchaseOrderReceiptService(
     public async Task<CreateImportDto> BuildImportDraftFromPoAsync(
         string poCode,
         IReadOnlyList<CreateImportFromPoLineRequest>? selections = null,
+        bool isDirectProcurement = false,
+        bool ignorePoAvailability = false,
         CancellationToken ct = default)
     {
         await ReconcileReceivedFromApprovedImportsAsync(poCode.Trim(), extraImport: null, ct);
@@ -150,7 +171,7 @@ public sealed class PurchaseOrderReceiptService(
         foreach (var line in candidateItems)
         {
             var available = consumption[line.Id].Available;
-            if (available <= 0)
+            if (!ignorePoAvailability && available <= 0)
             {
                 if (selectionMap is not null)
                     throw new PurchasingConflictException(
@@ -160,8 +181,12 @@ public sealed class PurchaseOrderReceiptService(
 
             var qty = selectionMap is not null ? selectionMap[line.Id] : available;
             if (qty <= 0)
+            {
+                if (ignorePoAvailability && selectionMap is null)
+                    continue;
                 throw new PurchasingConflictException($"Số lượng nhập không hợp lệ cho '{line.Name}'.");
-            if (qty > available)
+            }
+            if (!ignorePoAvailability && qty > available)
                 throw new PurchasingConflictException(
                     $"'{line.Name}': trên PO chỉ còn {available:0.##} để nhập (đã trừ NK đã duyệt và NK/HL đang chờ). Không thể nhập {qty:0.##}.");
 
@@ -202,9 +227,13 @@ public sealed class PurchaseOrderReceiptService(
 
         var total = Math.Round(importItems.Sum(i => i.Qty * i.UnitPrice), 2);
         var supplierName = order.SupplierNameSnapshot ?? order.Supplier?.SupplierName ?? "";
-        var planNote = string.IsNullOrWhiteSpace(order.PlanCode)
-            ? $"Nhập kho từ PO {order.Code}"
-            : $"Nhập kho từ PO {order.Code} | KHMH {order.PlanCode}";
+        var planNote = isDirectProcurement
+            ? (string.IsNullOrWhiteSpace(order.PlanCode)
+                ? $"Xuất thẳng công trường từ PO {order.Code}"
+                : $"Xuất thẳng công trường từ PO {order.Code} | KHMH {order.PlanCode}")
+            : (string.IsNullOrWhiteSpace(order.PlanCode)
+                ? $"Nhập kho từ PO {order.Code}"
+                : $"Nhập kho từ PO {order.Code} | KHMH {order.PlanCode}");
 
         return new CreateImportDto(
             VoucherCode: "",
@@ -220,7 +249,7 @@ public sealed class PurchaseOrderReceiptService(
             CreatedBy: null,
             Note: planNote,
             WarehouseId: "",
-            IsDirectProcurement: false,
+            IsDirectProcurement: isDirectProcurement,
             Project: order.ProjectCode,
             PlanCode: order.PlanCode);
     }
@@ -230,6 +259,9 @@ public sealed class PurchaseOrderReceiptService(
         CancellationToken ct = default,
         bool forApproveSettlement = false)
     {
+        if (IsIssueFromGeneralWarehouse(import))
+            return;
+
         var poCode = import.ReferenceCode?.Trim();
         if (string.IsNullOrWhiteSpace(poCode))
             return;
@@ -300,7 +332,7 @@ public sealed class PurchaseOrderReceiptService(
             imports.Add(extraImport);
         }
 
-        var approvedQty = SumQtyByPoItem(order, imports.Where(IsActualReceipt));
+        var approvedQty = SumQtyByPoItem(order, imports.Where(IsActualReceipt).Where(SettlesPurchaseOrder));
 
         var planLineIds = order.Items
             .Where(i => i.PlanLineId is int)
@@ -374,12 +406,13 @@ public sealed class PurchaseOrderReceiptService(
                 && (excludeTicketCode == null || t.TicketCode != excludeTicketCode))
             .ToListAsync(ct);
 
-        var approved = SumQtyByPoItem(order, imports.Where(IsActualReceipt));
+        var approved = SumQtyByPoItem(order, imports.Where(IsActualReceipt).Where(SettlesPurchaseOrder));
         var pending = SumQtyByPoItem(
             order,
             imports.Where(t =>
                 t.ApprovalStatus == ApprovalStatus.Pending
-                && !IsActualReceipt(t)));
+                && !IsActualReceipt(t)
+                && SettlesPurchaseOrder(t)));
         var pendingDefect = await GetPendingDefectQtyByPoItemAsync(order.Code, null, ct);
 
         var map = new Dictionary<int, PoItemConsumption>();
@@ -495,6 +528,52 @@ public sealed class PurchaseOrderReceiptService(
         if (closed >= line.Quantity && line.Quantity > 0)
             return PurchaseLineStatuses.Delivered;
         return line.PurchaseStatus ?? PurchaseLineStatuses.NotPurchased;
+    }
+
+    private async Task<Dictionary<string, decimal>> LoadGeneralAvailableByMaterialAsync(CancellationToken ct)
+    {
+        var setting = await db.WmsSettings.AsNoTracking()
+            .FirstOrDefaultAsync(s => s.Key == WmsSettingsKeys.GeneralWarehouseId, ct);
+        var generalWarehouseId = setting?.Value?.Trim().Trim('"');
+        if (string.IsNullOrWhiteSpace(generalWarehouseId))
+            generalWarehouseId = WmsWarehouseIds.General;
+
+        var inventories = await db.WarehouseInventories.AsNoTracking()
+            .Where(i => i.WarehouseId == generalWarehouseId)
+            .Select(i => new { i.MaterialCode, i.Qty })
+            .ToListAsync(ct);
+        var actualByCode = inventories
+            .Where(i => !string.IsNullOrWhiteSpace(i.MaterialCode))
+            .GroupBy(i => i.MaterialCode.Trim(), StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.Sum(x => x.Qty), StringComparer.OrdinalIgnoreCase);
+
+        var reservations = await db.InventoryReservations.AsNoTracking()
+            .Where(r => r.WarehouseId == generalWarehouseId && r.Status == ReservationStatus.Holding)
+            .Select(r => new { r.MaterialCode, r.ReservedQty })
+            .ToListAsync(ct);
+        var reservedByCode = reservations
+            .Where(r => !string.IsNullOrWhiteSpace(r.MaterialCode))
+            .GroupBy(r => r.MaterialCode.Trim(), StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.Sum(x => x.ReservedQty), StringComparer.OrdinalIgnoreCase);
+
+        var available = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (code, actual) in actualByCode)
+        {
+            reservedByCode.TryGetValue(code, out var reserved);
+            available[code] = Math.Max(0m, actual - reserved);
+        }
+
+        return available;
+    }
+
+    private static decimal LookupGeneralAvailable(
+        IReadOnlyDictionary<string, decimal> byCode,
+        string? materialCode)
+    {
+        var code = materialCode?.Trim();
+        if (string.IsNullOrWhiteSpace(code))
+            return 0m;
+        return byCode.TryGetValue(code, out var qty) ? qty : 0m;
     }
 
     private static string NormalizeName(string? name) =>

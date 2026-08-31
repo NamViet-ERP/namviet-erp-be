@@ -125,6 +125,34 @@ public class VoucherWorkflowTests : IDisposable
     }
 
     [Fact]
+    public async Task DirectFromGeneral_approve_deducts_central_stock()
+    {
+        var created = await _ctx.Imports.CreateAsync(NewPendingImport(10m) with
+        {
+            IsDirectProcurement = true,
+            IssueFromGeneralWarehouse = true,
+            WarehouseId = "",
+        });
+        Assert.Equal(WmsWarehouseIds.General, created.WarehouseId);
+        Assert.True(created.IssueFromGeneralWarehouse);
+
+        await _ctx.SeedImportApprovalEvidenceAsync(created.Id);
+        var approved = await _ctx.Imports.ApproveAsync(created.Id);
+        Assert.NotNull(approved);
+        Assert.Equal("approved", approved!.Status);
+
+        var generalQty = await _ctx.Db.WarehouseInventories
+            .Where(i => i.WarehouseId == WmsWarehouseIds.General && i.MaterialCode == "MAT-001")
+            .Select(i => i.Qty)
+            .SingleAsync();
+        Assert.Equal(70m, generalQty);
+
+        var projectInventory = await _ctx.Db.ProjectInventories
+            .SingleAsync(p => p.ProjectCode == "DA-TEST" && p.MaterialCode == "MAT-001");
+        Assert.Equal(0m, projectInventory.ActualImportQty - projectInventory.ActualExportQty);
+    }
+
+    [Fact]
     public async Task Import_approve_rejects_when_not_pending()
     {
         var created = await _ctx.Imports.CreateAsync(NewPendingImport(5m) with { Status = "draft" });

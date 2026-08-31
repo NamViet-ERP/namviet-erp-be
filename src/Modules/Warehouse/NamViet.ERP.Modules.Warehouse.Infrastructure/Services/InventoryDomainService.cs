@@ -269,6 +269,8 @@ public class InventoryDomainService(WarehouseDbContext db) : IInventoryDomainSer
     {
         if (transaction.IsDirectProcurement)
         {
+            if (!string.IsNullOrWhiteSpace(transaction.WarehouseId))
+                await DeductSourceWarehouseAsync(transaction, ct);
             await ApplyDirectIssueAsync(transaction, ct);
             return;
         }
@@ -346,46 +348,34 @@ public class InventoryDomainService(WarehouseDbContext db) : IInventoryDomainSer
             ?? importTransaction.ProjectCode
             ?? throw new DomainRuleException("Direct Issue yêu cầu mã dự án thụ hưởng.");
 
-        var exportCount = await db.WarehouseTransactions
-            .CountAsync(t => t.TransactionType == TransactionType.Export, ct);
-        var exportTicketCode = WarehouseTransaction.GenerateTicketCode(
-            TransactionType.Export, exportCount + 1);
-
-        var exportTransaction = new WarehouseTransaction
+        var exportTransaction = await FindLinkedDirectExportAsync(importTransaction, ct);
+        if (exportTransaction is null)
         {
-            Id = Guid.NewGuid(),
-            TicketCode = exportTicketCode,
-            TransactionType = TransactionType.Export,
-            ProjectCode = projectCode,
-            BeneficiaryProjectCode = projectCode,
-            WarehouseId = importTransaction.WarehouseId,
-            LinkedTicketCode = importTransaction.TicketCode,
-            IsDirectProcurement = true,
-            ApprovalStatus = ApprovalStatus.Approved,
-            WarehouseApprovalStatus = importTransaction.WarehouseApprovalStatus,
-            ApprovedById = importTransaction.ApprovedById,
-            ApprovedByName = importTransaction.ApprovedByName,
-            ApprovedAt = importTransaction.ApprovedAt ?? DateTime.UtcNow,
-            CreatedById = importTransaction.CreatedById,
-            CreatedByName = importTransaction.CreatedByName,
-            Notes = $"Auto Direct Issue from {importTransaction.TicketCode}",
-            Items = importTransaction.Items.Select(i =>
-            {
-                var clone = new WarehouseTransactionItem
-                {
-                    MaterialCode = i.MaterialCode,
-                    Quantity = i.Quantity,
-                    UnitPrice = i.UnitPrice,
-                    ConstructionPhase = i.ConstructionPhase,
-                    Notes = i.Notes
-                };
-                TransactionItemHelper.CopySnapshots(i, clone);
-                return clone;
-            }).ToList()
-        };
+            var exportCount = await db.WarehouseTransactions
+                .CountAsync(t => t.TransactionType == TransactionType.Export, ct);
+            var exportTicketCode = WarehouseTransaction.GenerateTicketCode(
+                TransactionType.Export, exportCount + 1);
 
-        importTransaction.LinkedTicketCode = exportTicketCode;
-        db.WarehouseTransactions.Add(exportTransaction);
+            exportTransaction = BuildDirectExport(
+                importTransaction,
+                projectCode,
+                exportTicketCode,
+                ApprovalStatus.Approved);
+            db.WarehouseTransactions.Add(exportTransaction);
+        }
+        else
+        {
+            SyncDirectExportFromImport(exportTransaction, importTransaction, projectCode);
+            exportTransaction.ApprovalStatus = ApprovalStatus.Approved;
+            exportTransaction.WarehouseApprovalStatus = importTransaction.WarehouseApprovalStatus;
+            exportTransaction.ApprovedById = importTransaction.ApprovedById;
+            exportTransaction.ApprovedByName = importTransaction.ApprovedByName;
+            exportTransaction.ApprovedAt = importTransaction.ApprovedAt ?? DateTime.UtcNow;
+            exportTransaction.UpdatedAt = DateTime.UtcNow;
+        }
+
+        importTransaction.LinkedTicketCode = exportTransaction.TicketCode;
+        exportTransaction.LinkedTicketCode = importTransaction.TicketCode;
 
         foreach (var item in importTransaction.Items)
         {
@@ -398,6 +388,146 @@ public class InventoryDomainService(WarehouseDbContext db) : IInventoryDomainSer
             projectInventory.ApplyActualExport(item.Quantity);
         }
     }
+
+    public async Task EnsurePendingDirectExportAsync(
+        WarehouseTransaction importTransaction, CancellationToken ct = default)
+    {
+        if (!importTransaction.IsDirectProcurement)
+            return;
+        if (importTransaction.ApprovalStatus != ApprovalStatus.Pending)
+            return;
+
+        var projectCode = importTransaction.BeneficiaryProjectCode
+            ?? importTransaction.ProjectCode
+            ?? throw new DomainRuleException("Xuất thẳng yêu cầu mã dự án.");
+
+        var existing = await FindLinkedDirectExportAsync(importTransaction, ct);
+        if (existing is not null)
+        {
+            SyncDirectExportFromImport(existing, importTransaction, projectCode);
+            importTransaction.LinkedTicketCode = existing.TicketCode;
+            existing.LinkedTicketCode = importTransaction.TicketCode;
+            return;
+        }
+
+        var exportCount = await db.WarehouseTransactions
+            .CountAsync(t => t.TransactionType == TransactionType.Export, ct);
+        var exportTicketCode = WarehouseTransaction.GenerateTicketCode(
+            TransactionType.Export, exportCount + 1);
+        var exportTransaction = BuildDirectExport(
+            importTransaction,
+            projectCode,
+            exportTicketCode,
+            ApprovalStatus.Pending);
+        db.WarehouseTransactions.Add(exportTransaction);
+        importTransaction.LinkedTicketCode = exportTicketCode;
+    }
+
+    public async Task HealPendingDirectExportsAsync(CancellationToken ct = default)
+    {
+        var pendingDirects = await db.WarehouseTransactions
+            .Include(t => t.Items)
+            .Where(t => t.TransactionType == TransactionType.Import
+                        && t.IsDirectProcurement
+                        && t.ApprovalStatus == ApprovalStatus.Pending)
+            .ToListAsync(ct);
+
+        foreach (var import in pendingDirects)
+            await EnsurePendingDirectExportAsync(import, ct);
+
+        if (pendingDirects.Count > 0)
+            await db.SaveChangesAsync(ct);
+    }
+
+    private async Task<WarehouseTransaction?> FindLinkedDirectExportAsync(
+        WarehouseTransaction importTransaction, CancellationToken ct)
+    {
+        if (!string.IsNullOrWhiteSpace(importTransaction.LinkedTicketCode))
+        {
+            var byCode = await db.WarehouseTransactions
+                .Include(t => t.Items)
+                .FirstOrDefaultAsync(
+                    t => t.TransactionType == TransactionType.Export
+                         && t.TicketCode == importTransaction.LinkedTicketCode,
+                    ct);
+            if (byCode is not null)
+                return byCode;
+        }
+
+        return await db.WarehouseTransactions
+            .Include(t => t.Items)
+            .FirstOrDefaultAsync(
+                t => t.TransactionType == TransactionType.Export
+                     && t.LinkedTicketCode == importTransaction.TicketCode,
+                ct);
+    }
+
+    private static WarehouseTransaction BuildDirectExport(
+        WarehouseTransaction importTransaction,
+        string projectCode,
+        string exportTicketCode,
+        ApprovalStatus status)
+    {
+        var approved = status == ApprovalStatus.Approved;
+        return new WarehouseTransaction
+        {
+            Id = Guid.NewGuid(),
+            TicketCode = exportTicketCode,
+            TransactionType = TransactionType.Export,
+            ProjectCode = projectCode,
+            BeneficiaryProjectCode = projectCode,
+            WarehouseId = importTransaction.WarehouseId,
+            SoCode = importTransaction.ReferenceCode,
+            LinkedTicketCode = importTransaction.TicketCode,
+            IsDirectProcurement = true,
+            ApprovalStatus = status,
+            WarehouseApprovalStatus = approved
+                ? importTransaction.WarehouseApprovalStatus
+                : WarehouseKeeperApprovalStatus.Pending,
+            ApprovedById = approved ? importTransaction.ApprovedById : null,
+            ApprovedByName = approved ? importTransaction.ApprovedByName : null,
+            ApprovedAt = approved ? (importTransaction.ApprovedAt ?? DateTime.UtcNow) : null,
+            CreatedById = importTransaction.CreatedById,
+            CreatedByName = importTransaction.CreatedByName,
+            Notes = string.IsNullOrWhiteSpace(importTransaction.Notes)
+                ? $"Xuất thẳng công trường từ {importTransaction.TicketCode}"
+                : importTransaction.Notes,
+            Items = CloneDirectExportItems(importTransaction, exportTicketCode),
+        };
+    }
+
+    private void SyncDirectExportFromImport(
+        WarehouseTransaction exportTransaction,
+        WarehouseTransaction importTransaction,
+        string projectCode)
+    {
+        exportTransaction.ProjectCode = projectCode;
+        exportTransaction.BeneficiaryProjectCode = projectCode;
+        exportTransaction.WarehouseId = importTransaction.WarehouseId;
+        exportTransaction.SoCode = importTransaction.ReferenceCode;
+        exportTransaction.IsDirectProcurement = true;
+        if (exportTransaction.Items.Count > 0)
+            db.WarehouseTransactionItems.RemoveRange(exportTransaction.Items);
+        exportTransaction.Items = CloneDirectExportItems(importTransaction, exportTransaction.TicketCode);
+    }
+
+    private static List<WarehouseTransactionItem> CloneDirectExportItems(
+        WarehouseTransaction importTransaction,
+        string exportTicketCode) =>
+        importTransaction.Items.Select(i =>
+        {
+            var clone = new WarehouseTransactionItem
+            {
+                TicketCode = exportTicketCode,
+                MaterialCode = i.MaterialCode,
+                Quantity = i.Quantity,
+                UnitPrice = i.UnitPrice,
+                ConstructionPhase = i.ConstructionPhase,
+                Notes = i.Notes
+            };
+            TransactionItemHelper.CopySnapshots(i, clone);
+            return clone;
+        }).ToList();
 
     public async Task ApplyTransferAsync(
         WarehouseTransaction transaction, CancellationToken ct = default)
@@ -597,6 +727,23 @@ public class InventoryDomainService(WarehouseDbContext db) : IInventoryDomainSer
         };
         db.ProjectInventories.Add(inventory);
         return inventory;
+    }
+
+    private async Task DeductSourceWarehouseAsync(WarehouseTransaction transaction, CancellationToken ct)
+    {
+        var warehouseId = transaction.WarehouseId ?? "";
+        foreach (var item in transaction.Items)
+        {
+            if (item.Quantity <= 0)
+                continue;
+
+            var available = await GetAvailableQtyAsync(warehouseId, item.MaterialCode, ct);
+            if (item.Quantity > available)
+                throw new DomainRuleException(
+                    $"Kho trung tâm không đủ '{item.MaterialCode}' (khả dụng {available:0.##}, cần {item.Quantity:0.##}).");
+
+            await AdjustWarehouseQtyAsync(warehouseId, item.MaterialCode, -item.Quantity, ct);
+        }
     }
 
     private async Task AdjustWarehouseQtyAsync(

@@ -31,7 +31,8 @@ public record CreateImportDto(
     decimal TotalValue, string Status, string WarehouseApproval, string ApprovedBy,
     string WarehouseKeeper, List<ImportItemDto> Items, string? CreatedBy, string Note,
     string WarehouseId, bool? IsDirectProcurement, string? Project,
-    string? PlanCode = null);
+    string? PlanCode = null,
+    bool IssueFromGeneralWarehouse = false);
 public record ImportDto(
     string Id, string VoucherCode, string Date, string Supplier, string ReferenceCode,
     decimal TotalValue, string Status, string WarehouseApproval, string ApprovedBy,
@@ -42,7 +43,9 @@ public record ImportDto(
     string? ReceiptEvaluation = null,
     List<ImportAttachmentDto>? Attachments = null,
     string? ShortageReport = null,
-    string? LinkedDefectTicketCode = null);
+    string? LinkedDefectTicketCode = null,
+    string? LinkedTicketCode = null,
+    bool IssueFromGeneralWarehouse = false);
 
 public record ApproveImportLineSettlementRequest(
     int LineId,
@@ -92,7 +95,9 @@ public record ExportDto(
     string WarehouseId, string WarehouseName, List<ExportItemDto> Items,
     string Status, string CreatedBy, string Note, string? ApprovedBy, string? ApprovedAt,
     string? Project, string? ProjectName,
-    string CreatedAt);
+    string CreatedAt,
+    bool IsDirectProcurement = false,
+    string? LinkedTicketCode = null);
 public record CreateExportDto(
     string VoucherCode, string Date, string SoCode, string Customer,
     string WarehouseId, List<ExportItemDto> Items,

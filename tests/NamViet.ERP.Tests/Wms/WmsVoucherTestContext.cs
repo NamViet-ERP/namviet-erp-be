@@ -224,7 +224,7 @@ internal sealed class WmsVoucherTestContext : IDisposable
             new FakeSupplierDeliveryEvaluationService(),
             fileStorage, new FakeActivityEventWriter());
         Exports = new ExportApplicationService(
-            Db, Inventory, stocktakeFreeze, CurrentUser, new FakeWmsCatalogQueryService());
+            Db, Inventory, stocktakeFreeze, CurrentUser, new FakeWmsCatalogQueryService(), Imports);
         Transfers = new TransferApplicationService(Db, Inventory, stocktakeFreeze, CurrentUser);
         ExportReturns = new ExportReturnApplicationService(
             Db, Inventory, stocktakeFreeze, CurrentUser, fileStorage);

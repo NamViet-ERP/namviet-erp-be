@@ -135,7 +135,9 @@ public static class WmsMapper
             t.ReceiptEvaluation,
             attachments,
             t.ShortageReport,
-            t.LinkedDefectTicketCode);
+            t.LinkedDefectTicketCode,
+            t.LinkedTicketCode,
+            t.IsDirectProcurement && !string.IsNullOrWhiteSpace(t.WarehouseId));
     }
 
     public static ExportDto ToExport(
@@ -151,7 +153,9 @@ public static class WmsMapper
             t.CreatedByName, t.Notes ?? "", t.ApprovedByName, FormatApprovedAt(t.ApprovedAt),
             t.ProjectCode ?? t.BeneficiaryProjectCode,
             projectName,
-            FormatCreatedAt(t.CreatedAt));
+            FormatCreatedAt(t.CreatedAt),
+            t.IsDirectProcurement,
+            t.LinkedTicketCode);
 
     public static TransferDto ToTransfer(
         WarehouseTransaction t,

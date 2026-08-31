@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using NamViet.ERP.Api.Application.Mappers.Wms;
+using NamViet.ERP.Api.Application.Services.Purchasing;
 using NamViet.ERP.Api.Application.Services.Wms;
 using NamViet.ERP.Api.Infrastructure.Authorization;
 using NamViet.ERP.Modules.Warehouse.Application.DTOs;
@@ -101,6 +102,7 @@ public class ProjectsController(
     public async Task<ActionResult<List<ProjectInventoryDto>>> GetInventory(string code, CancellationToken ct)
     {
         var pendingHl = await inventory.GetPendingStockDefectQtyByMaterialAsync(code, null, ct);
+        var issued = await SumIssuedToSiteByMaterialAsync(code, ct);
         var items = await db.ProjectInventories
             .Include(pi => pi.Material)
             .Where(pi => pi.ProjectCode == code)
@@ -117,9 +119,35 @@ public class ProjectsController(
                 0m))
             .ToListAsync(ct);
 
+        var known = new HashSet<string>(items.Select(i => i.MaterialCode), StringComparer.OrdinalIgnoreCase);
+        var extraCodes = issued.FromPo.Keys
+            .Concat(issued.FromGeneral.Keys)
+            .Where(c => !known.Contains(c))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        if (extraCodes.Count > 0)
+        {
+            var materials = await db.Materials.AsNoTracking()
+                .Where(m => extraCodes.Contains(m.MaterialCode))
+                .ToListAsync(ct);
+            var materialsByCode = materials.ToDictionary(m => m.MaterialCode, StringComparer.OrdinalIgnoreCase);
+            foreach (var materialCode in extraCodes)
+            {
+                materialsByCode.TryGetValue(materialCode, out var material);
+                items.Add(new ProjectInventoryDto(
+                    code,
+                    materialCode,
+                    material?.MaterialName ?? materialCode,
+                    material?.Unit ?? string.Empty,
+                    0m, 0m, 0m, 0m, 0m, 0m, 0m, 0m, 0m));
+            }
+        }
+
         return Ok(items.Select(pi => pi with
         {
             PendingDefectQty = pendingHl.GetValueOrDefault(pi.MaterialCode),
+            IssuedFromPoQty = issued.FromPo.GetValueOrDefault(pi.MaterialCode),
+            IssuedFromGeneralQty = issued.FromGeneral.GetValueOrDefault(pi.MaterialCode),
         }).ToList());
     }
 
@@ -300,6 +328,37 @@ public class ProjectsController(
         }).ToList();
     }
 
+    private async Task<(Dictionary<string, decimal> FromPo, Dictionary<string, decimal> FromGeneral)>
+        SumIssuedToSiteByMaterialAsync(string projectCode, CancellationToken ct)
+    {
+        var fromPo = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
+        var fromGeneral = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
+        var imports = await db.WarehouseTransactions
+            .AsNoTracking()
+            .Include(t => t.Items)
+            .Where(t =>
+                t.TransactionType == TransactionType.Import
+                && t.IsDirectProcurement
+                && t.ApprovalStatus == ApprovalStatus.Approved
+                && t.BeneficiaryProjectCode == projectCode)
+            .ToListAsync(ct);
+
+        foreach (var import in imports)
+        {
+            var map = PurchaseOrderReceiptService.IsIssueFromGeneralWarehouse(import)
+                ? fromGeneral
+                : fromPo;
+            foreach (var item in import.Items)
+            {
+                if (string.IsNullOrWhiteSpace(item.MaterialCode) || item.Quantity <= 0)
+                    continue;
+                map[item.MaterialCode] = map.GetValueOrDefault(item.MaterialCode) + item.Quantity;
+            }
+        }
+
+        return (fromPo, fromGeneral);
+    }
+
     private static string? NormalizeOptional(string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
@@ -307,6 +366,7 @@ public class ProjectsController(
     {
         var itemQty = t.Items.Sum(i => i.Quantity);
         decimal? totalValue = t.TransactionType == TransactionType.Import
+            && !PurchaseOrderReceiptService.IsIssueFromGeneralWarehouse(t)
             ? t.Items.Sum(i => i.Quantity * i.UnitPrice)
             : null;
 

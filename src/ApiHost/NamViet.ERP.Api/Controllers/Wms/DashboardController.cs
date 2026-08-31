@@ -76,12 +76,50 @@ public class DashboardController(WarehouseDbContext db, IWmsCatalogQueryService 
     [HttpGet("stock-by-category")]
     public async Task<ActionResult<List<DashboardCategoryDto>>> StockByCategory(CancellationToken ct)
     {
-        var rows = await db.Materials
-            .Include(m => m.Category)
-            .Where(m => m.DeletedAt == null)
-            .GroupBy(m => m.Category.Name)
-            .Select(g => new DashboardCategoryDto(g.Key, g.Count()))
+        var projectRows = await db.ProjectInventories
+            .AsNoTracking()
+            .GroupBy(pi => pi.MaterialCode)
+            .Select(g => new
+            {
+                MaterialCode = g.Key,
+                Qty = g.Sum(x => x.ActualImportQty - x.ActualExportQty),
+            })
             .ToListAsync(ct);
+
+        var warehouseRows = await db.WarehouseInventories
+            .AsNoTracking()
+            .GroupBy(i => i.MaterialCode)
+            .Select(g => new { MaterialCode = g.Key, Qty = g.Sum(x => x.Qty) })
+            .ToListAsync(ct);
+
+        var qtyByMaterial = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
+        foreach (var row in projectRows)
+            qtyByMaterial[row.MaterialCode] = qtyByMaterial.GetValueOrDefault(row.MaterialCode) + row.Qty;
+        foreach (var row in warehouseRows)
+            qtyByMaterial[row.MaterialCode] = qtyByMaterial.GetValueOrDefault(row.MaterialCode) + row.Qty;
+
+        var codes = qtyByMaterial
+            .Where(kv => kv.Value > 0)
+            .Select(kv => kv.Key)
+            .ToList();
+        if (codes.Count == 0)
+            return Ok(new List<DashboardCategoryDto>());
+
+        var materials = await db.Materials
+            .AsNoTracking()
+            .Where(m => m.DeletedAt == null && codes.Contains(m.MaterialCode))
+            .Select(m => new { m.MaterialCode, m.MaterialName })
+            .ToListAsync(ct);
+
+        var rows = materials
+            .Select(m => new DashboardCategoryDto(
+                m.MaterialName,
+                qtyByMaterial.GetValueOrDefault(m.MaterialCode)))
+            .Where(r => r.Value > 0)
+            .OrderByDescending(r => r.Value)
+            .Take(12)
+            .ToList();
+
         return Ok(rows);
     }
 

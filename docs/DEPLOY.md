@@ -10,10 +10,10 @@ Frontend: file `docs/DEPLOY.md` trong repo **`WareHouse_Management`**.
 | Được | Không được |
 |------|------------|
 | Chạy migrator một lần trước khi rollout API | Cho web replica tự migrate schema khi startup |
-| Master data qua script SQL **thủ công** sau khi business chốt | Chạy seed cây vật tư tự động trong migration |
+| Master data nhập trên UI sau khi business chốt | Chạy seed cây vật tư tự động trong migration |
 | Secrets qua env / user-secrets / vault | JWT key hoặc password DB placeholder trên production |
 
-Migration `SeedMaterialCategoryTree` là **no-op** — dữ liệu cây vật tư chỉ qua `scripts/seed-material-category-tree.sql` khi được phép.
+Migration `SeedMaterialCategoryTree` là **no-op**. Cây vật tư nhập trên UI (SLC → Thiết lập), không seed bằng script.
 
 ---
 
@@ -141,7 +141,7 @@ Orchestrator / load balancer: probe liveness → `/health`; chỉ route traffic 
 - [ ] `GET /health` = 200 và `GET /health/ready` = 200 sau migrate  
 - [ ] Log (Serilog) đi tới file/aggregator — **không** log JWT / password  
 - [ ] Rate limit auth/public endpoint — đã bật; IP lấy sau forwarded headers  
-- [ ] Bootstrap admin **một lần** (`docs/OPS_FIRST_ADMIN.md`) — **không** chạy demo seed / `BootstrapRbacPilotUsers` trên production  
+- [ ] Bootstrap admin **một lần** (`docs/OPS_FIRST_ADMIN.md`)  
 - [ ] Không có user admin cứng trong migration  
 
 ---
@@ -161,19 +161,9 @@ Không có tài khoản mặc định trong repo — đây là chủ đích.
 
 ---
 
-## 7. Master data tùy chọn
+## 7. Master data
 
-Xem [`scripts/README.md`](../scripts/README.md).
-
-### Cây vật tư (138 node)
-
-Chỉ sau khi business chốt taxonomy:
-
-```bash
-psql -h <host> -U <user> -d <database> -f scripts/seed-material-category-tree.sql
-```
-
-Tạo lại SQL từ JSON: `node scripts/generate-material-category-tree-sql.mjs`
+Cây vật tư / danh mục nhập trên UI (SLC). Không có script seed nghiệp vụ.
 
 ---
 

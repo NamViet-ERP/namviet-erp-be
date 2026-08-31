@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using NamViet.ERP.Api.Application.Services.Purchasing;
 using NamViet.ERP.Modules.Warehouse.Domain.Entities;
 using NamViet.ERP.Modules.Warehouse.Domain.Enums;
 using NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence;
@@ -33,6 +34,7 @@ public sealed class ProjectBudgetService(WarehouseDbContext db) : IProjectBudget
             where txn.TransactionType == TransactionType.Import
                   && txn.ApprovalStatus == ApprovalStatus.Approved
                   && txn.BeneficiaryProjectCode == projectCode
+                  && !(txn.IsDirectProcurement && txn.WarehouseId != null && txn.WarehouseId != "")
             select item.Quantity * item.UnitPrice
         ).SumAsync(ct);
     }
@@ -57,6 +59,7 @@ public sealed class ProjectBudgetService(WarehouseDbContext db) : IProjectBudget
                   && txn.ApprovalStatus == ApprovalStatus.Approved
                   && txn.BeneficiaryProjectCode != null
                   && codes.Contains(txn.BeneficiaryProjectCode)
+                  && !(txn.IsDirectProcurement && txn.WarehouseId != null && txn.WarehouseId != "")
             select new { ProjectCode = txn.BeneficiaryProjectCode!, LineValue = item.Quantity * item.UnitPrice }
         ).ToListAsync(ct);
 
@@ -78,6 +81,7 @@ public sealed class ProjectBudgetService(WarehouseDbContext db) : IProjectBudget
     {
         var projectCode = ResolveProjectCode(transaction);
         if (string.IsNullOrWhiteSpace(projectCode)) return;
+        if (PurchaseOrderReceiptService.IsIssueFromGeneralWarehouse(transaction)) return;
 
         var project = await db.Projects
             .AsNoTracking()

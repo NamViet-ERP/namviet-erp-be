@@ -27,10 +27,12 @@ public sealed class ExportApplicationService(
     IInventoryDomainService inventory,
     IStocktakeFreezeGuard stocktakeFreeze,
     ICurrentUser currentUser,
-    IWmsCatalogQueryService catalog) : IExportApplicationService
+    IWmsCatalogQueryService catalog,
+    IImportApplicationService imports) : IExportApplicationService
 {
     public async Task<List<ExportDto>> ListAsync(DateOnly? dateFrom = null, DateOnly? dateTo = null, CancellationToken ct = default)
     {
+        await inventory.HealPendingDirectExportsAsync(ct);
         var items = await ExportQuery()
             .WhereCreatedBetween(dateFrom, dateTo)
             .OrderByDescending(t => t.CreatedAt)
@@ -95,6 +97,9 @@ public sealed class ExportApplicationService(
         if (t is null) return null;
         if (t.ApprovalStatus == ApprovalStatus.Approved)
             throw new DomainRuleException("Phiếu đã duyệt, không thể chỉnh sửa.");
+        if (t.IsDirectProcurement)
+            throw new DomainRuleException(
+                "Phiếu xuất thẳng do cung ứng lập từ PO, không sửa trên xuất kho.");
 
         await stocktakeFreeze.EnsureProjectsNotFrozenAsync([dto.Project], ct);
 
@@ -145,6 +150,18 @@ public sealed class ExportApplicationService(
 
         await stocktakeFreeze.EnsureProjectsNotFrozenAsync([t.ProjectCode ?? t.BeneficiaryProjectCode], ct);
 
+        if (t.IsDirectProcurement)
+        {
+            var importCode = t.LinkedTicketCode;
+            if (string.IsNullOrWhiteSpace(importCode))
+                throw new DomainRuleException("Phiếu xuất thẳng thiếu phiếu nhận hàng liên kết.");
+            await imports.ApproveAsync(importCode, request: null, ct);
+            t = await FindExportAsync(id, ct);
+            if (t is null) return null;
+            var directProjectName = await ResolveProjectNameAsync(t, ct);
+            return WmsMapper.ToExport(t, directProjectName, directProjectName);
+        }
+
         await using var tx = await db.Database.BeginTransactionAsync(ct);
         t.ApprovalStatus = ApprovalStatus.Approved;
         t.ApprovedById = currentUser.Id;
@@ -166,6 +183,9 @@ public sealed class ExportApplicationService(
         if (t is null) return null;
         if (t.ApprovalStatus != ApprovalStatus.Draft)
             throw new DomainRuleException("Chỉ phiếu nháp mới được PM chốt.");
+        if (t.IsDirectProcurement)
+            throw new DomainRuleException(
+                "Phiếu xuất thẳng do cung ứng chốt dự kiến từ PO, không chốt trên xuất kho.");
 
         await stocktakeFreeze.EnsureProjectsNotFrozenAsync([t.ProjectCode ?? t.BeneficiaryProjectCode], ct);
 
@@ -183,6 +203,9 @@ public sealed class ExportApplicationService(
         if (t is null) return false;
         if (t.ApprovalStatus == ApprovalStatus.Approved)
             throw new DomainRuleException("Phiếu đã duyệt, không thể xóa.");
+        if (t.IsDirectProcurement)
+            throw new DomainRuleException(
+                "Phiếu xuất thẳng không xóa trên xuất kho. Hủy phiếu nhận hàng (nháp) trên PO nếu cần.");
 
         await using var tx = await db.Database.BeginTransactionAsync(ct);
         if (HasPlannedInventory(t.ApprovalStatus))
@@ -198,6 +221,8 @@ public sealed class ExportApplicationService(
 
     private async Task CreateDraftPlannedAsync(WarehouseTransaction transaction, CancellationToken ct)
     {
+        if (transaction.IsDirectProcurement)
+            return;
         if (string.IsNullOrWhiteSpace(transaction.ProjectCode ?? transaction.BeneficiaryProjectCode))
             return;
 

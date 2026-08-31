@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using NamViet.ERP.Api.Application.Dtos.Purchasing;
 using NamViet.ERP.Api.Application.Services.Purchasing;
+using NamViet.ERP.Modules.Warehouse.Domain;
 using NamViet.ERP.Modules.Warehouse.Domain.Entities;
 using NamViet.ERP.Modules.Warehouse.Domain.Enums;
 using NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence;
@@ -215,7 +216,7 @@ public class PurchaseOrderReceiptServiceTests : IDisposable
         await _db.SaveChangesAsync();
 
         var preview = await _receipt.PreviewImportFromPoAsync(order.Code);
-        Assert.Empty(preview.Lines);
+        Assert.Equal(0m, preview.Lines.Single().Available);
 
         var healed = await _db.PurchaseOrders.Include(o => o.Items).FirstAsync(o => o.Code == order.Code);
         Assert.Equal(8500m, healed.Items.Single().Received);
@@ -224,6 +225,33 @@ public class PurchaseOrderReceiptServiceTests : IDisposable
         var ex = await Assert.ThrowsAsync<PurchasingConflictException>(() =>
             _receipt.BuildImportDraftFromPoAsync(order.Code));
         Assert.Contains("đã nhập đủ", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Preview_IncludesGeneralWarehouseAvailableQty()
+    {
+        var order = await SeedPlacedOrderAsync(qty: 10, orderQty: 10);
+        _db.WmsWarehouses.Add(new WmsWarehouse
+        {
+            Id = WmsWarehouseIds.General,
+            Code = "KHO-TONG",
+            Name = "Kho tổng",
+            Group = "Kho tổng",
+            Address = "A",
+            Branch = "HCM",
+            Manager = "Keeper",
+            Status = "active",
+        });
+        _db.WarehouseInventories.Add(new WarehouseInventory
+        {
+            WarehouseId = WmsWarehouseIds.General,
+            MaterialCode = "vt-ong",
+            Qty = 25,
+        });
+        await _db.SaveChangesAsync();
+
+        var preview = await _receipt.PreviewImportFromPoAsync(order.Code);
+        Assert.Equal(25m, preview.Lines.Single().GeneralAvailableQty);
     }
 
     [Fact]
@@ -255,6 +283,55 @@ public class PurchaseOrderReceiptServiceTests : IDisposable
         var preview = await _receipt.PreviewImportFromPoAsync(order.Code);
         Assert.Equal(3m, preview.Lines.Single().Available);
         Assert.Equal(7m, preview.Lines.Single().ReservedPending);
+    }
+
+    [Fact]
+    public async Task BuildImportDraft_IgnorePoAvailability_AllowsWhenFullyReceived()
+    {
+        var order = await SeedPlacedOrderAsync(qty: 10, orderQty: 10);
+        var poItemId = (await _db.PurchaseOrderItems.AsNoTracking()
+            .FirstAsync(i => i.PoCode == order.Code)).Id;
+        _db.WarehouseTransactions.Add(ApprovedImport(
+            order.Code, "NK-FULL-PO", 10, $"{PurchaseOrderReceiptService.PoItemNotePrefix}{poItemId}"));
+        await _db.SaveChangesAsync();
+
+        var ex = await Assert.ThrowsAsync<PurchasingConflictException>(() =>
+            _receipt.BuildImportDraftFromPoAsync(order.Code, [
+                new CreateImportFromPoLineRequest(poItemId, 3),
+            ]));
+        Assert.Contains("không còn", ex.Message, StringComparison.OrdinalIgnoreCase);
+
+        var dto = await _receipt.BuildImportDraftFromPoAsync(
+            order.Code,
+            [new CreateImportFromPoLineRequest(poItemId, 3)],
+            isDirectProcurement: true,
+            ignorePoAvailability: true);
+        Assert.Equal(3m, dto.Items[0].Qty);
+        Assert.True(dto.IsDirectProcurement);
+    }
+
+    [Fact]
+    public async Task ApplyApprovedImport_SkipsReceived_WhenDirectFromWarehouse()
+    {
+        var order = await SeedPlacedOrderAsync(qty: 10, orderQty: 10);
+        var poItemId = (await _db.PurchaseOrderItems.AsNoTracking()
+            .FirstAsync(i => i.PoCode == order.Code)).Id;
+
+        var import = ApprovedImport(
+            order.Code, "NK-GEN-1", 4, $"{PurchaseOrderReceiptService.PoItemNotePrefix}{poItemId}");
+        import.IsDirectProcurement = true;
+        import.WarehouseId = "WH-GENERAL";
+
+        await _receipt.ApplyApprovedImportReceiptAsync(import);
+        await _db.SaveChangesAsync();
+
+        var refreshed = await _db.PurchaseOrders
+            .Include(o => o.Items)
+            .FirstAsync(o => o.Code == order.Code);
+        Assert.Equal(0m, refreshed.Items.Single().Received);
+
+        var preview = await _receipt.PreviewImportFromPoAsync(order.Code);
+        Assert.Equal(10m, preview.Lines.Single().Available);
     }
 
     [Fact]

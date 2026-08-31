@@ -86,6 +86,30 @@ public class PurchaseDefectApplicationServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task PreviewFromPo_ignores_pending_issue_from_general_warehouse()
+    {
+        var poItem = SeedPlacedPo(ordered: 80m, received: 20m);
+        SeedPendingImport(
+            ticketCode: "NK-PO-PEND",
+            poItemId: poItem.Id,
+            qty: 30m,
+            isDirectProcurement: true,
+            warehouseId: null);
+        SeedPendingImport(
+            ticketCode: "NK-GEN-PEND",
+            poItemId: poItem.Id,
+            qty: 1m,
+            isDirectProcurement: true,
+            warehouseId: "wh-general");
+
+        var preview = await _defects.PreviewFromPoAsync("PO-TEST");
+
+        var line = Assert.Single(preview.Lines);
+        Assert.Equal(30m, line.ReservedPendingNk);
+        Assert.Equal(30m, line.Available);
+    }
+
+    [Fact]
     public async Task Cancel_draft_is_rejected()
     {
         SeedPendingStockDefect(qty: 10m, onHand: 20m);
@@ -97,6 +121,65 @@ public class PurchaseDefectApplicationServiceTests : IDisposable
             _defects.CancelAsync("HL-0001", CancellationToken.None));
 
         Assert.Contains("chờ duyệt", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private PurchaseOrderItem SeedPlacedPo(decimal ordered, decimal received)
+    {
+        var item = new PurchaseOrderItem
+        {
+            PoCode = "PO-TEST",
+            MaterialCode = "MAT-001",
+            Sku = "MAT-001",
+            Name = "Máy bơm chìm 5.5kW",
+            Unit = "Cái",
+            Ordered = ordered,
+            Received = received,
+            PoPrice = 1000,
+        };
+        _db.PurchaseOrders.Add(new PurchaseOrder
+        {
+            Code = "PO-TEST",
+            ProjectCode = "DA-TEST",
+            PlanCode = "KHMH-TEST",
+            OrderDate = DateOnly.FromDateTime(DateTime.UtcNow),
+            OrderPlacementStatus = PurchaseOrderPlacementStatuses.Placed,
+            SupplierNameSnapshot = "NCC test",
+            Items = [item],
+        });
+        _db.SaveChanges();
+        return item;
+    }
+
+    private void SeedPendingImport(
+        string ticketCode,
+        int poItemId,
+        decimal qty,
+        bool isDirectProcurement,
+        string? warehouseId)
+    {
+        _db.WarehouseTransactions.Add(new WarehouseTransaction
+        {
+            Id = Guid.NewGuid(),
+            TicketCode = ticketCode,
+            TransactionType = TransactionType.Import,
+            ReferenceCode = "PO-TEST",
+            BeneficiaryProjectCode = "DA-TEST",
+            ApprovalStatus = ApprovalStatus.Pending,
+            IsDirectProcurement = isDirectProcurement,
+            WarehouseId = warehouseId,
+            Items =
+            [
+                new WarehouseTransactionItem
+                {
+                    MaterialCode = "MAT-001",
+                    MaterialNameSnapshot = "Máy bơm chìm 5.5kW",
+                    Quantity = qty,
+                    UnitPrice = 1000,
+                    Notes = $"{PurchaseOrderReceiptService.PoItemNotePrefix}{poItemId}",
+                },
+            ],
+        });
+        _db.SaveChanges();
     }
 
     private PurchaseDefectItem SeedPendingStockDefect(decimal qty, decimal onHand)
