@@ -5,6 +5,7 @@ namespace NamViet.ERP.Modules.Hr.Infrastructure.Persistence;
 
 public class HrDbContext(DbContextOptions<HrDbContext> options) : DbContext(options)
 {
+    public DbSet<Branch> Branches => Set<Branch>();
     public DbSet<Department> Departments => Set<Department>();
     public DbSet<Position> Positions => Set<Position>();
     public DbSet<Employee> Employees => Set<Employee>();
@@ -36,6 +37,18 @@ public class HrDbContext(DbContextOptions<HrDbContext> options) : DbContext(opti
     {
         base.OnModelCreating(model);
         model.HasDefaultSchema("hr");
+
+        model.Entity<Branch>(e =>
+        {
+            e.ToTable("branches");
+            e.HasKey(b => b.Id);
+            e.Property(b => b.Code).HasMaxLength(50).IsRequired();
+            e.Property(b => b.Name).HasMaxLength(100).IsRequired();
+            e.HasIndex(b => b.Code)
+                .IsUnique()
+                .HasFilter("\"DeletedAt\" IS NULL");
+            e.HasQueryFilter(b => b.DeletedAt == null);
+        });
 
         model.Entity<Department>(e =>
         {

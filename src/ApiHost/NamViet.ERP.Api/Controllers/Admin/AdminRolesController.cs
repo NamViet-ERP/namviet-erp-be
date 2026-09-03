@@ -85,7 +85,11 @@ public class AdminRolesController(
                 || ContainsIgnoreCase(WmsMapper.ToClientRole(r.Name ?? ""), q));
         }
 
-        return Ok(filtered.Select(ToAdminRoleDto).ToList());
+        var comparer = StringComparer.Create(CultureInfo.GetCultureInfo("vi-VN"), ignoreCase: true);
+        return Ok(filtered
+            .Select(ToAdminRoleDto)
+            .OrderBy(r => r.Label, comparer)
+            .ToList());
     }
 
     [HttpPost]
