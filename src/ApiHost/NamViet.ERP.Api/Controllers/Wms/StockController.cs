@@ -77,13 +77,23 @@ public class StockController(WarehouseDbContext db, IInventoryDomainService inve
             .ToDictionaryAsync(x => x.MaterialCode, x => x.Qty, ct);
 
         var pendingHlHolds = await inventory.ListPendingStockDefectHoldsAsync(ct);
+        var pendingHlLookup = new Dictionary<(string Project, string Material), decimal>();
+        foreach (var h in pendingHlHolds)
+        {
+            var key = MatrixKey(h.ProjectCode, h.MaterialCode);
+            pendingHlLookup[key] = pendingHlLookup.GetValueOrDefault(key) + h.Quantity;
+        }
 
         decimal PendingHlFor(string projectCode, string materialCode) =>
-            pendingHlHolds
-                .Where(h =>
-                    string.Equals(h.ProjectCode, projectCode, StringComparison.OrdinalIgnoreCase)
-                    && string.Equals(h.MaterialCode, materialCode, StringComparison.OrdinalIgnoreCase))
-                .Sum(h => h.Quantity);
+            pendingHlLookup.GetValueOrDefault(MatrixKey(projectCode, materialCode));
+
+        var projectInventoryLookup = projectInventories.ToDictionary(
+            pi => MatrixKey(pi.ProjectCode, pi.MaterialCode));
+
+        var warehouseInventoryLookup = warehouseInventories.ToDictionary(
+            wi => wi.MaterialCode,
+            wi => wi.Qty,
+            StringComparer.OrdinalIgnoreCase);
 
         // WAC (Weighted Average Cost) — IAS 2: phiếu nhập đã duyệt trong 12 tháng theo ngày duyệt
         var wacFrom = DateTime.UtcNow.AddYears(-1);
@@ -111,15 +121,13 @@ public class StockController(WarehouseDbContext db, IInventoryDomainService inve
         var rows = new List<StockMatrixRowDto>();
         foreach (var material in materials)
         {
-            var generalActual = warehouseInventories
-                .FirstOrDefault(i => i.MaterialCode == material.MaterialCode)?.Qty ?? 0m;
+            var generalActual = warehouseInventoryLookup.GetValueOrDefault(material.MaterialCode);
             var generalReserved = holdingReservations.GetValueOrDefault(material.MaterialCode);
             var generalAvailable = generalActual - generalReserved;
 
             var projectColumns = projects.Select(p =>
             {
-                var pi = projectInventories.FirstOrDefault(x =>
-                    x.ProjectCode == p.ProjectCode && x.MaterialCode == material.MaterialCode);
+                projectInventoryLookup.TryGetValue(MatrixKey(p.ProjectCode, material.MaterialCode), out var pi);
                 return new StockMatrixProjectColumnDto(
                     p.ProjectCode,
                     p.ClientProjectId ?? p.ProjectCode,
@@ -145,4 +153,7 @@ public class StockController(WarehouseDbContext db, IInventoryDomainService inve
 
         return Ok(rows);
     }
+
+    private static (string Project, string Material) MatrixKey(string projectCode, string materialCode) =>
+        (projectCode.ToUpperInvariant(), materialCode.ToUpperInvariant());
 }

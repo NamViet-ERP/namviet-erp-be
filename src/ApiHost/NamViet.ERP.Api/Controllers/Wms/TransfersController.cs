@@ -13,8 +13,18 @@ namespace NamViet.ERP.Api.Controllers.Wms;
 public class TransfersController(
     ITransferApplicationService transfers,
     IWmsVoucherExcelExportService voucherExport,
-    IValidator<CreateTransferDto> createValidator) : ControllerBase
+    IValidator<CreateTransferDto> createValidator,
+    ProjectWarehouseAccessService projectAccess) : ControllerBase
 {
+    /// <summary>Thủ kho chỉ thao tác trên dự án được gán: kiểm tra cả kho nguồn lẫn kho đích.</summary>
+    private async Task EnsureCanOperateAsync(string? project, string? toProject, CancellationToken ct)
+    {
+        if (!string.IsNullOrWhiteSpace(project))
+            await projectAccess.EnsureCanOperateOnProjectAsync(project, ct);
+        if (!string.IsNullOrWhiteSpace(toProject))
+            await projectAccess.EnsureCanOperateOnProjectAsync(toProject, ct);
+    }
+
     [HttpGet]
     [RequirePermission("wms.transfers.view:all")]
     public async Task<ActionResult<List<TransferDto>>> List(
@@ -65,7 +75,15 @@ public class TransfersController(
         var validation = await createValidator.ValidateAsync(dto, ct);
         if (!validation.IsValid)
             return BadRequest(string.Join("; ", validation.Errors.Select(e => e.ErrorMessage)));
-        return await WmsVoucherControllerResponses.ExecuteRequiredAsync(() => transfers.CreateAsync(dto, ct), ct);
+        try
+        {
+            await EnsureCanOperateAsync(dto.Project, dto.ToProject, ct);
+            return await WmsVoucherControllerResponses.ExecuteRequiredAsync(() => transfers.CreateAsync(dto, ct), ct);
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, ex.Message);
+        }
     }
 
     [HttpPut("{id}")]
@@ -75,13 +93,33 @@ public class TransfersController(
         var validation = await createValidator.ValidateAsync(dto, ct);
         if (!validation.IsValid)
             return BadRequest(string.Join("; ", validation.Errors.Select(e => e.ErrorMessage)));
-        return await WmsVoucherControllerResponses.ExecuteAsync(() => transfers.UpdateAsync(id, dto, ct), ct);
+        try
+        {
+            await EnsureCanOperateAsync(dto.Project, dto.ToProject, ct);
+            return await WmsVoucherControllerResponses.ExecuteAsync(() => transfers.UpdateAsync(id, dto, ct), ct);
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, ex.Message);
+        }
     }
 
     [HttpPost("{id}/approve")]
     [RequirePermission("wms.transfers.approve")]
-    public Task<ActionResult<TransferDto>> Approve(string id, CancellationToken ct) =>
-        WmsVoucherControllerResponses.ExecuteAsync(() => transfers.ApproveAsync(id, ct), ct);
+    public async Task<ActionResult<TransferDto>> Approve(string id, CancellationToken ct)
+    {
+        var item = await transfers.GetByIdAsync(id, ct);
+        if (item is null) return NotFound();
+        try
+        {
+            await EnsureCanOperateAsync(item.Project, item.ToProject, ct);
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, ex.Message);
+        }
+        return await WmsVoucherControllerResponses.ExecuteAsync(() => transfers.ApproveAsync(id, ct), ct);
+    }
 
     [HttpPost("{id}/submit")]
     [RequirePermission("wms.transfers.create")]
@@ -90,6 +128,18 @@ public class TransfersController(
 
     [HttpDelete("{id}")]
     [RequirePermission("wms.transfers.create")]
-    public Task<IActionResult> Delete(string id, CancellationToken ct) =>
-        WmsVoucherControllerResponses.ExecuteDeleteAsync(() => transfers.DeleteAsync(id, ct), ct);
+    public async Task<IActionResult> Delete(string id, CancellationToken ct)
+    {
+        var item = await transfers.GetByIdAsync(id, ct);
+        if (item is null) return NotFound();
+        try
+        {
+            await EnsureCanOperateAsync(item.Project, item.ToProject, ct);
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, ex.Message);
+        }
+        return await WmsVoucherControllerResponses.ExecuteDeleteAsync(() => transfers.DeleteAsync(id, ct), ct);
+    }
 }

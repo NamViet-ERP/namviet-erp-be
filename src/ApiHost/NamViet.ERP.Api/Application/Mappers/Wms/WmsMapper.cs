@@ -2,6 +2,7 @@ using NamViet.ERP.Api.Application.Dtos.Wms;
 using NamViet.ERP.Modules.Warehouse.Infrastructure.Helpers;
 using NamViet.ERP.Modules.Warehouse.Domain.Entities;
 using NamViet.ERP.Modules.Warehouse.Domain.Enums;
+using NamViet.ERP.SharedKernel.Time;
 
 namespace NamViet.ERP.Api.Application.Mappers.Wms;
 
@@ -91,7 +92,7 @@ public static class WmsMapper
     public static DateOnly ParseClientDate(string? value) =>
         DateOnly.TryParseExact(value, "dd/MM/yyyy", out var d) ? d
         : DateOnly.TryParse(value, out d) ? d
-        : DateOnly.FromDateTime(DateTime.UtcNow);
+        : VietnamClock.Today;
 
     public static WarehouseDto ToWarehouse(WmsWarehouse w, int totalStock, decimal totalValue) =>
         new(w.Id, w.Code, w.Name, w.Group, w.Address, w.Branch, w.Manager, totalStock, totalValue, w.Status);

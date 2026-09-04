@@ -3,9 +3,11 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using NamViet.ERP.Api.Application.Dtos.Hr;
 using NamViet.ERP.Api.Application.Services.Hr;
+using NamViet.ERP.Api.Infrastructure.Authorization;
 using NamViet.ERP.Modules.Hr.Domain.Entities;
 using NamViet.ERP.Modules.Hr.Infrastructure.Persistence;
 using NamViet.ERP.SharedKernel.Common;
+using NamViet.ERP.SharedKernel.Interfaces;
 
 namespace NamViet.ERP.Api.Controllers;
 
@@ -18,9 +20,12 @@ namespace NamViet.ERP.Api.Controllers;
 [Authorize]
 public class HrAdminEmployeesController(
     HrDbContext db,
+    ICurrentUser currentUser,
+    IEmployeeAccessService employeeAccess,
     IEmployeeAccountLinkSynchronizer accountLinks) : ControllerBase
 {
     [HttpGet]
+    [RequirePermission("hrm.employees.view:all")]
     public async Task<IActionResult> GetAll(
         [FromQuery] int page = 1, [FromQuery] int pageSize = 20,
         [FromQuery] string? search = null,
@@ -28,6 +33,7 @@ public class HrAdminEmployeesController(
         [FromQuery] string? status = null,
         CancellationToken ct = default)
     {
+        (page, pageSize) = Paging.Normalize(page, pageSize);
         var query = db.Employees
             .Include(e => e.Department)
             .Include(e => e.Position)
@@ -60,8 +66,12 @@ public class HrAdminEmployeesController(
     }
 
     [HttpGet("{id:int}")]
+    [RequireAnyPermission("hrm.employees.view:all", "hrm.employees.view:own")]
     public async Task<IActionResult> GetById(int id, CancellationToken ct)
     {
+        if (!await employeeAccess.CanViewEmployeeAsync(currentUser, id, ct))
+            return NotFound();
+
         var e = await db.Employees
             .Include(x => x.Department)
             .Include(x => x.Position)
@@ -153,8 +163,12 @@ public class HrAdminEmployeesController(
     }
 
     [HttpGet("{id:int}/contracts")]
+    [RequireAnyPermission("hrm.employees.view:all", "hrm.employees.view:own")]
     public async Task<IActionResult> GetContracts(int id, CancellationToken ct)
     {
+        if (!await employeeAccess.CanViewEmployeeAsync(currentUser, id, ct))
+            return NotFound();
+
         var items = await db.LaborContracts
             .Where(c => c.EmployeeId == id)
             .OrderByDescending(c => c.StartDate)
@@ -194,8 +208,12 @@ public class HrAdminEmployeesController(
     }
 
     [HttpGet("{id:int}/appointments")]
+    [RequireAnyPermission("hrm.employees.view:all", "hrm.employees.view:own")]
     public async Task<IActionResult> GetAppointments(int id, CancellationToken ct)
     {
+        if (!await employeeAccess.CanViewEmployeeAsync(currentUser, id, ct))
+            return NotFound();
+
         var items = await db.Appointments
             .Where(a => a.EmployeeId == id)
             .OrderByDescending(a => a.EffectiveDate)

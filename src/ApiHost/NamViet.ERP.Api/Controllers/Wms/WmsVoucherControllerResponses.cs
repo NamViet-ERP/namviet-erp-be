@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using NamViet.ERP.SharedKernel.Common;
 
 namespace NamViet.ERP.Api.Controllers.Wms;
 
@@ -13,9 +14,16 @@ internal static class WmsVoucherControllerResponses
             var item = await action();
             return new OkObjectResult(item);
         }
-        catch (InvalidOperationException ex)
+        catch (DomainRuleException ex)
         {
             return new BadRequestObjectResult(ex.Message);
+        }
+        catch (InvalidOperationException)
+        {
+            return new ObjectResult("Đã xảy ra lỗi hệ thống. Vui lòng thử lại sau.")
+            {
+                StatusCode = StatusCodes.Status500InternalServerError,
+            };
         }
     }
 
@@ -28,9 +36,16 @@ internal static class WmsVoucherControllerResponses
             var item = await action();
             return item is null ? new NotFoundResult() : new OkObjectResult(item);
         }
-        catch (InvalidOperationException ex)
+        catch (DomainRuleException ex)
         {
             return new BadRequestObjectResult(ex.Message);
+        }
+        catch (InvalidOperationException)
+        {
+            return new ObjectResult("Đã xảy ra lỗi hệ thống. Vui lòng thử lại sau.")
+            {
+                StatusCode = StatusCodes.Status500InternalServerError,
+            };
         }
     }
 
@@ -43,9 +58,16 @@ internal static class WmsVoucherControllerResponses
             var deleted = await action();
             return deleted ? new NoContentResult() : new NotFoundResult();
         }
-        catch (InvalidOperationException ex)
+        catch (DomainRuleException ex)
         {
             return new BadRequestObjectResult(ex.Message);
+        }
+        catch (InvalidOperationException)
+        {
+            return new ObjectResult("Đã xảy ra lỗi hệ thống. Vui lòng thử lại sau.")
+            {
+                StatusCode = StatusCodes.Status500InternalServerError,
+            };
         }
     }
 }

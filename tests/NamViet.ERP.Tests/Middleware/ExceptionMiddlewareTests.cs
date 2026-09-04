@@ -77,6 +77,29 @@ public class ExceptionMiddlewareTests
         Assert.DoesNotContain(unsafeDetail, detail);
     }
 
+    [Fact]
+    public async Task Forbidden_exception_returns_403_with_vietnamese_detail()
+    {
+        const string detail = "Bạn không được gán phụ trách kho dự án 'DA-01'.";
+
+        var context = await InvokeAsync(new ForbiddenException(detail));
+        using var problem = await ReadProblemAsync(context);
+
+        Assert.Equal(StatusCodes.Status403Forbidden, context.Response.StatusCode);
+        Assert.Equal("Không đủ quyền", problem.RootElement.GetProperty("title").GetString());
+        Assert.Equal(detail, problem.RootElement.GetProperty("detail").GetString());
+    }
+
+    [Fact]
+    public async Task Unauthorized_access_still_returns_401()
+    {
+        var context = await InvokeAsync(new UnauthorizedAccessException("token"));
+        using var problem = await ReadProblemAsync(context);
+
+        Assert.Equal(StatusCodes.Status401Unauthorized, context.Response.StatusCode);
+        Assert.Equal("Không có quyền truy cập", problem.RootElement.GetProperty("title").GetString());
+    }
+
     private static async Task<DefaultHttpContext> InvokeAsync(Exception exception)
     {
         var context = new DefaultHttpContext();

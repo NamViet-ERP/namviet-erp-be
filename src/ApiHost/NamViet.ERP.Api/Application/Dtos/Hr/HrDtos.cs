@@ -174,7 +174,8 @@ public record CandidatePagedResponse(
 
 public record RecruitmentPositionDto(string Name, bool IsActive);
 
-public record HrStaffPublicDto(string Id, string Name);
+// Endpoint public (form ứng tuyển): chỉ trả tên, không lộ userId nội bộ.
+public record HrStaffPublicDto(string Name);
 
 public record RecruitmentKpiDto(
     int TotalCandidates,

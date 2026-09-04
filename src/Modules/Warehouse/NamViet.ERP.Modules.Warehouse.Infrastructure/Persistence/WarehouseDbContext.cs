@@ -453,6 +453,7 @@ public class WarehouseDbContext(DbContextOptions<WarehouseDbContext> options) : 
             e.HasKey(i => i.Id);
             e.HasIndex(i => new { i.WarehouseId, i.MaterialCode }).IsUnique();
             e.Property(i => i.Qty).HasColumnType("numeric(18,4)").HasDefaultValue(0m);
+            e.Property(i => i.RowVersion).IsRowVersion();
             e.HasOne(i => i.Warehouse).WithMany(w => w.Inventories)
              .HasForeignKey(i => i.WarehouseId).OnDelete(DeleteBehavior.Cascade);
             e.HasOne(i => i.Material).WithMany()

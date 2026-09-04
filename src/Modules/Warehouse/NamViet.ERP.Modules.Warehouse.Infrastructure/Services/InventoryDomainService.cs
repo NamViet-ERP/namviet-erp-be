@@ -351,10 +351,8 @@ public class InventoryDomainService(WarehouseDbContext db) : IInventoryDomainSer
         var exportTransaction = await FindLinkedDirectExportAsync(importTransaction, ct);
         if (exportTransaction is null)
         {
-            var exportCount = await db.WarehouseTransactions
-                .CountAsync(t => t.TransactionType == TransactionType.Export, ct);
-            var exportTicketCode = WarehouseTransaction.GenerateTicketCode(
-                TransactionType.Export, exportCount + 1);
+            var exportTicketCode = await TicketCodeAllocator.NextAsync(
+                db, TransactionType.Export, ct);
 
             exportTransaction = BuildDirectExport(
                 importTransaction,
@@ -410,10 +408,8 @@ public class InventoryDomainService(WarehouseDbContext db) : IInventoryDomainSer
             return;
         }
 
-        var exportCount = await db.WarehouseTransactions
-            .CountAsync(t => t.TransactionType == TransactionType.Export, ct);
-        var exportTicketCode = WarehouseTransaction.GenerateTicketCode(
-            TransactionType.Export, exportCount + 1);
+        var exportTicketCode = await TicketCodeAllocator.NextAsync(
+            db, TransactionType.Export, ct);
         var exportTransaction = BuildDirectExport(
             importTransaction,
             projectCode,
@@ -537,6 +533,12 @@ public class InventoryDomainService(WarehouseDbContext db) : IInventoryDomainSer
 
         foreach (var item in transaction.Items)
         {
+            var available = await GetAvailableQtyAsync(
+                transaction.FromWarehouseId, item.MaterialCode, ct);
+            if (item.Quantity > available)
+                throw new DomainRuleException(
+                    $"Vật tư {item.MaterialCode} vượt tồn khả dụng tại kho nguồn ({available}).");
+
             await AdjustWarehouseQtyAsync(
                 transaction.FromWarehouseId, item.MaterialCode, -item.Quantity, ct);
             await AdjustWarehouseQtyAsync(

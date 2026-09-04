@@ -21,7 +21,7 @@ public class RecruitmentHrStaffController(UserManager<ApplicationUser> userManag
         var items = users
             .Where(u => u.IsActive && !string.IsNullOrWhiteSpace(u.Name))
             .OrderBy(u => u.Name)
-            .Select(u => new HrStaffPublicDto(u.Id.ToString(), u.Name!))
+            .Select(u => new HrStaffPublicDto(u.Name!))
             .ToList();
         return Ok(items);
     }

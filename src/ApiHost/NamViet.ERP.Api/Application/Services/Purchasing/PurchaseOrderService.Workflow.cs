@@ -4,10 +4,13 @@ using NamViet.ERP.Api.Application.Mappers.Purchasing;
 using NamViet.ERP.Api.Application.Services.Shared;
 using NamViet.ERP.Api.Services.Storage;
 using NamViet.ERP.Modules.Warehouse.Domain.Entities;
+using NamViet.ERP.Modules.Warehouse.Infrastructure.Helpers;
 using NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence;
 using NamViet.ERP.SharedKernel.Interfaces;
 using System.Text.Json;
 using NamViet.ERP.SharedKernel.Common;
+using NamViet.ERP.SharedKernel.Time;
+using FluentValidation;
 
 namespace NamViet.ERP.Api.Application.Services.Purchasing;
 
@@ -16,6 +19,8 @@ public sealed partial class PurchaseOrderService
     public async Task<PurchaseOrderDetailDto> CreateAsync(
         CreatePurchaseOrderRequest request, CancellationToken ct = default)
     {
+        await createValidator.ValidateAndThrowAsync(request, ct);
+
         if (request.Lines is null || request.Lines.Count == 0)
             throw new PurchasingConflictException("PO phải có ít nhất một dòng.");
         var installmentSpecs = BuildInstallmentSpecs(request.InstallmentCount, request.Installments);
@@ -58,9 +63,10 @@ public sealed partial class PurchaseOrderService
         }
 
         await using var tx = await db.Database.BeginTransactionAsync(ct);
+        await TicketCodeAllocator.AcquireNamedLockAsync(db, "pur_po_code", ct);
 
         var code = await codeGenerator.NextAsync(ct);
-        var orderDate = request.OrderDate ?? DateOnly.FromDateTime(DateTime.UtcNow);
+        var orderDate = request.OrderDate ?? VietnamClock.Today;
         var terms = supplier.MaxDebtDays > 0 ? supplier.MaxDebtDays : 30;
         var now = DateTime.UtcNow;
 
@@ -148,6 +154,8 @@ public sealed partial class PurchaseOrderService
     public async Task<PurchaseOrderDetailDto?> UpdateAsync(
         string code, UpdatePurchaseOrderRequest request, CancellationToken ct = default)
     {
+        await updateValidator.ValidateAndThrowAsync(request, ct);
+
         var order = await db.PurchaseOrders
             .Include(o => o.Items)
             .Include(o => o.Installments)

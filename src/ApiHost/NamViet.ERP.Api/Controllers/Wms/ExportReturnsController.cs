@@ -13,7 +13,8 @@ namespace NamViet.ERP.Api.Controllers.Wms;
 public class ExportReturnsController(
     IExportReturnApplicationService exportReturns,
     IValidator<CreateExportReturnDto> createValidator,
-    NamViet.ERP.Api.Services.Storage.IFileStorage fileStorage) : ControllerBase
+    NamViet.ERP.Api.Services.Storage.IFileStorage fileStorage,
+    ProjectWarehouseAccessService projectAccess) : ControllerBase
 {
     [HttpGet]
     [RequirePermission("wms.export_returns.view:all")]
@@ -56,8 +57,17 @@ public class ExportReturnsController(
         var validation = await createValidator.ValidateAsync(dto, ct);
         if (!validation.IsValid)
             return BadRequest(string.Join("; ", validation.Errors.Select(e => e.ErrorMessage)));
-        return await WmsVoucherControllerResponses.ExecuteRequiredAsync(
-            () => exportReturns.CreateAsync(dto, ct), ct);
+        try
+        {
+            if (!string.IsNullOrWhiteSpace(dto.Project))
+                await projectAccess.EnsureCanOperateOnProjectAsync(dto.Project, ct);
+            return await WmsVoucherControllerResponses.ExecuteRequiredAsync(
+                () => exportReturns.CreateAsync(dto, ct), ct);
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, ex.Message);
+        }
     }
 
     [HttpPut("{id}")]
@@ -70,14 +80,36 @@ public class ExportReturnsController(
         var validation = await createValidator.ValidateAsync(dto, ct);
         if (!validation.IsValid)
             return BadRequest(string.Join("; ", validation.Errors.Select(e => e.ErrorMessage)));
-        return await WmsVoucherControllerResponses.ExecuteAsync(
-            () => exportReturns.UpdateAsync(id, dto, ct), ct);
+        try
+        {
+            if (!string.IsNullOrWhiteSpace(dto.Project))
+                await projectAccess.EnsureCanOperateOnProjectAsync(dto.Project, ct);
+            return await WmsVoucherControllerResponses.ExecuteAsync(
+                () => exportReturns.UpdateAsync(id, dto, ct), ct);
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, ex.Message);
+        }
     }
 
     [HttpPost("{id}/approve")]
     [RequirePermission("wms.export_returns.approve")]
-    public Task<ActionResult<ExportReturnDto>> Approve(string id, CancellationToken ct) =>
-        WmsVoucherControllerResponses.ExecuteAsync(() => exportReturns.ApproveAsync(id, ct), ct);
+    public async Task<ActionResult<ExportReturnDto>> Approve(string id, CancellationToken ct)
+    {
+        var item = await exportReturns.GetByIdAsync(id, ct);
+        if (item is null) return NotFound();
+        try
+        {
+            if (!string.IsNullOrWhiteSpace(item.Project))
+                await projectAccess.EnsureCanOperateOnProjectAsync(item.Project, ct);
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, ex.Message);
+        }
+        return await WmsVoucherControllerResponses.ExecuteAsync(() => exportReturns.ApproveAsync(id, ct), ct);
+    }
 
     [HttpPost("{id}/submit")]
     [RequirePermission("wms.export_returns.create")]
@@ -86,8 +118,21 @@ public class ExportReturnsController(
 
     [HttpDelete("{id}")]
     [RequirePermission("wms.export_returns.create")]
-    public Task<IActionResult> Delete(string id, CancellationToken ct) =>
-        WmsVoucherControllerResponses.ExecuteDeleteAsync(() => exportReturns.DeleteAsync(id, ct), ct);
+    public async Task<IActionResult> Delete(string id, CancellationToken ct)
+    {
+        var item = await exportReturns.GetByIdAsync(id, ct);
+        if (item is null) return NotFound();
+        try
+        {
+            if (!string.IsNullOrWhiteSpace(item.Project))
+                await projectAccess.EnsureCanOperateOnProjectAsync(item.Project, ct);
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, ex.Message);
+        }
+        return await WmsVoucherControllerResponses.ExecuteDeleteAsync(() => exportReturns.DeleteAsync(id, ct), ct);
+    }
 
     [HttpPost("{id}/attachments")]
     [RequirePermission("wms.export_returns.create")]

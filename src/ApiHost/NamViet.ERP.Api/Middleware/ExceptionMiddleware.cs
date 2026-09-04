@@ -51,6 +51,7 @@ public class ExceptionMiddleware(RequestDelegate next, ILogger<ExceptionMiddlewa
     private static bool IsExpectedClientError(Exception ex) =>
         ex is ValidationException
             or UnauthorizedAccessException
+            or ForbiddenException
             or KeyNotFoundException
             or ConcurrencyConflictException
             or StocktakeFreezeConflictException
@@ -97,6 +98,10 @@ public class ExceptionMiddleware(RequestDelegate next, ILogger<ExceptionMiddlewa
         {
             ValidationException ve => (400, "Dữ liệu không hợp lệ",
                 string.Join("; ", ve.Errors.Select(e => e.ErrorMessage))),
+            ForbiddenException => (403, "Không đủ quyền",
+                string.IsNullOrWhiteSpace(ex.Message)
+                    ? "Bạn không có quyền thực hiện thao tác này."
+                    : ex.Message),
             UnauthorizedAccessException => (401, "Không có quyền truy cập", "Yêu cầu xác thực không hợp lệ."),
             KeyNotFoundException => (404, "Không tìm thấy dữ liệu", "Không tìm thấy tài nguyên được yêu cầu."),
             ConcurrencyConflictException => (409, "Xung đột cập nhật", "Dữ liệu đã thay đổi. Vui lòng tải lại và thử lại."),

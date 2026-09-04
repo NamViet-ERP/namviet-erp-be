@@ -8,6 +8,7 @@ using NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence;
 using NamViet.ERP.SharedKernel.Interfaces;
 using System.Text.Json;
 using NamViet.ERP.SharedKernel.Common;
+using FluentValidation;
 
 namespace NamViet.ERP.Api.Application.Services.Purchasing;
 
@@ -17,7 +18,9 @@ public sealed partial class PurchaseOrderService(
     IPurchasePlanService planService,
     ICurrentUser currentUser,
     IActivityEventWriter activity,
-    IFileStorage fileStorage) : IPurchaseOrderService
+    IFileStorage fileStorage,
+    IValidator<CreatePurchaseOrderRequest> createValidator,
+    IValidator<UpdatePurchaseOrderRequest> updateValidator) : IPurchaseOrderService
 {
     public async Task<PurchaseOrderPagedResponse> ListAsync(
         int page,

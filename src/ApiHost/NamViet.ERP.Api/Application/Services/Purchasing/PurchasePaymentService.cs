@@ -1,9 +1,11 @@
 using System.Text.Json;
+using FluentValidation;
 using Microsoft.EntityFrameworkCore;
 using NamViet.ERP.Api.Application.Dtos.Purchasing;
 using NamViet.ERP.Api.Application.Mappers.Purchasing;
 using NamViet.ERP.Api.Application.Services.Shared;
 using NamViet.ERP.Modules.Warehouse.Domain.Entities;
+using NamViet.ERP.Modules.Warehouse.Infrastructure.Helpers;
 using NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence;
 using NamViet.ERP.SharedKernel.Interfaces;
 using NamViet.ERP.SharedKernel.Common;
@@ -32,7 +34,8 @@ public sealed class PurchasePaymentService(
     WarehouseDbContext db,
     IPurchasePaymentCodeGenerator codeGenerator,
     ICurrentUser currentUser,
-    IActivityEventWriter activity) : IPurchasePaymentService
+    IActivityEventWriter activity,
+    IValidator<CreatePurchasePaymentRequest> createValidator) : IPurchasePaymentService
 {
     public async Task<PurchasePaymentPagedResponse> ListAsync(
         int page,
@@ -110,6 +113,8 @@ public sealed class PurchasePaymentService(
     public async Task<PurchasePaymentDto> CreateFromPoAsync(
         CreatePurchasePaymentRequest request, CancellationToken ct = default)
     {
+        await createValidator.ValidateAndThrowAsync(request, ct);
+
         if (string.IsNullOrWhiteSpace(request.PoCode))
             throw new PurchasingConflictException("PoCode là bắt buộc.");
         if (request.DueDate == default)
@@ -144,38 +149,58 @@ public sealed class PurchasePaymentService(
         // Luôn theo % đợt × tổng PO (không cho nhập lệch tổng PO).
         var amount = stageAmount;
 
-        var code = await codeGenerator.NextAsync(ct);
-        var now = DateTime.UtcNow;
-        var payment = new PurchasePayment
+        return await SequentialCodeHelper.ExecuteWithUniqueRetryAsync(async () =>
         {
-            Code = code,
-            PoCode = poCode,
-            StageNumber = stage.StageNumber,
-            SupplierId = order.SupplierId,
-            SupplierNameSnapshot = order.SupplierNameSnapshot ?? order.Supplier?.SupplierName,
-            InvoiceNo = string.IsNullOrWhiteSpace(request.InvoiceNo) ? null : request.InvoiceNo.Trim(),
-            Amount = Math.Round(amount, 2),
-            DueDate = request.DueDate,
-            Status = PurchasePaymentStatuses.Draft,
-            Note = string.IsNullOrWhiteSpace(request.Note) ? null : request.Note.Trim(),
-            CreatedById = currentUser.IsAuthenticated ? currentUser.Id : null,
-            CreatedByName = currentUser.IsAuthenticated ? currentUser.Name : null,
-            CreatedAt = now,
-            UpdatedAt = now,
-        };
+            db.ChangeTracker.Clear();
 
-        db.PurchasePayments.Add(payment);
-        await db.SaveChangesAsync(ct);
+            await using var tx = await db.Database.BeginTransactionAsync(ct);
+            await TicketCodeAllocator.AcquireNamedLockAsync(db, "pur_payment_code", ct);
 
-        await activity.WriteAsync(new ActivityEventWriteRequest(
-            ActivityModules.Purchasing,
-            ActivityActions.PaymentCreated,
-            $"Tạo đề nghị thanh toán [{code}] đợt {stage.StageNumber}/{order.Installments.Count} cho {poCode}",
-            ActivityCategories.Payment,
-            EntityType: "purchase_payment",
-            EntityCode: code), ct);
+            var reloadedOrder = await db.PurchaseOrders
+                .Include(o => o.Supplier)
+                .Include(o => o.Installments)
+                    .ThenInclude(i => i.Documents)
+                .FirstOrDefaultAsync(o => o.Code == poCode, ct)
+                ?? throw new PurchasingConflictException($"Không tìm thấy PO '{poCode}'.");
 
-        return PurchasingMapper.ToPaymentDto(payment);
+            var reloadedStage = await ResolveNextStageAsync(reloadedOrder, ct)
+                ?? throw new PurchasingConflictException(
+                    $"PO '{poCode}' không còn đợt nào cần tạo DNTT (đã đủ hoặc đang chờ thanh toán đợt hiện tại).");
+
+            var code = await codeGenerator.NextAsync(ct);
+            var now = DateTime.UtcNow;
+            var payment = new PurchasePayment
+            {
+                Code = code,
+                PoCode = poCode,
+                StageNumber = reloadedStage.StageNumber,
+                SupplierId = reloadedOrder.SupplierId,
+                SupplierNameSnapshot = reloadedOrder.SupplierNameSnapshot ?? reloadedOrder.Supplier?.SupplierName,
+                InvoiceNo = string.IsNullOrWhiteSpace(request.InvoiceNo) ? null : request.InvoiceNo.Trim(),
+                Amount = Math.Round(amount, 2),
+                DueDate = request.DueDate,
+                Status = PurchasePaymentStatuses.Draft,
+                Note = string.IsNullOrWhiteSpace(request.Note) ? null : request.Note.Trim(),
+                CreatedById = currentUser.IsAuthenticated ? currentUser.Id : null,
+                CreatedByName = currentUser.IsAuthenticated ? currentUser.Name : null,
+                CreatedAt = now,
+                UpdatedAt = now,
+            };
+
+            db.PurchasePayments.Add(payment);
+            await db.SaveChangesAsync(ct);
+            await tx.CommitAsync(ct);
+
+            await activity.WriteAsync(new ActivityEventWriteRequest(
+                ActivityModules.Purchasing,
+                ActivityActions.PaymentCreated,
+                $"Tạo đề nghị thanh toán [{code}] đợt {reloadedStage.StageNumber}/{reloadedOrder.Installments.Count} cho {poCode}",
+                ActivityCategories.Payment,
+                EntityType: "purchase_payment",
+                EntityCode: code), ct);
+
+            return PurchasingMapper.ToPaymentDto(payment);
+        }, ct: ct);
     }
 
     public async Task<PurchasePaymentDto> SubmitAsync(string code, CancellationToken ct = default)

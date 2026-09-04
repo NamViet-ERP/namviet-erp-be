@@ -170,41 +170,51 @@ public sealed class ExportReturnApplicationService(
         await EnsureNoActiveReturnDraftAsync(export.TicketCode, ct);
         await ValidateReturnItemsAsync(export, dto.Items, ct);
 
-        var count = await db.WarehouseTransactions.CountAsync(
-            t => t.TransactionType == TransactionType.ExportReturn, ct);
-        var ticketCode = string.IsNullOrWhiteSpace(dto.VoucherCode)
-            ? WarehouseTransaction.GenerateTicketCode(TransactionType.ExportReturn, count + 1)
-            : dto.VoucherCode;
-
         var approvalStatus = WmsMapper.FromClientApprovalStatus(dto.Status);
-        var transaction = new WarehouseTransaction
+
+        return await SequentialCodeHelper.ExecuteWithUniqueRetryAsync(async () =>
         {
-            Id = Guid.NewGuid(),
-            TicketCode = ticketCode,
-            TransactionType = TransactionType.ExportReturn,
-            ProjectCode = projectCode,
-            BeneficiaryProjectCode = projectCode,
-            LinkedTicketCode = export.TicketCode,
-            Notes = dto.Note,
-            CreatedById = currentUser.Id,
-            CreatedByName = string.IsNullOrEmpty(dto.CreatedBy) ? currentUser.Name : dto.CreatedBy,
-            ApprovalStatus = approvalStatus,
-            Items = MapItems(dto.Items, export, ticketCode),
-        };
+            db.ChangeTracker.Clear();
 
-        await ValidateAndSnapshotItemsAsync(transaction.Items, ct);
+            var sourceExport = await FindSourceExportAsync(dto.SourceExportId, ct)
+                ?? throw new DomainRuleException("Không tìm thấy phiếu xuất nguồn.");
 
-        await using var tx = await db.Database.BeginTransactionAsync(ct);
-        db.WarehouseTransactions.Add(transaction);
-        if (approvalStatus is ApprovalStatus.Draft or ApprovalStatus.Pending)
-            await inventory.CreateProjectExportReturnPlannedAsync(transaction, ct);
-        else if (approvalStatus == ApprovalStatus.Approved)
-            await inventory.ApplyApprovedExportReturnAsync(transaction, ct);
+            await using var tx = await db.Database.BeginTransactionAsync(ct);
+            await TicketCodeAllocator.AcquireTypeLockAsync(db, TransactionType.ExportReturn, ct);
+            await stocktakeFreeze.EnsureProjectsNotFrozenAsync([projectCode], ct);
 
-        await db.SaveChangesAsync(ct);
-        await tx.CommitAsync(ct);
+            var ticketCode = string.IsNullOrWhiteSpace(dto.VoucherCode)
+                ? await TicketCodeAllocator.NextAsync(db, TransactionType.ExportReturn, ct)
+                : dto.VoucherCode;
 
-        return await MapReturnResponseAsync(transaction, ct);
+            var transaction = new WarehouseTransaction
+            {
+                Id = Guid.NewGuid(),
+                TicketCode = ticketCode,
+                TransactionType = TransactionType.ExportReturn,
+                ProjectCode = projectCode,
+                BeneficiaryProjectCode = projectCode,
+                LinkedTicketCode = sourceExport.TicketCode,
+                Notes = dto.Note,
+                CreatedById = currentUser.Id,
+                CreatedByName = string.IsNullOrEmpty(dto.CreatedBy) ? currentUser.Name : dto.CreatedBy,
+                ApprovalStatus = approvalStatus,
+                Items = MapItems(dto.Items, sourceExport, ticketCode),
+            };
+
+            await ValidateAndSnapshotItemsAsync(transaction.Items, ct);
+
+            db.WarehouseTransactions.Add(transaction);
+            if (approvalStatus is ApprovalStatus.Draft or ApprovalStatus.Pending)
+                await inventory.CreateProjectExportReturnPlannedAsync(transaction, ct);
+            else if (approvalStatus == ApprovalStatus.Approved)
+                await inventory.ApplyApprovedExportReturnAsync(transaction, ct);
+
+            await db.SaveChangesAsync(ct);
+            await tx.CommitAsync(ct);
+
+            return await MapReturnResponseAsync(transaction, ct);
+        }, ct: ct);
     }
 
     public async Task<ExportReturnDto?> UpdateAsync(string id, CreateExportReturnDto dto, CancellationToken ct = default)
@@ -244,6 +254,7 @@ public sealed class ExportReturnApplicationService(
         if (HasPlannedInventory(t.ApprovalStatus))
             await inventory.CreateProjectExportReturnPlannedAsync(t, ct);
 
+        await stocktakeFreeze.EnsureProjectsNotFrozenAsync([projectCode], ct);
         await db.SaveChangesAsync(ct);
         await tx.CommitAsync(ct);
 
@@ -281,6 +292,8 @@ public sealed class ExportReturnApplicationService(
 
         await inventory.CancelProjectExportReturnPlannedAsync(t, ct);
         await inventory.ApplyApprovedExportReturnAsync(t, ct);
+        await stocktakeFreeze.EnsureProjectsNotFrozenAsync(
+            [t.ProjectCode ?? t.BeneficiaryProjectCode], ct);
         await db.SaveChangesAsync(ct);
         await tx.CommitAsync(ct);
 

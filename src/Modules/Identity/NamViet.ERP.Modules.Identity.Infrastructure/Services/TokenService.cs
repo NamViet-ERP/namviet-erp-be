@@ -27,7 +27,9 @@ public class TokenService(IConfiguration configuration) : ITokenService
         ?? throw new InvalidOperationException("Jwt:SigningKey is not configured.");
     private readonly string _issuer = configuration["Jwt:Issuer"] ?? "namviet-erp";
     private readonly string _audience = configuration["Jwt:Audience"] ?? "namviet-erp-client";
-    private readonly int _accessMinutes = int.TryParse(configuration["Jwt:AccessTokenMinutes"], out var m) ? m : 60;
+    // Access token ngắn (15') vì token chứa toàn bộ permission; thu hồi quyền có hiệu lực
+    // tối đa sau 15'. Refresh rotation lo việc gia hạn nên UX không đổi.
+    private readonly int _accessMinutes = int.TryParse(configuration["Jwt:AccessTokenMinutes"], out var m) ? m : 15;
     private readonly int _refreshDays = int.TryParse(configuration["Jwt:RefreshTokenDays"], out var d) ? d : 30;
     private readonly int _sessionRefreshDays = int.TryParse(configuration["Jwt:SessionRefreshTokenDays"], out var s) ? s : 1;
 

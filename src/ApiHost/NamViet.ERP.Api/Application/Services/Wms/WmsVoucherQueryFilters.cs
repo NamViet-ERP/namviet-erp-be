@@ -1,4 +1,5 @@
 using NamViet.ERP.Modules.Warehouse.Domain.Entities;
+using NamViet.ERP.Api.Application;
 
 namespace NamViet.ERP.Api.Application.Services.Wms;
 
@@ -11,13 +12,13 @@ internal static class WmsVoucherQueryFilters
     {
         if (dateFrom is { } from)
         {
-            var start = DateTime.SpecifyKind(from.ToDateTime(TimeOnly.MinValue), DateTimeKind.Utc);
+            var start = UtcDateRange.Start(from)!.Value;
             query = query.Where(t => t.CreatedAt >= start);
         }
 
         if (dateTo is { } to)
         {
-            var endExclusive = DateTime.SpecifyKind(to.AddDays(1).ToDateTime(TimeOnly.MinValue), DateTimeKind.Utc);
+            var endExclusive = UtcDateRange.ExclusiveEnd(to)!.Value;
             query = query.Where(t => t.CreatedAt < endExclusive);
         }
 

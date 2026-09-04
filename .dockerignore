@@ -2,8 +2,11 @@
 **/.vs
 **/bin
 **/obj
+**/_tmp*
 **/_tmp_build*
 **/tmp-*
+**/.tmp-*
+**/*.log
 **/.env
 **/.env.*
 !**/.env.example
@@ -14,3 +17,6 @@
 **/*.user
 **/*.suo
 **/TestResults
+docs/
+tests/
+scripts/

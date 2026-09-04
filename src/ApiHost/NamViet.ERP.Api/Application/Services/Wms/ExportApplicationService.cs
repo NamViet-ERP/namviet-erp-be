@@ -63,32 +63,40 @@ public sealed class ExportApplicationService(
     {
         await stocktakeFreeze.EnsureProjectsNotFrozenAsync([dto.Project], ct);
 
-        var count = await db.WarehouseTransactions.CountAsync(t => t.TransactionType == TransactionType.Export, ct);
-        var ticketCode = string.IsNullOrWhiteSpace(dto.VoucherCode)
-            ? WarehouseTransaction.GenerateTicketCode(TransactionType.Export, count + 1)
-            : dto.VoucherCode;
-
         var approvalStatus = WmsMapper.FromClientApprovalStatus(dto.Status);
-        var transaction = BuildTransaction(dto, ticketCode, approvalStatus);
-        await ValidateAndSnapshotItemsAsync(transaction.Items, ct);
 
-        await using var tx = await db.Database.BeginTransactionAsync(ct);
-        db.WarehouseTransactions.Add(transaction);
+        return await SequentialCodeHelper.ExecuteWithUniqueRetryAsync(async () =>
+        {
+            db.ChangeTracker.Clear();
 
-        if (approvalStatus is ApprovalStatus.Draft or ApprovalStatus.Pending)
-            await CreateDraftPlannedAsync(transaction, ct);
-        else if (approvalStatus == ApprovalStatus.Approved)
-            await inventory.ApplyApprovedExportAsync(transaction, ct);
+            await using var tx = await db.Database.BeginTransactionAsync(ct);
+            await TicketCodeAllocator.AcquireTypeLockAsync(db, TransactionType.Export, ct);
+            await stocktakeFreeze.EnsureProjectsNotFrozenAsync([dto.Project], ct);
 
-        await db.SaveChangesAsync(ct);
-        await tx.CommitAsync(ct);
+            var ticketCode = string.IsNullOrWhiteSpace(dto.VoucherCode)
+                ? await TicketCodeAllocator.NextAsync(db, TransactionType.Export, ct)
+                : dto.VoucherCode;
 
-        await db.Entry(transaction).Collection(t => t.Items).LoadAsync(ct);
-        foreach (var item in transaction.Items)
-            await db.Entry(item).Reference(i => i.Material).LoadAsync(ct);
+            var transaction = BuildTransaction(dto, ticketCode, approvalStatus);
+            await ValidateAndSnapshotItemsAsync(transaction.Items, ct);
 
-        var projectName = await ResolveProjectNameAsync(transaction, ct);
-        return WmsMapper.ToExport(transaction, projectName, projectName);
+            db.WarehouseTransactions.Add(transaction);
+
+            if (approvalStatus is ApprovalStatus.Draft or ApprovalStatus.Pending)
+                await CreateDraftPlannedAsync(transaction, ct);
+            else if (approvalStatus == ApprovalStatus.Approved)
+                await inventory.ApplyApprovedExportAsync(transaction, ct);
+
+            await db.SaveChangesAsync(ct);
+            await tx.CommitAsync(ct);
+
+            await db.Entry(transaction).Collection(t => t.Items).LoadAsync(ct);
+            foreach (var item in transaction.Items)
+                await db.Entry(item).Reference(i => i.Material).LoadAsync(ct);
+
+            var projectName = await ResolveProjectNameAsync(transaction, ct);
+            return WmsMapper.ToExport(transaction, projectName, projectName);
+        }, ct: ct);
     }
 
     public async Task<ExportDto?> UpdateAsync(string id, CreateExportDto dto, CancellationToken ct = default)
@@ -132,6 +140,7 @@ public sealed class ExportApplicationService(
         if (HasPlannedInventory(t.ApprovalStatus))
             await CreateDraftPlannedAsync(t, ct);
 
+        await stocktakeFreeze.EnsureProjectsNotFrozenAsync([dto.Project], ct);
         await db.SaveChangesAsync(ct);
         await tx.CommitAsync(ct);
 
@@ -170,6 +179,7 @@ public sealed class ExportApplicationService(
         t.UpdatedAt = DateTime.UtcNow;
 
         await inventory.ApplyApprovedExportAsync(t, ct);
+        await stocktakeFreeze.EnsureProjectsNotFrozenAsync([t.ProjectCode ?? t.BeneficiaryProjectCode], ct);
         await db.SaveChangesAsync(ct);
         await tx.CommitAsync(ct);
 

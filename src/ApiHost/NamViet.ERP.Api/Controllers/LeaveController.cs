@@ -56,6 +56,7 @@ public class LeaveController(HrDbContext db) : ControllerBase
         [FromQuery] int? year = null,
         CancellationToken ct = default)
     {
+        (page, pageSize) = Paging.Normalize(page, pageSize);
         var query = db.LeaveRequests
             .Include(l => l.Employee)
             .Include(l => l.LeaveType)

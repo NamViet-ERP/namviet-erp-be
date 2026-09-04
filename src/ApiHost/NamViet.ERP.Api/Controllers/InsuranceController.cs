@@ -30,6 +30,7 @@ public class InsuranceController(HrDbContext db) : ControllerBase
         [FromQuery] int page = 1, [FromQuery] int pageSize = 50,
         CancellationToken ct = default)
     {
+        (page, pageSize) = Paging.Normalize(page, pageSize);
         var query = db.SocialInsuranceRecords
             .Include(r => r.Employee)
             .AsQueryable();
@@ -103,6 +104,7 @@ public class InsuranceController(HrDbContext db) : ControllerBase
         [FromQuery] int page = 1, [FromQuery] int pageSize = 20,
         CancellationToken ct = default)
     {
+        (page, pageSize) = Paging.Normalize(page, pageSize);
         var query = db.SocialInsuranceTasks
             .Include(t => t.Employee)
             .Include(t => t.Assignee)

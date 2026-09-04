@@ -80,15 +80,18 @@ public class BackendP0SecurityTests
     }
 
     [Fact]
-    public void Date_only_range_uses_utc_inclusive_start_and_exclusive_end()
+    public void Date_only_range_uses_vietnam_calendar_day_as_utc_bounds()
     {
         var date = new DateOnly(2026, 7, 17);
         var start = UtcDateRange.Start(date);
         var end = UtcDateRange.ExclusiveEnd(date);
 
         Assert.Equal(DateTimeKind.Utc, start!.Value.Kind);
-        Assert.Equal(new DateTime(2026, 7, 17, 0, 0, 0, DateTimeKind.Utc), start);
-        Assert.Equal(new DateTime(2026, 7, 18, 0, 0, 0, DateTimeKind.Utc), end);
+        Assert.Equal(DateTimeKind.Utc, end!.Value.Kind);
+        // 00:00 VN (UTC+7) = 17:00 ngày trước theo UTC
+        Assert.Equal(new DateTime(2026, 7, 16, 17, 0, 0, DateTimeKind.Utc), start);
+        Assert.Equal(new DateTime(2026, 7, 17, 17, 0, 0, DateTimeKind.Utc), end);
+        Assert.Equal(TimeSpan.FromHours(24), end.Value - start.Value);
     }
 
     [Fact]

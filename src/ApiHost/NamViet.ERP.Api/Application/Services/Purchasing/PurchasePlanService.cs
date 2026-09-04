@@ -4,9 +4,11 @@ using NamViet.ERP.Api.Application.Mappers.Purchasing;
 using NamViet.ERP.Api.Application.Services.Shared;
 using NamViet.ERP.Modules.Warehouse.Domain.Entities;
 using NamViet.ERP.Modules.Warehouse.Domain.SupplierEvaluation;
+using NamViet.ERP.Modules.Warehouse.Infrastructure.Helpers;
 using NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence;
 using NamViet.ERP.SharedKernel.Interfaces;
 using NamViet.ERP.SharedKernel.Common;
+using FluentValidation;
 
 namespace NamViet.ERP.Api.Application.Services.Purchasing;
 
@@ -49,7 +51,9 @@ public sealed class PurchasePlanService(
     WarehouseDbContext db,
     IPurchasePlanCodeGenerator codeGenerator,
     ICurrentUser currentUser,
-    IActivityEventWriter activity) : IPurchasePlanService
+    IActivityEventWriter activity,
+    IValidator<CreatePurchasePlanRequest> createValidator,
+    IValidator<UpdatePurchasePlanRequest> updateValidator) : IPurchasePlanService
 {
     public async Task<PurchasePlanPagedResponse> ListAsync(
         int page,
@@ -135,6 +139,8 @@ public sealed class PurchasePlanService(
 
     public async Task<PurchasePlanDetailDto> CreateAsync(CreatePurchasePlanRequest request, CancellationToken ct = default)
     {
+        await createValidator.ValidateAndThrowAsync(request, ct);
+
         var projectCode = request.ProjectCode?.Trim()
             ?? throw new PurchasingConflictException("ProjectCode là bắt buộc.");
 
@@ -148,54 +154,66 @@ public sealed class PurchasePlanService(
         if (!PurchasePlanKinds.IsValid(kind))
             throw new PurchasingConflictException($"Loại phiếu không hợp lệ: {kind}.");
 
-        var code = await codeGenerator.NextAsync(kind, ct);
-        var now = DateTime.UtcNow;
-        var plan = new PurchasePlan
+        return await SequentialCodeHelper.ExecuteWithUniqueRetryAsync(async () =>
         {
-            Code = code,
-            ProjectCode = projectCode,
-            Kind = kind,
-            Status = PurchasePlanStatuses.Draft,
-            Note = string.IsNullOrWhiteSpace(request.Note) ? null : request.Note.Trim(),
-            CreatedById = currentUser.IsAuthenticated ? currentUser.Id : null,
-            CreatedByName = currentUser.IsAuthenticated ? currentUser.Name : null,
-            CreatedAt = now,
-            UpdatedAt = now,
-        };
+            db.ChangeTracker.Clear();
 
-        if (request.Lines is { Count: > 0 })
-        {
-            var materialsByCode = await LoadMaterialsByCodesAsync(
-                request.Lines.Select(l => l.MaterialCode), ct);
+            await using var tx = await db.Database.BeginTransactionAsync(ct);
+            await TicketCodeAllocator.AcquireNamedLockAsync(db, "pur_plan_code", ct);
 
-            var lineNo = 0;
-            foreach (var src in request.Lines)
+            var code = await codeGenerator.NextAsync(kind, ct);
+            var now = DateTime.UtcNow;
+            var plan = new PurchasePlan
             {
-                lineNo++;
-                var material = RequireMaterial(src.MaterialCode, materialsByCode, lineNo);
-                plan.Lines.Add(MapCreateLine(src, code, lineNo, material));
+                Code = code,
+                ProjectCode = projectCode,
+                Kind = kind,
+                Status = PurchasePlanStatuses.Draft,
+                Note = string.IsNullOrWhiteSpace(request.Note) ? null : request.Note.Trim(),
+                CreatedById = currentUser.IsAuthenticated ? currentUser.Id : null,
+                CreatedByName = currentUser.IsAuthenticated ? currentUser.Name : null,
+                CreatedAt = now,
+                UpdatedAt = now,
+            };
+
+            if (request.Lines is { Count: > 0 })
+            {
+                var materialsByCode = await LoadMaterialsByCodesAsync(
+                    request.Lines.Select(l => l.MaterialCode), ct);
+
+                var lineNo = 0;
+                foreach (var src in request.Lines)
+                {
+                    lineNo++;
+                    var material = RequireMaterial(src.MaterialCode, materialsByCode, lineNo);
+                    plan.Lines.Add(MapCreateLine(src, code, lineNo, material));
+                }
+
+                RecalcTotals(plan);
             }
 
-            RecalcTotals(plan);
-        }
+            db.PurchasePlans.Add(plan);
+            await db.SaveChangesAsync(ct);
+            await tx.CommitAsync(ct);
 
-        db.PurchasePlans.Add(plan);
-        await db.SaveChangesAsync(ct);
+            await activity.WriteAsync(new ActivityEventWriteRequest(
+                ActivityModules.Purchasing,
+                ActivityActions.PlanCreated,
+                $"Tạo kế hoạch mua hàng [{code}]",
+                ActivityCategories.Plan,
+                EntityType: "purchase_plan",
+                EntityCode: code), ct);
 
-        await activity.WriteAsync(new ActivityEventWriteRequest(
-            ActivityModules.Purchasing,
-            ActivityActions.PlanCreated,
-            $"Tạo kế hoạch mua hàng [{code}]",
-            ActivityCategories.Plan,
-            EntityType: "purchase_plan",
-            EntityCode: code), ct);
-
-        return (await GetByCodeAsync(code, ct))!;
+            return await GetByCodeAsync(code, ct)
+                ?? throw new DomainRuleException($"Không tải được KHMH {code} sau khi tạo.");
+        }, ct: ct);
     }
 
     public async Task<PurchasePlanDetailDto?> UpdateAsync(
         string code, UpdatePurchasePlanRequest request, CancellationToken ct = default)
     {
+        await updateValidator.ValidateAndThrowAsync(request, ct);
+
         var plan = request.Lines is not null
             ? await db.PurchasePlans
                 .Include(p => p.Lines)

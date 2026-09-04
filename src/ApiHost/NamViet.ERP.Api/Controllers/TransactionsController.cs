@@ -24,6 +24,7 @@ public class TransactionsController(WarehouseDbContext db, IMediator mediator) :
         [FromQuery] string? type = null, [FromQuery] string? status = null,
         [FromQuery] string? projectCode = null, CancellationToken ct = default)
     {
+        (page, pageSize) = Paging.Normalize(page, pageSize);
         var query = db.WarehouseTransactions
             .Include(t => t.Items).ThenInclude(i => i.Material)
             .Include(t => t.Supplier)

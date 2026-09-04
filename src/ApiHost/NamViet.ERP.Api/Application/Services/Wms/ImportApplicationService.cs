@@ -88,48 +88,56 @@ public sealed class ImportApplicationService(
     {
         await stocktakeFreeze.EnsureProjectsNotFrozenAsync([dto.Project], ct);
 
-        var count = await db.WarehouseTransactions.CountAsync(t => t.TransactionType == TransactionType.Import, ct);
-        var ticketCode = string.IsNullOrWhiteSpace(dto.VoucherCode)
-            ? WarehouseTransaction.GenerateTicketCode(TransactionType.Import, count + 1)
-            : dto.VoucherCode;
-
         if (dto.Items.Any(i => i.UnitPrice <= 0))
             throw new DomainRuleException("Đơn giá phải lớn hơn 0.");
 
         var approvalStatus = WmsMapper.FromClientApprovalStatus(dto.Status);
-        var transaction = BuildTransaction(dto, ticketCode, approvalStatus);
-        transaction.WarehouseId = await ResolveImportWarehouseIdAsync(dto, ct);
-        await ValidateAndSnapshotItemsAsync(transaction.Items, ct);
-        if (PurchaseOrderReceiptService.SettlesPurchaseOrder(transaction))
-            await poReceipt.EnsureImportLinesWithinPoAvailabilityAsync(transaction, ct);
 
-        await using var tx = await db.Database.BeginTransactionAsync(ct);
-        db.WarehouseTransactions.Add(transaction);
-
-        if (approvalStatus is ApprovalStatus.Draft or ApprovalStatus.Pending)
-            await CreateDraftReservationsAsync(transaction, ct);
-        if (approvalStatus == ApprovalStatus.Pending)
-            await inventory.EnsurePendingDirectExportAsync(transaction, ct);
-        else if (approvalStatus == ApprovalStatus.Approved)
+        return await SequentialCodeHelper.ExecuteWithUniqueRetryAsync(async () =>
         {
-            await inventory.ApplyApprovedImportAsync(transaction, ct);
+            db.ChangeTracker.Clear();
+
+            await using var tx = await db.Database.BeginTransactionAsync(ct);
+            await TicketCodeAllocator.AcquireTypeLockAsync(db, TransactionType.Import, ct);
+            await stocktakeFreeze.EnsureProjectsNotFrozenAsync([dto.Project], ct);
+
+            var ticketCode = string.IsNullOrWhiteSpace(dto.VoucherCode)
+                ? await TicketCodeAllocator.NextAsync(db, TransactionType.Import, ct)
+                : dto.VoucherCode;
+
+            var transaction = BuildTransaction(dto, ticketCode, approvalStatus);
+            transaction.WarehouseId = await ResolveImportWarehouseIdAsync(dto, ct);
+            await ValidateAndSnapshotItemsAsync(transaction.Items, ct);
             if (PurchaseOrderReceiptService.SettlesPurchaseOrder(transaction))
-                await poReceipt.ApplyApprovedImportReceiptAsync(transaction, ct);
-        }
+                await poReceipt.EnsureImportLinesWithinPoAvailabilityAsync(transaction, ct);
 
-        await db.SaveChangesAsync(ct);
-        await tx.CommitAsync(ct);
+            db.WarehouseTransactions.Add(transaction);
 
-        await WritePurchasingImportActivityAsync(
-            transaction,
-            ActivityActions.ImportCreated,
-            $"Tạo phiếu nhập hàng [{transaction.TicketCode}]",
-            ct);
+            if (approvalStatus is ApprovalStatus.Draft or ApprovalStatus.Pending)
+                await CreateDraftReservationsAsync(transaction, ct);
+            if (approvalStatus == ApprovalStatus.Pending)
+                await inventory.EnsurePendingDirectExportAsync(transaction, ct);
+            else if (approvalStatus == ApprovalStatus.Approved)
+            {
+                await inventory.ApplyApprovedImportAsync(transaction, ct);
+                if (PurchaseOrderReceiptService.SettlesPurchaseOrder(transaction))
+                    await poReceipt.ApplyApprovedImportReceiptAsync(transaction, ct);
+            }
 
-        await db.Entry(transaction).Collection(t => t.Items).LoadAsync(ct);
-        foreach (var item in transaction.Items)
-            await db.Entry(item).Reference(i => i.Material).LoadAsync(ct);
-        return WmsMapper.ToImport(transaction);
+            await db.SaveChangesAsync(ct);
+            await tx.CommitAsync(ct);
+
+            await WritePurchasingImportActivityAsync(
+                transaction,
+                ActivityActions.ImportCreated,
+                $"Tạo phiếu nhập hàng [{transaction.TicketCode}]",
+                ct);
+
+            await db.Entry(transaction).Collection(t => t.Items).LoadAsync(ct);
+            foreach (var item in transaction.Items)
+                await db.Entry(item).Reference(i => i.Material).LoadAsync(ct);
+            return WmsMapper.ToImport(transaction);
+        }, ct: ct);
     }
 
     public async Task<ImportDto?> UpdateAsync(string id, CreateImportDto dto, CancellationToken ct = default)
@@ -210,6 +218,7 @@ public sealed class ImportApplicationService(
             await CreateDraftReservationsAsync(t, ct);
         await inventory.EnsurePendingDirectExportAsync(t, ct);
 
+        await stocktakeFreeze.EnsureProjectsNotFrozenAsync([dto.Project], ct);
         await db.SaveChangesAsync(ct);
         await tx.CommitAsync(ct);
         return WmsMapper.ToImport(t);
@@ -270,6 +279,7 @@ public sealed class ImportApplicationService(
             await poReceipt.ApplyApprovedImportReceiptAsync(t, ct);
             await deliveryEvaluations.EnsurePendingFromApprovedImportAsync(t, ct);
         }
+        await stocktakeFreeze.EnsureProjectsNotFrozenAsync([t.BeneficiaryProjectCode], ct);
         await db.SaveChangesAsync(ct);
         await tx.CommitAsync(ct);
 
@@ -510,6 +520,7 @@ public sealed class ImportApplicationService(
         t.ApprovalStatus = ApprovalStatus.Pending;
         t.UpdatedAt = DateTime.UtcNow;
         await inventory.EnsurePendingDirectExportAsync(t, ct);
+        await stocktakeFreeze.EnsureProjectsNotFrozenAsync([t.BeneficiaryProjectCode], ct);
         await db.SaveChangesAsync(ct);
 
         await activity.WriteAsync(new ActivityEventWriteRequest(

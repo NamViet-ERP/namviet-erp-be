@@ -45,6 +45,7 @@ public class SuppliersController(
         [FromQuery] string? approvalStatus = null,
         CancellationToken ct = default)
     {
+        (page, pageSize) = Paging.Normalize(page, pageSize);
         var query = db.Suppliers.AsQueryable();
         if (!string.IsNullOrWhiteSpace(search))
             query = query.Where(s => s.SupplierName.Contains(search) || s.SupplierCode.Contains(search));

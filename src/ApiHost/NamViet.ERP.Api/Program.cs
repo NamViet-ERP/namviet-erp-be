@@ -38,6 +38,10 @@ builder.Host.UseSerilog((ctx, cfg) =>
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {
     options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    // Deploy thật chỉ có đúng 1 lớp proxy (Render). ForwardLimit = 1 nghĩa là chỉ tin
+    // entry cuối cùng của X-Forwarded-For (do proxy Render thêm); các entry client tự
+    // gửi kèm bị bỏ qua nên không spoof được IP để né rate limit.
+    options.ForwardLimit = 1;
     // Behind a trusted edge proxy that is the only path to the app (Docker/K8s/Nginx),
     // clear known lists so X-Forwarded-* from that hop is applied. Restrict further via
     // ForwardedHeaders:KnownProxies if the API is reachable from untrusted networks.
@@ -289,6 +293,8 @@ app.MapHealthChecks("/health", new HealthCheckOptions
 app.MapHealthChecks("/health/ready", new HealthCheckOptions
 {
     Predicate = check => check.Tags.Contains("ready"),
+    // Chỉ trả trạng thái tổng quát + tên check. Không trả exception/description để
+    // tránh lộ thông tin hạ tầng (host/user DB) ra endpoint công khai.
     ResponseWriter = async (context, report) =>
     {
         context.Response.ContentType = "application/json";
@@ -299,8 +305,6 @@ app.MapHealthChecks("/health/ready", new HealthCheckOptions
             {
                 name = e.Key,
                 status = e.Value.Status.ToString(),
-                description = e.Value.Description,
-                error = e.Value.Exception?.Message,
             }),
         });
     },

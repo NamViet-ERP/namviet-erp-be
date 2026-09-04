@@ -1,10 +1,13 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using NamViet.ERP.Api.Application.Services.Hr;
 using NamViet.ERP.Modules.Hr.Domain.Entities;
 using NamViet.ERP.Modules.Hr.Domain.Enums;
 using NamViet.ERP.Modules.Hr.Infrastructure.Persistence;
+using NamViet.ERP.SharedKernel.Authorization;
 using NamViet.ERP.SharedKernel.Common;
+using NamViet.ERP.SharedKernel.Interfaces;
 
 namespace NamViet.ERP.Api.Controllers;
 
@@ -17,8 +20,17 @@ public record ApproveAdminRequestRequest(bool Approve, int? ApproverId);
 [ApiController]
 [Route("api/hr/admin-requests")]
 [Authorize]
-public class AdminRequestsController(HrDbContext db) : ControllerBase
+public class AdminRequestsController(
+    HrDbContext db,
+    ICurrentUser currentUser,
+    IEmployeeAccessService employeeAccess) : ControllerBase
 {
+    /// <summary>Admin/HR/BOD quản lý mọi yêu cầu (mirror roles của endpoint Approve); user khác chỉ thấy / tạo yêu cầu của chính mình.</summary>
+    private bool CanManageAllRequests =>
+        currentUser.IsInRole(RolePermissionTemplates.AdminRole)
+        || currentUser.IsInRole(RolePermissionTemplates.HrRole)
+        || currentUser.IsInRole(RolePermissionTemplates.BodRole);
+
     [HttpGet]
     public async Task<IActionResult> GetAll(
         [FromQuery] int page = 1, [FromQuery] int pageSize = 20,
@@ -26,9 +38,18 @@ public class AdminRequestsController(HrDbContext db) : ControllerBase
         [FromQuery] int? employeeId = null,
         CancellationToken ct = default)
     {
+        (page, pageSize) = Paging.Normalize(page, pageSize);
         var query = db.AdminRequests
             .Include(r => r.Employee)
             .AsQueryable();
+
+        if (!CanManageAllRequests)
+        {
+            var ownEmployeeId = await employeeAccess.ResolveLinkedEmployeeIdAsync(currentUser, ct);
+            if (!ownEmployeeId.HasValue)
+                return Ok(PagedResult<object>.Create([], 0, page, pageSize));
+            query = query.Where(r => r.EmployeeId == ownEmployeeId.Value);
+        }
 
         if (!string.IsNullOrWhiteSpace(type))
         {
@@ -59,6 +80,14 @@ public class AdminRequestsController(HrDbContext db) : ControllerBase
             .Include(x => x.Employee)
             .FirstOrDefaultAsync(x => x.Id == id, ct);
         if (r is null) return NotFound();
+
+        if (!CanManageAllRequests)
+        {
+            var ownEmployeeId = await employeeAccess.ResolveLinkedEmployeeIdAsync(currentUser, ct);
+            if (!ownEmployeeId.HasValue || r.EmployeeId != ownEmployeeId.Value)
+                return NotFound();
+        }
+
         return Ok(new
         {
             r.Id, Type = HrEnumMapper.ToDisplayString(r.Type), r.EmployeeId, EmployeeName = r.Employee.FullName,
@@ -69,10 +98,20 @@ public class AdminRequestsController(HrDbContext db) : ControllerBase
     [HttpPost]
     public async Task<IActionResult> Create([FromBody] CreateAdminRequestRequest request, CancellationToken ct)
     {
+        var employeeId = request.EmployeeId;
+        if (!CanManageAllRequests)
+        {
+            // Ép requester = user hiện tại, không cho tạo yêu cầu đứng tên người khác.
+            var ownEmployeeId = await employeeAccess.ResolveLinkedEmployeeIdAsync(currentUser, ct);
+            if (!ownEmployeeId.HasValue)
+                return BadRequest("Tài khoản chưa liên kết hồ sơ nhân viên, không thể tạo yêu cầu.");
+            employeeId = ownEmployeeId.Value;
+        }
+
         var req = new AdminRequest
         {
             Type = HrEnumMapper.ParseAdminRequestType(request.Type),
-            EmployeeId = request.EmployeeId,
+            EmployeeId = employeeId,
             Title = request.Title,
             Content = request.Content,
             Quantity = request.Quantity

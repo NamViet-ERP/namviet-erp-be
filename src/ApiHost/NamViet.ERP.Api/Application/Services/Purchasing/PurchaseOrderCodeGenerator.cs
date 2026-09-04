@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence;
+using NamViet.ERP.SharedKernel.Common;
 
 namespace NamViet.ERP.Api.Application.Services.Purchasing;
 
@@ -12,19 +13,13 @@ public sealed class PurchaseOrderCodeGenerator(WarehouseDbContext db) : IPurchas
 {
     public async Task<string> NextAsync(CancellationToken ct = default)
     {
+        const string prefix = "PO-";
         var codes = await db.PurchaseOrders
             .IgnoreQueryFilters()
             .Select(p => p.Code)
-            .Where(c => c.StartsWith("PO-"))
+            .Where(c => c.StartsWith(prefix))
             .ToListAsync(ct);
 
-        var max = 0;
-        foreach (var code in codes)
-        {
-            if (code.Length > 3 && int.TryParse(code.AsSpan(3), out var n) && n > max)
-                max = n;
-        }
-
-        return $"PO-{max + 1:D4}";
+        return SequentialCodeHelper.Format(prefix, SequentialCodeHelper.NextSequence(codes, prefix));
     }
 }

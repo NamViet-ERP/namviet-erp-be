@@ -22,6 +22,7 @@ public class LoansController(WarehouseDbContext db) : ControllerBase
         [FromQuery] string? projectCode = null, [FromQuery] string? status = null,
         CancellationToken ct = default)
     {
+        (page, pageSize) = Paging.Normalize(page, pageSize);
         var query = db.ProjectMaterialLoans
             .Include(l => l.Material)
             .AsQueryable();

@@ -5,6 +5,7 @@ using NamViet.ERP.Modules.Warehouse.Domain.Entities;
 using NamViet.ERP.Modules.Warehouse.Domain.Enums;
 using NamViet.ERP.Modules.Warehouse.Domain.Services;
 using NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence;
+using NamViet.ERP.SharedKernel.Common;
 using NamViet.ERP.SharedKernel.Interfaces;
 
 namespace NamViet.ERP.Api.Application.Services.Purchasing;
@@ -910,12 +911,15 @@ public sealed class PurchaseDefectApplicationService(
 
     private async Task<string> NextTicketCodeAsync(CancellationToken ct)
     {
-        var count = await db.PurchaseDefects.IgnoreQueryFilters().CountAsync(ct);
-        var ticket = PurchaseDefect.GenerateTicketCode(count + 1);
+        var codes = await db.PurchaseDefects.IgnoreQueryFilters()
+            .Select(d => d.TicketCode)
+            .ToListAsync(ct);
+        var seq = SequentialCodeHelper.NextSequence(codes, "HL-");
+        var ticket = PurchaseDefect.GenerateTicketCode(seq);
         while (await db.PurchaseDefects.IgnoreQueryFilters().AnyAsync(d => d.TicketCode == ticket, ct))
         {
-            count++;
-            ticket = PurchaseDefect.GenerateTicketCode(count + 1);
+            seq++;
+            ticket = PurchaseDefect.GenerateTicketCode(seq);
         }
         return ticket;
     }

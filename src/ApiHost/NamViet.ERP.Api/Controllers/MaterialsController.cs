@@ -30,6 +30,7 @@ public class MaterialsController(WarehouseDbContext db) : ControllerBase
         [FromQuery] bool includeInactive = false,
         CancellationToken ct = default)
     {
+        (page, pageSize) = Paging.Normalize(page, pageSize);
         var hasPathFilter = !string.IsNullOrWhiteSpace(danhMuc) || !string.IsNullOrWhiteSpace(nhomVatTu) ||
             !string.IsNullOrWhiteSpace(loaiVatTu) || !string.IsNullOrWhiteSpace(phanLoai) ||
             !string.IsNullOrWhiteSpace(kieu);

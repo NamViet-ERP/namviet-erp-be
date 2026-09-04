@@ -25,15 +25,17 @@ Repo BE cần có `Dockerfile` ở root (đã thêm). FE đã ở: https://namvi
 
 5. **Trước khi Create**, mở **Environment** và thêm:
 
+> **CẢNH BÁO BẢO MẬT:** Phiên bản cũ của file này từng chứa connection string và JWT signing key **thật**. Các giá trị đó coi như đã lộ - **bắt buộc rotate ngay**: đổi database password trong Supabase Dashboard (Settings → Database) và tạo `Jwt__SigningKey` mới trên Render. Không bao giờ commit giá trị thật vào repo.
+
 | Key | Value |
 |-----|--------|
 | `ASPNETCORE_ENVIRONMENT` | `Production` |
 | `PORT` | *(không cần set — Render tự inject; Dockerfile đã bind `${PORT}`)* |
-| `ConnectionStrings__Default` | `Host=aws-0-ap-southeast-1.pooler.supabase.com;Port=5432;Database=postgres;Username=postgres.ufqgndvupcdmxqupxspl;Password=NvErp2026!Prod;SSL Mode=Require;Trust Server Certificate=true` |
-| `Jwt__SigningKey` | `lR4!8xP2#qV9mK7tN3dF6wZ1cH5uJ0sB` |
+| `ConnectionStrings__Default` | `Host=<supabase-pooler-host>;Port=5432;Database=postgres;Username=<supabase-username>;Password=<DB_PASSWORD_MỚI>;SSL Mode=Require;Trust Server Certificate=true` *(lấy từ Supabase Dashboard, chỉ dán trực tiếp vào Render)* |
+| `Jwt__SigningKey` | *(chuỗi ngẫu nhiên ≥ 48 ký tự, tạo mới bằng `openssl rand -base64 48`, chỉ dán vào Render)* |
 | `Jwt__Issuer` | `namviet-erp` |
 | `Jwt__Audience` | `namviet-erp-client` |
-| `Jwt__AccessTokenMinutes` | `60` |
+| `Jwt__AccessTokenMinutes` | `15` |
 | `Cors__AllowedOrigins` | `https://namviet-erp-fe.vercel.app` |
 | `AuthCookies__Secure` | `true` |
 | `AuthCookies__SameSite` | `None` |

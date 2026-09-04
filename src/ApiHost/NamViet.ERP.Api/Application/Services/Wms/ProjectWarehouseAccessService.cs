@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence;
 using NamViet.ERP.SharedKernel.Authorization;
+using NamViet.ERP.SharedKernel.Common;
 using NamViet.ERP.SharedKernel.Interfaces;
 
 namespace NamViet.ERP.Api.Application.Services.Wms;
@@ -34,7 +35,7 @@ public sealed class ProjectWarehouseAccessService(
     public async Task EnsureCanOperateOnProjectAsync(string projectCode, CancellationToken ct = default)
     {
         if (await CanOperateOnProjectAsync(projectCode, ct)) return;
-        throw new UnauthorizedAccessException(
+        throw new ForbiddenException(
             $"Bạn không được gán phụ trách kho dự án '{projectCode}'.");
     }
 

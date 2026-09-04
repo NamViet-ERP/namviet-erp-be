@@ -20,53 +20,59 @@ public class CreateTransactionHandler(
     {
         var req = command.Request;
 
-        var count = await db.WarehouseTransactions
-            .CountAsync(t => t.TransactionType == req.TransactionType, ct);
-        var ticketCode = WarehouseTransaction.GenerateTicketCode(req.TransactionType, count + 1);
-
-        var materialCodes = req.Items.Select(i => i.MaterialCode).Distinct().ToList();
-        var materials = await db.Materials
-            .Where(m => materialCodes.Contains(m.MaterialCode))
-            .ToDictionaryAsync(m => m.MaterialCode, ct);
-
-        foreach (var code in materialCodes)
-            if (!materials.ContainsKey(code))
-                throw new DomainRuleException($"Vật tư '{code}' không tồn tại.");
-        TransactionItemHelper.EnsureActiveMaterials(materialCodes, materials);
-
-        var transaction = new WarehouseTransaction
+        return await SequentialCodeHelper.ExecuteWithUniqueRetryAsync(async () =>
         {
-            Id = Guid.NewGuid(),
-            TicketCode = ticketCode,
-            TransactionType = req.TransactionType,
-            ProjectCode = req.ProjectCode,
-            SupplierId = req.SupplierId,
-            InvoiceNumber = req.InvoiceNumber,
-            DnttNumber = req.DnttNumber,
-            Notes = req.Notes,
-            CreatedById = currentUser.Id,
-            CreatedByName = currentUser.Name,
-            ApprovalStatus = ApprovalStatus.Pending,
-            Items = req.Items.Select(i =>
+            db.ChangeTracker.Clear();
+
+            await using var tx = await db.Database.BeginTransactionAsync(ct);
+            await TicketCodeAllocator.AcquireTypeLockAsync(db, req.TransactionType, ct);
+            var ticketCode = await TicketCodeAllocator.NextAsync(db, req.TransactionType, ct);
+
+            var materialCodes = req.Items.Select(i => i.MaterialCode).Distinct().ToList();
+            var materials = await db.Materials
+                .Where(m => materialCodes.Contains(m.MaterialCode))
+                .ToDictionaryAsync(m => m.MaterialCode, ct);
+
+            foreach (var code in materialCodes)
+                if (!materials.ContainsKey(code))
+                    throw new DomainRuleException($"Vật tư '{code}' không tồn tại.");
+            TransactionItemHelper.EnsureActiveMaterials(materialCodes, materials);
+
+            var transaction = new WarehouseTransaction
             {
-                var material = materials[i.MaterialCode];
-                var item = new WarehouseTransactionItem
+                Id = Guid.NewGuid(),
+                TicketCode = ticketCode,
+                TransactionType = req.TransactionType,
+                ProjectCode = req.ProjectCode,
+                SupplierId = req.SupplierId,
+                InvoiceNumber = req.InvoiceNumber,
+                DnttNumber = req.DnttNumber,
+                Notes = req.Notes,
+                CreatedById = currentUser.Id,
+                CreatedByName = currentUser.Name,
+                ApprovalStatus = ApprovalStatus.Pending,
+                Items = req.Items.Select(i =>
                 {
-                    MaterialCode = i.MaterialCode,
-                    Quantity = i.Quantity,
-                    UnitPrice = i.UnitPrice,
-                    ConstructionPhase = i.ConstructionPhase,
-                    Notes = i.Notes
-                };
-                TransactionItemHelper.ApplySnapshot(item, material);
-                return item;
-            }).ToList()
-        };
+                    var material = materials[i.MaterialCode];
+                    var item = new WarehouseTransactionItem
+                    {
+                        MaterialCode = i.MaterialCode,
+                        Quantity = i.Quantity,
+                        UnitPrice = i.UnitPrice,
+                        ConstructionPhase = i.ConstructionPhase,
+                        Notes = i.Notes
+                    };
+                    TransactionItemHelper.ApplySnapshot(item, material);
+                    return item;
+                }).ToList()
+            };
 
-        db.WarehouseTransactions.Add(transaction);
-        await db.SaveChangesAsync(ct);
+            db.WarehouseTransactions.Add(transaction);
+            await db.SaveChangesAsync(ct);
+            await tx.CommitAsync(ct);
 
-        return MapToDto(transaction, materials);
+            return MapToDto(transaction, materials);
+        }, ct: ct);
     }
 
     private static TransactionDto MapToDto(WarehouseTransaction t, Dictionary<string, Material> materials)

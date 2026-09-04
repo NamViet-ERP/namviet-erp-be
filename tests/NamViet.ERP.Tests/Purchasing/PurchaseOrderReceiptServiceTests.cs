@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using NamViet.ERP.Api.Application.Dtos.Purchasing;
 using NamViet.ERP.Api.Application.Services.Purchasing;
+using NamViet.ERP.Api.Application.Validators;
 using NamViet.ERP.Modules.Warehouse.Domain;
 using NamViet.ERP.Modules.Warehouse.Domain.Entities;
 using NamViet.ERP.Modules.Warehouse.Domain.Enums;
@@ -28,10 +29,12 @@ public class PurchaseOrderReceiptServiceTests : IDisposable
         Seed();
 
         _plans = new PurchasePlanService(
-            _db, new PurchasePlanCodeGenerator(_db), _user, new FakeActivityEventWriter());
+            _db, new PurchasePlanCodeGenerator(_db), _user, new FakeActivityEventWriter(),
+            new CreatePurchasePlanRequestValidator(), new UpdatePurchasePlanRequestValidator());
         _orders = new PurchaseOrderService(
             _db, new PurchaseOrderCodeGenerator(_db), _plans, _user, new FakeActivityEventWriter(),
-            new FakeFileStorage());
+            new FakeFileStorage(),
+            new CreatePurchaseOrderRequestValidator(), new UpdatePurchaseOrderRequestValidator());
         _receipt = new PurchaseOrderReceiptService(_db, new FakePurchaseWarrantyService());
     }
 

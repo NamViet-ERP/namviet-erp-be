@@ -2,8 +2,25 @@
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 WORKDIR /src
 
-COPY . .
+# Copy sln + csproj trước rồi mới restore để layer restore được cache
+# khi chỉ thay đổi source code (không đổi dependency).
+COPY NamViet.ERP.sln ./
+COPY src/BuildingBlocks/NamViet.ERP.SharedKernel/NamViet.ERP.SharedKernel.csproj src/BuildingBlocks/NamViet.ERP.SharedKernel/
+COPY src/BuildingBlocks/NamViet.ERP.Application.Abstractions/NamViet.ERP.Application.Abstractions.csproj src/BuildingBlocks/NamViet.ERP.Application.Abstractions/
+COPY src/Modules/Identity/NamViet.ERP.Modules.Identity.Domain/NamViet.ERP.Modules.Identity.Domain.csproj src/Modules/Identity/NamViet.ERP.Modules.Identity.Domain/
+COPY src/Modules/Identity/NamViet.ERP.Modules.Identity.Application/NamViet.ERP.Modules.Identity.Application.csproj src/Modules/Identity/NamViet.ERP.Modules.Identity.Application/
+COPY src/Modules/Identity/NamViet.ERP.Modules.Identity.Infrastructure/NamViet.ERP.Modules.Identity.Infrastructure.csproj src/Modules/Identity/NamViet.ERP.Modules.Identity.Infrastructure/
+COPY src/Modules/Warehouse/NamViet.ERP.Modules.Warehouse.Domain/NamViet.ERP.Modules.Warehouse.Domain.csproj src/Modules/Warehouse/NamViet.ERP.Modules.Warehouse.Domain/
+COPY src/Modules/Warehouse/NamViet.ERP.Modules.Warehouse.Application/NamViet.ERP.Modules.Warehouse.Application.csproj src/Modules/Warehouse/NamViet.ERP.Modules.Warehouse.Application/
+COPY src/Modules/Warehouse/NamViet.ERP.Modules.Warehouse.Infrastructure/NamViet.ERP.Modules.Warehouse.Infrastructure.csproj src/Modules/Warehouse/NamViet.ERP.Modules.Warehouse.Infrastructure/
+COPY src/Modules/Hr/NamViet.ERP.Modules.Hr.Domain/NamViet.ERP.Modules.Hr.Domain.csproj src/Modules/Hr/NamViet.ERP.Modules.Hr.Domain/
+COPY src/Modules/Hr/NamViet.ERP.Modules.Hr.Application/NamViet.ERP.Modules.Hr.Application.csproj src/Modules/Hr/NamViet.ERP.Modules.Hr.Application/
+COPY src/Modules/Hr/NamViet.ERP.Modules.Hr.Infrastructure/NamViet.ERP.Modules.Hr.Infrastructure.csproj src/Modules/Hr/NamViet.ERP.Modules.Hr.Infrastructure/
+COPY src/ApiHost/NamViet.ERP.Api/NamViet.ERP.Api.csproj src/ApiHost/NamViet.ERP.Api/
 RUN dotnet restore src/ApiHost/NamViet.ERP.Api/NamViet.ERP.Api.csproj
+
+# Copy phần source còn lại rồi publish (dùng lại package đã restore).
+COPY . .
 RUN dotnet publish src/ApiHost/NamViet.ERP.Api/NamViet.ERP.Api.csproj \
     -c Release \
     -o /app/publish \
@@ -19,5 +36,10 @@ ENV DOTNET_HOSTBUILDER_RELOADCONFIGONCHANGE=false
 ENV DOTNET_USE_POLLING_FILE_WATCHER=1
 EXPOSE 8080
 COPY --from=build /app/publish .
+# LocalFileStorage ghi vào /app/App_Data (private uploads) — tạo sẵn và cấp quyền
+# cho user non-root trước khi hạ quyền.
+RUN mkdir -p /app/App_Data/private-uploads && chown -R app:app /app/App_Data
+# Chạy bằng user non-root `app` có sẵn trong image .NET 8.
+USER app
 # Shell form so $PORT from Render is applied at runtime.
 ENTRYPOINT ["/bin/sh", "-c", "export ASPNETCORE_URLS=http://0.0.0.0:${PORT:-8080}; exec dotnet NamViet.ERP.Api.dll"]

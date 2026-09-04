@@ -56,26 +56,35 @@ public sealed class TransferApplicationService(
 
         await stocktakeFreeze.EnsureProjectsNotFrozenAsync([dto.Project, ResolveBeneficiaryProjectCode(dto)], ct);
 
-        var count = await db.WarehouseTransactions.CountAsync(t => t.TransactionType == TransactionType.Transfer, ct);
-        var ticketCode = string.IsNullOrWhiteSpace(dto.VoucherCode)
-            ? WarehouseTransaction.GenerateTicketCode(TransactionType.Transfer, count + 1)
-            : dto.VoucherCode;
-
         var approvalStatus = WmsMapper.FromClientApprovalStatus(dto.Status);
-        var transaction = await BuildTransactionAsync(dto, ticketCode, approvalStatus, ct);
-        await ValidateAndSnapshotItemsAsync(transaction.Items, ct);
 
-        await using var tx = await db.Database.BeginTransactionAsync(ct);
-        db.WarehouseTransactions.Add(transaction);
-        await ApplyDraftOrApprovedAsync(transaction, approvalStatus, ct);
-        await db.SaveChangesAsync(ct);
-        await tx.CommitAsync(ct);
+        return await SequentialCodeHelper.ExecuteWithUniqueRetryAsync(async () =>
+        {
+            db.ChangeTracker.Clear();
 
-        await db.Entry(transaction).Collection(t => t.Items).LoadAsync(ct);
-        foreach (var item in transaction.Items)
-            await db.Entry(item).Reference(i => i.Material).LoadAsync(ct);
+            await using var tx = await db.Database.BeginTransactionAsync(ct);
+            await TicketCodeAllocator.AcquireTypeLockAsync(db, TransactionType.Transfer, ct);
+            await stocktakeFreeze.EnsureProjectsNotFrozenAsync(
+                [dto.Project, ResolveBeneficiaryProjectCode(dto)], ct);
 
-        return await MapTransferResponseAsync(transaction, ct);
+            var ticketCode = string.IsNullOrWhiteSpace(dto.VoucherCode)
+                ? await TicketCodeAllocator.NextAsync(db, TransactionType.Transfer, ct)
+                : dto.VoucherCode;
+
+            var transaction = await BuildTransactionAsync(dto, ticketCode, approvalStatus, ct);
+            await ValidateAndSnapshotItemsAsync(transaction.Items, ct);
+
+            db.WarehouseTransactions.Add(transaction);
+            await ApplyDraftOrApprovedAsync(transaction, approvalStatus, ct);
+            await db.SaveChangesAsync(ct);
+            await tx.CommitAsync(ct);
+
+            await db.Entry(transaction).Collection(t => t.Items).LoadAsync(ct);
+            foreach (var item in transaction.Items)
+                await db.Entry(item).Reference(i => i.Material).LoadAsync(ct);
+
+            return await MapTransferResponseAsync(transaction, ct);
+        }, ct: ct);
     }
 
     public async Task<TransferDto?> UpdateAsync(string id, CreateTransferDto dto, CancellationToken ct = default)
@@ -114,6 +123,8 @@ public sealed class TransferApplicationService(
         if (IsProjectOutbound(t) && HasPlannedInventory(t.ApprovalStatus))
             await inventory.CreateProjectExportPlannedAsync(t, ct);
 
+        await stocktakeFreeze.EnsureProjectsNotFrozenAsync(
+            [dto.Project, ResolveBeneficiaryProjectCode(dto)], ct);
         await db.SaveChangesAsync(ct);
         await tx.CommitAsync(ct);
 
@@ -139,6 +150,7 @@ public sealed class TransferApplicationService(
         t.UpdatedAt = DateTime.UtcNow;
 
         await ApplyApprovedTransferAsync(t, ct);
+        await stocktakeFreeze.EnsureProjectsNotFrozenAsync([t.ProjectCode, t.BeneficiaryProjectCode], ct);
         await db.SaveChangesAsync(ct);
         await tx.CommitAsync(ct);
 

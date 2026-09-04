@@ -32,10 +32,12 @@ public static class IdentityModule
             IdentitySecurityOptions.ConfigureLockout(opt);
         })
         .AddEntityFrameworkStores<IdentityDbContext>()
+        .AddErrorDescriber<VietnameseIdentityErrorDescriber>()
         .AddDefaultTokenProviders();
 
         services.AddScoped<ITokenService, TokenService>();
         services.AddSingleton<IRefreshTokenHasher, RefreshTokenHasher>();
+        services.AddScoped<IRefreshTokenRevoker, RefreshTokenRevoker>();
         services.AddScoped<IPermissionService, PermissionService>();
         services.AddScoped<NamViet.ERP.SharedKernel.Interfaces.IAccountStatusProvider, AccountStatusProvider>();
 
@@ -67,18 +69,15 @@ public static class IdentityModule
             {
                 OnMessageReceived = context =>
                 {
+                    // Access token chỉ nhận qua Authorization header. Ngoại lệ duy nhất:
+                    // SignalR hub (WebSocket không gửi được header) đọc query ?access_token=.
+                    // Nhánh đọc cookie nv_access_token legacy đã xóa - cookie không còn được set,
+                    // giữ lại chỉ mở rủi ro CSRF nếu có nơi set lại.
                     var authHeader = context.Request.Headers.Authorization.FirstOrDefault();
                     var hasBearer = !string.IsNullOrEmpty(authHeader)
                         && authHeader.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase);
 
                     if (!hasBearer)
-                    {
-                        var cookieToken = context.Request.Cookies["nv_access_token"];
-                        if (!string.IsNullOrEmpty(cookieToken))
-                            context.Token = cookieToken;
-                    }
-
-                    if (string.IsNullOrEmpty(context.Token) && !hasBearer)
                     {
                         var accessToken = context.Request.Query["access_token"];
                         var path = context.HttpContext.Request.Path;

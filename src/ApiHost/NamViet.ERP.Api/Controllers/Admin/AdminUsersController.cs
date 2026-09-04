@@ -10,6 +10,7 @@ using NamViet.ERP.Api.Application.Services.Admin;
 using NamViet.ERP.Api.Application.Services.Hr;
 using NamViet.ERP.Modules.Hr.Domain.Entities;
 using NamViet.ERP.Modules.Hr.Infrastructure.Persistence;
+using NamViet.ERP.Modules.Identity.Application.Abstractions;
 using NamViet.ERP.Modules.Identity.Domain.Entities;
 
 namespace NamViet.ERP.Api.Controllers.Admin;
@@ -22,6 +23,7 @@ public class AdminUsersController(
     UserManager<ApplicationUser> userManager,
     RoleManager<ApplicationRole> roleManager,
     HrDbContext hrDb,
+    IRefreshTokenRevoker refreshTokenRevoker,
     IEmployeeAccountLinkSynchronizer accountLinks) : ControllerBase
 {
     [HttpGet]
@@ -193,6 +195,11 @@ public class AdminUsersController(
         user.IsActive = request.Enabled;
         user.UpdatedAt = DateTime.UtcNow;
         await userManager.UpdateAsync(user);
+
+        // Khóa tài khoản: thu hồi toàn bộ refresh token để phiên cũ không gia hạn được nữa.
+        if (!request.Enabled)
+            await refreshTokenRevoker.RevokeAllForUserAsync(user.Id, ct);
+
         return NoContent();
     }
 
@@ -246,6 +253,10 @@ public class AdminUsersController(
 
         user.UpdatedAt = DateTime.UtcNow;
         await userManager.UpdateAsync(user);
+
+        // Reset mật khẩu: thu hồi toàn bộ refresh token cũ, buộc đăng nhập lại bằng mật khẩu mới.
+        await refreshTokenRevoker.RevokeAllForUserAsync(user.Id, ct);
+
         return NoContent();
     }
 

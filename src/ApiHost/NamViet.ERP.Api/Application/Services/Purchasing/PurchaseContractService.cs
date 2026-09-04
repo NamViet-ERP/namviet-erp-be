@@ -141,28 +141,35 @@ public sealed class PurchaseContractService(
             ct);
 
         var status = NormalizeStatus(request.Status) ?? PurchaseContractStatuses.Draft;
-        var seq = await db.PurchaseContracts.IgnoreQueryFilters().CountAsync(ct) + 1;
-        var entity = new PurchaseContract
+        return await SequentialCodeHelper.ExecuteWithUniqueRetryAsync(async () =>
         {
-            Code = PurchaseContract.GenerateCode(seq),
-            ContractNo = contractNo,
-            Title = title,
-            PoCode = poCode,
-            ProjectCode = projectCode,
-            SupplierId = supplierId,
-            SupplierName = supplierName,
-            Status = status,
-            SignedDate = request.SignedDate,
-            EffectiveFrom = request.EffectiveFrom,
-            EffectiveTo = request.EffectiveTo,
-            Amount = request.Amount is > 0 ? request.Amount : null,
-            Note = string.IsNullOrWhiteSpace(request.Note) ? null : request.Note.Trim(),
-        };
-        entity.RefreshStatus(VietnamClock.Today);
+            db.ChangeTracker.Clear();
+            var codes = await db.PurchaseContracts.IgnoreQueryFilters()
+                .Select(c => c.Code)
+                .ToListAsync(ct);
+            var seq = SequentialCodeHelper.NextSequence(codes, "HD-");
+            var entity = new PurchaseContract
+            {
+                Code = PurchaseContract.GenerateCode(seq),
+                ContractNo = contractNo,
+                Title = title,
+                PoCode = poCode,
+                ProjectCode = projectCode,
+                SupplierId = supplierId,
+                SupplierName = supplierName,
+                Status = status,
+                SignedDate = request.SignedDate,
+                EffectiveFrom = request.EffectiveFrom,
+                EffectiveTo = request.EffectiveTo,
+                Amount = request.Amount is > 0 ? request.Amount : null,
+                Note = string.IsNullOrWhiteSpace(request.Note) ? null : request.Note.Trim(),
+            };
+            entity.RefreshStatus(VietnamClock.Today);
 
-        db.PurchaseContracts.Add(entity);
-        await db.SaveChangesAsync(ct);
-        return ToDto(entity);
+            db.PurchaseContracts.Add(entity);
+            await db.SaveChangesAsync(ct);
+            return ToDto(entity);
+        }, ct: ct);
     }
 
     public async Task<PurchaseContractDto?> UpdateAsync(

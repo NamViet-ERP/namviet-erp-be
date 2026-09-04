@@ -32,6 +32,7 @@ public class AttendanceController(HrDbContext db) : ControllerBase
         [FromQuery] int page = 1, [FromQuery] int pageSize = 50,
         CancellationToken ct = default)
     {
+        (page, pageSize) = Paging.Normalize(page, pageSize);
         var query = db.Attendances
             .Include(a => a.Employee)
             .AsQueryable();
