@@ -2,9 +2,10 @@
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 WORKDIR /src
 
-# Copy sln + csproj trước rồi mới restore để layer restore được cache
-# khi chỉ thay đổi source code (không đổi dependency).
-COPY NamViet.ERP.sln ./
+# Copy props + csproj graph trước rồi mới restore để layer restore được cache
+# khi chỉ thay đổi source. Không COPY .sln — sln còn Tests/Migrator mà
+# .dockerignore loại tests/ và scripts/, restore theo sln sẽ fail ngay.
+COPY Directory.Build.props ./
 COPY src/BuildingBlocks/NamViet.ERP.SharedKernel/NamViet.ERP.SharedKernel.csproj src/BuildingBlocks/NamViet.ERP.SharedKernel/
 COPY src/BuildingBlocks/NamViet.ERP.Application.Abstractions/NamViet.ERP.Application.Abstractions.csproj src/BuildingBlocks/NamViet.ERP.Application.Abstractions/
 COPY src/Modules/Identity/NamViet.ERP.Modules.Identity.Domain/NamViet.ERP.Modules.Identity.Domain.csproj src/Modules/Identity/NamViet.ERP.Modules.Identity.Domain/
@@ -38,8 +39,8 @@ EXPOSE 8080
 COPY --from=build /app/publish .
 # LocalFileStorage ghi vào /app/App_Data (private uploads) — tạo sẵn và cấp quyền
 # cho user non-root trước khi hạ quyền.
-RUN mkdir -p /app/App_Data/private-uploads && chown -R app:app /app/App_Data
-# Chạy bằng user non-root `app` có sẵn trong image .NET 8.
-USER app
+RUN mkdir -p /app/App_Data/private-uploads && chown -R "$APP_UID:$APP_UID" /app/App_Data
+# Official aspnet:8.0 sets APP_UID (non-root).
+USER $APP_UID
 # Shell form so $PORT from Render is applied at runtime.
 ENTRYPOINT ["/bin/sh", "-c", "export ASPNETCORE_URLS=http://0.0.0.0:${PORT:-8080}; exec dotnet NamViet.ERP.Api.dll"]
