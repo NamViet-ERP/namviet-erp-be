@@ -116,7 +116,7 @@ public class ProjectsController(
                 (pi.ActualImportQty - pi.ActualExportQty) + pi.PlannedImportQty,
                 pi.ReservedQty,
                 pi.MinStockQty,
-                0m))
+                0m, 0m, 0m))
             .ToListAsync(ct);
 
         var known = new HashSet<string>(items.Select(i => i.MaterialCode), StringComparer.OrdinalIgnoreCase);
