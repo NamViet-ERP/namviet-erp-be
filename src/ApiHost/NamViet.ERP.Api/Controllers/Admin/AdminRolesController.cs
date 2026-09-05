@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using NamViet.ERP.Api.Application.Dtos.Admin;
 using NamViet.ERP.Api.Application.Mappers.Wms;
+using NamViet.ERP.Api.Application.Services.Admin;
 using NamViet.ERP.Api.Infrastructure.Authorization;
 using NamViet.ERP.Modules.Identity.Application.Abstractions;
 using NamViet.ERP.Modules.Identity.Domain.Entities;
@@ -80,7 +81,7 @@ public class AdminRolesController(
         {
             var q = search.Trim();
             filtered = filtered.Where(r =>
-                ContainsIgnoreCase(r.Description, q)
+                ContainsIgnoreCase(AdminRoleNaming.DisplayLabel(r), q)
                 || ContainsIgnoreCase(r.Name, q)
                 || ContainsIgnoreCase(WmsMapper.ToClientRole(r.Name ?? ""), q));
         }
@@ -102,19 +103,14 @@ public class AdminRolesController(
 
         var code = Slugify(label).ToLowerInvariant();
         if (!Regex.IsMatch(code, @"^[a-z][a-z0-9_]*$"))
-            return BadRequest("Tên vai trò không hợp lệ — vui lòng dùng chữ cái và khoảng trắng.");
+            return BadRequest("Tên vai trò không hợp lệ - vui lòng dùng chữ cái và khoảng trắng.");
 
         var identityName = WmsMapper.ToIdentityRole(code);
         if (await roleManager.RoleExistsAsync(identityName))
-            return Conflict("Vai trò tương tự đã tồn tại — hãy đặt tên khác.");
+            return Conflict("Vai trò tương tự đã tồn tại - hãy đặt tên khác.");
 
-        var labelPattern = EscapeLikePattern(label);
-        var existing = await roleManager.Roles
-            .FirstOrDefaultAsync(r =>
-                r.Description != null
-                && EF.Functions.ILike(r.Description, labelPattern, "\\"),
-                ct);
-        if (existing is not null)
+        var roles = await roleManager.Roles.ToListAsync(ct);
+        if (roles.Any(r => AdminRoleNaming.SameDisplayLabel(AdminRoleNaming.DisplayLabel(r), label)))
             return Conflict("Tên vai trò đã tồn tại.");
 
         var role = new ApplicationRole
@@ -144,14 +140,8 @@ public class AdminRolesController(
         if (string.IsNullOrEmpty(label))
             return BadRequest("Tên vai trò không được để trống.");
 
-        var labelPattern = EscapeLikePattern(label);
-        var duplicate = await roleManager.Roles
-            .FirstOrDefaultAsync(r =>
-                r.Id != role.Id
-                && r.Description != null
-                && EF.Functions.ILike(r.Description, labelPattern, "\\"),
-                ct);
-        if (duplicate is not null)
+        var others = await roleManager.Roles.Where(r => r.Id != role.Id).ToListAsync(ct);
+        if (others.Any(r => AdminRoleNaming.SameDisplayLabel(AdminRoleNaming.DisplayLabel(r), label)))
             return Conflict("Tên vai trò đã tồn tại.");
 
         role.Description = label;
@@ -193,11 +183,6 @@ public class AdminRolesController(
         => !string.IsNullOrEmpty(value) &&
            value.Contains(query, StringComparison.OrdinalIgnoreCase);
 
-    private static string EscapeLikePattern(string value) =>
-        value.Replace("\\", "\\\\", StringComparison.Ordinal)
-            .Replace("%", "\\%", StringComparison.Ordinal)
-            .Replace("_", "\\_", StringComparison.Ordinal);
-
     private async Task<ApplicationRole?> FindRoleByClientCodeAsync(string code, CancellationToken ct)
     {
         var normalized = code.Trim().ToLowerInvariant();
@@ -210,9 +195,7 @@ public class AdminRolesController(
     private static AdminRoleDto ToAdminRoleDto(ApplicationRole role) =>
         new(
             WmsMapper.ToClientRole(role.Name ?? ""),
-            !string.IsNullOrWhiteSpace(role.Description)
-                ? role.Description!
-                : WmsMapper.ToClientRoleLabel(role.Name ?? ""),
+            AdminRoleNaming.DisplayLabel(role),
             role.IsActive);
 
     private static string Slugify(string label)
