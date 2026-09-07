@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using NamViet.ERP.Api.Application.Dtos.Admin;
+using NamViet.ERP.Api.Application.Mappers.Admin;
 using NamViet.ERP.Api.Application.Mappers.Wms;
 using NamViet.ERP.Api.Infrastructure.Authorization;
 using NamViet.ERP.Api.Application.Services.Admin;
@@ -125,9 +126,19 @@ public class AdminUsersController(
         if (!await roleManager.RoleExistsAsync(identityRole))
             identityRole = "Employee";
 
-        var code = request.EmployeeCode?.Trim();
-        if (string.IsNullOrEmpty(code))
-            code = $"SYS-{DateTime.UtcNow:yyyyMMddHHmmss}";
+        var existingCodes = await userManager.Users
+            .Where(u => u.DeletedAt == null)
+            .Select(u => u.EmployeeCode)
+            .ToListAsync(ct);
+        var code = AdminSystemCode.Resolve(request.EmployeeCode, existingCodes);
+        if (code.Length > AdminSystemCode.MaxLength)
+            return BadRequest("Mã tài khoản không được quá 50 ký tự.");
+        if (AdminSystemCode.IsHrEmployeeStyle(code))
+            return BadRequest("Mã tài khoản hệ thống dùng SYS-, không dùng NV-.");
+        if (existingCodes.Any(c => string.Equals(c, code, StringComparison.OrdinalIgnoreCase)))
+            return Conflict($"Mã '{code}' đã được sử dụng.");
+        if (await hrDb.Employees.AnyAsync(e => e.DeletedAt == null && e.Code == code, ct))
+            return Conflict("Mã trùng mã nhân viên HR.");
 
         var user = new ApplicationUser
         {
