@@ -22,6 +22,8 @@ public record AdminUserDto(
 
 public record UpdateAdminUserRoleRequest(string Role);
 
+public record UpdateAdminUserProfileRequest(string Name, string Email);
+
 public record ProvisionAccountRequest(string EmployeeId, string Role, string Password);
 
 public record CreateSystemAccountRequest(

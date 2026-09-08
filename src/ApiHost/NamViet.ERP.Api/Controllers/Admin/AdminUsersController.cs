@@ -245,6 +245,59 @@ public class AdminUsersController(
         return row is null ? NotFound() : Ok(row);
     }
 
+    [HttpPatch("{id}/profile")]
+    [RequirePermission("admin.users.update")]
+    public async Task<ActionResult<AdminUserDto>> UpdateProfile(
+        string id, [FromQuery] string source, [FromBody] UpdateAdminUserProfileRequest request, CancellationToken ct)
+    {
+        // Hồ sơ HR sửa ở module HRM - endpoint này chỉ cho tài khoản hệ thống (manual).
+        if (!string.Equals(source, "manual", StringComparison.OrdinalIgnoreCase))
+            return BadRequest("Chỉ sửa họ tên và email của tài khoản hệ thống. Nhân viên HR sửa ở hồ sơ nhân sự.");
+
+        var user = await ResolveAccountUserAsync(id, source, requireAccount: true, ct);
+        if (user is null) return NotFound();
+
+        var name = (request.Name ?? string.Empty).Trim();
+        var email = (request.Email ?? string.Empty).Trim().ToLowerInvariant();
+        if (string.IsNullOrEmpty(name))
+            return BadRequest("Họ tên là bắt buộc.");
+        if (string.IsNullOrEmpty(email) || !email.Contains('@'))
+            return BadRequest("Email không hợp lệ.");
+
+        var emailChanged = !string.Equals(user.Email, email, StringComparison.OrdinalIgnoreCase);
+        if (emailChanged)
+        {
+            var taken = await userManager.Users.AnyAsync(
+                u => u.DeletedAt == null
+                     && u.Id != user.Id
+                     && u.NormalizedEmail == email.ToUpperInvariant(),
+                ct);
+            if (taken)
+                return Conflict($"Email '{email}' đã được sử dụng.");
+
+            var setEmail = await userManager.SetEmailAsync(user, email);
+            if (!setEmail.Succeeded)
+                return BadRequest(new { errors = setEmail.Errors.Select(e => e.Description) });
+
+            var setUserName = await userManager.SetUserNameAsync(user, email);
+            if (!setUserName.Succeeded)
+                return BadRequest(new { errors = setUserName.Errors.Select(e => e.Description) });
+        }
+
+        user.Name = name;
+        user.UpdatedAt = DateTime.UtcNow;
+        var updateResult = await userManager.UpdateAsync(user);
+        if (!updateResult.Succeeded)
+            return BadRequest(new { errors = updateResult.Errors.Select(e => e.Description) });
+
+        // Đổi email đăng nhập: thu hồi phiên cũ, buộc đăng nhập lại bằng email mới.
+        if (emailChanged)
+            await refreshTokenRevoker.RevokeAllForUserAsync(user.Id, ct);
+
+        var row = await adminUserQueries.GetByIdAsync(id, source, ct);
+        return row is null ? NotFound() : Ok(row);
+    }
+
     [HttpPut("{accountUserId}/password")]
     [RequirePermission("admin.users.update")]
     public async Task<IActionResult> ResetPassword(
