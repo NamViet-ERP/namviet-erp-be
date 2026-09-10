@@ -299,12 +299,8 @@ public class InventoryDomainService(WarehouseDbContext db) : IInventoryDomainSer
             return;
         }
 
-        if (string.IsNullOrEmpty(transaction.WarehouseId))
-            return;
-
-        foreach (var item in transaction.Items)
-            await AdjustWarehouseQtyAsync(
-                transaction.WarehouseId, item.MaterialCode, item.Quantity, ct);
+        throw new DomainRuleException(
+            "Phiếu nhập phải gắn kho dự án. Nhập kho không cộng tồn kho trung tâm.");
     }
 
     public async Task ApplyApprovedExportAsync(

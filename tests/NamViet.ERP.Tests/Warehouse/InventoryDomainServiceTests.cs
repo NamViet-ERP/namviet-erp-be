@@ -115,6 +115,45 @@ public class InventoryDomainServiceTests : IDisposable
         var projectInventory = await _db.ProjectInventories.SingleAsync();
         Assert.Equal(25m, projectInventory.ActualImportQty);
         Assert.Equal(0m, projectInventory.PlannedImportQty);
+
+        var generalQty = await _db.WarehouseInventories
+            .Where(i => i.WarehouseId == WmsWarehouseIds.General && i.MaterialCode == "MAT-001")
+            .Select(i => i.Qty)
+            .SingleAsync();
+        Assert.Equal(80m, generalQty);
+    }
+
+    [Fact]
+    public async Task ApplyApprovedImport_without_project_does_not_increase_general_stock()
+    {
+        var import = new WarehouseTransaction
+        {
+            TicketCode = "NK-NO-PROJECT",
+            TransactionType = TransactionType.Import,
+            WarehouseId = WmsWarehouseIds.General,
+            ApprovalStatus = ApprovalStatus.Approved,
+            Items =
+            [
+                new WarehouseTransactionItem
+                {
+                    MaterialCode = "MAT-001",
+                    Quantity = 10m,
+                    UnitPrice = 1000m
+                }
+            ]
+        };
+        _db.WarehouseTransactions.Add(import);
+        await _db.SaveChangesAsync();
+
+        var ex = await Assert.ThrowsAsync<DomainRuleException>(
+            () => _service.ApplyApprovedImportAsync(import));
+        Assert.Contains("không cộng tồn kho trung tâm", ex.Message, StringComparison.OrdinalIgnoreCase);
+
+        var generalQty = await _db.WarehouseInventories
+            .Where(i => i.WarehouseId == WmsWarehouseIds.General && i.MaterialCode == "MAT-001")
+            .Select(i => i.Qty)
+            .SingleAsync();
+        Assert.Equal(80m, generalQty);
     }
 
     [Fact]
