@@ -13,6 +13,10 @@ using NamViet.ERP.Modules.Warehouse.Domain.Services;
 using NamViet.ERP.Modules.Warehouse.Domain.SupplierEvaluation;
 using NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence;
 using NamViet.ERP.SharedKernel.Common;
+using Microsoft.AspNetCore.Identity;
+using NamViet.ERP.Modules.Identity.Domain.Entities;
+using NamViet.ERP.Modules.Hr.Infrastructure.Persistence;
+using NamViet.ERP.Modules.Hr.Domain.Entities;
 using System.Text.Json;
 
 namespace NamViet.ERP.Api.Controllers;
@@ -85,6 +89,50 @@ public class ProjectsController(
         var items = await MapProjectsWithStockAsync(pageProjects, ct);
 
         return Ok(PagedResult<ProjectDto>.Create(items, total, page, pageSize));
+    }
+
+    /// <summary>Danh sách nhân sự công ty gợi ý cho PIC / Quản lý và Thành viên SC của dự án.</summary>
+    [HttpGet("personnel")]
+    [RequirePermission("wms.projects.view:all")]
+    public async Task<ActionResult<IReadOnlyList<ProjectPersonnelDto>>> GetPersonnel(
+        [FromServices] UserManager<ApplicationUser> userManager,
+        [FromServices] HrDbContext hrDb,
+        CancellationToken ct = default)
+    {
+        var users = await userManager.Users
+            .AsNoTracking()
+            .Where(u => u.DeletedAt == null && u.IsActive)
+            .Select(u => new { u.Id, u.Name, u.EmployeeCode, u.Email })
+            .ToListAsync(ct);
+
+        var employees = await hrDb.Employees
+            .AsNoTracking()
+            .Where(e => e.DeletedAt == null && e.Status != EmployeeStatus.Resigned)
+            .Select(e => new { e.Id, e.UserId, e.FullName, e.Code, e.Email })
+            .ToListAsync(ct);
+
+        var result = new List<ProjectPersonnelDto>();
+        var seenNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var u in users)
+        {
+            var displayName = !string.IsNullOrWhiteSpace(u.Name) ? u.Name.Trim() : (u.Email ?? u.EmployeeCode ?? u.Id.ToString());
+            if (seenNames.Add(displayName))
+            {
+                result.Add(new ProjectPersonnelDto(u.Id, displayName, u.EmployeeCode, u.Email));
+            }
+        }
+
+        foreach (var emp in employees)
+        {
+            var displayName = emp.FullName.Trim();
+            if (!string.IsNullOrWhiteSpace(displayName) && seenNames.Add(displayName))
+            {
+                result.Add(new ProjectPersonnelDto(emp.UserId, displayName, emp.Code, emp.Email));
+            }
+        }
+
+        return Ok(result.OrderBy(p => p.Name).ToList());
     }
 
     [HttpGet("{code}")]
