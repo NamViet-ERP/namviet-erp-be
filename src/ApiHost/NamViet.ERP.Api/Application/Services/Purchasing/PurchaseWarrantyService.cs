@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using NamViet.ERP.Api.Application.Dtos.Purchasing;
 using NamViet.ERP.Modules.Warehouse.Domain.Entities;
+using NamViet.ERP.Modules.Warehouse.Domain.Enums;
 using NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence;
 using NamViet.ERP.SharedKernel.Interfaces;
 using NamViet.ERP.SharedKernel.Time;
@@ -40,6 +41,11 @@ public interface IPurchaseWarrantyService
     Task<PurchaseWarrantyClaimDto?> CloseClaimAsync(
         Guid claimId,
         ClosePurchaseWarrantyClaimRequest request,
+        CancellationToken ct = default);
+
+    Task<(string FileName, string StorageKey)?> GetEvidenceFileAsync(
+        Guid warrantyId,
+        Guid attachmentId,
         CancellationToken ct = default);
 
     /// <summary>Upsert BH sau khi duyệt nhập kho gắn PO.</summary>
@@ -188,7 +194,7 @@ public sealed class PurchaseWarrantyService(
         if (w is null) return null;
 
         w.Recalculate(VietnamClock.Today);
-        return ToDetailDto(w);
+        return await ToDetailDtoAsync(w, ct);
     }
 
     public async Task<PurchaseWarrantyDetailDto?> UpdateAsync(
@@ -224,7 +230,29 @@ public sealed class PurchaseWarrantyService(
         w.Recalculate(VietnamClock.Today);
         w.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
-        return ToDetailDto(w);
+        return await ToDetailDtoAsync(w, ct);
+    }
+
+    public async Task<(string FileName, string StorageKey)?> GetEvidenceFileAsync(
+        Guid warrantyId,
+        Guid attachmentId,
+        CancellationToken ct = default)
+    {
+        var w = await db.PurchaseWarranties.AsNoTracking()
+            .FirstOrDefaultAsync(x => x.Id == warrantyId, ct);
+        if (w is null) return null;
+
+        var tickets = await ResolveEvidenceTicketCodesAsync(w, ct);
+        if (tickets.Count == 0) return null;
+
+        var attachment = await db.WarehouseTransactionAttachments.AsNoTracking()
+            .FirstOrDefaultAsync(
+                a => a.Id == attachmentId && tickets.Contains(a.TicketCode),
+                ct);
+        if (attachment is null) return null;
+        if (!IsWarrantyEvidenceKind(attachment.Kind)) return null;
+
+        return (attachment.FileName, attachment.StorageKey);
     }
 
     public async Task<PurchaseWarrantyClaimDto> CreateClaimAsync(
@@ -488,16 +516,63 @@ public sealed class PurchaseWarrantyService(
         return null;
     }
 
-    private static PurchaseWarrantyDetailDto ToDetailDto(PurchaseWarranty w) => new(
-        w.Id, w.Code, w.PoCode, w.PoItemId, w.ProjectCode, w.PlanCode,
-        w.SupplierId, w.SupplierName, w.MaterialCode, w.MaterialName, w.Unit,
-        w.Quantity, w.WarrantyMonths, w.AnchorType, w.DeliveryDate, w.AcceptanceDate,
-        w.WarrantyEndDate, w.Status, w.ImportTicketCode, w.CreatedAt,
-        w.Claims
-            .Where(c => c.DeletedAt == null)
-            .OrderByDescending(c => c.CreatedAt)
-            .Select(ToClaimDto)
-            .ToList());
+    private async Task<PurchaseWarrantyDetailDto> ToDetailDtoAsync(PurchaseWarranty w, CancellationToken ct)
+    {
+        var evidence = await LoadEvidenceAsync(w, ct);
+        return new PurchaseWarrantyDetailDto(
+            w.Id, w.Code, w.PoCode, w.PoItemId, w.ProjectCode, w.PlanCode,
+            w.SupplierId, w.SupplierName, w.MaterialCode, w.MaterialName, w.Unit,
+            w.Quantity, w.WarrantyMonths, w.AnchorType, w.DeliveryDate, w.AcceptanceDate,
+            w.WarrantyEndDate, w.Status, w.ImportTicketCode, w.CreatedAt,
+            w.Claims
+                .Where(c => c.DeletedAt == null)
+                .OrderByDescending(c => c.CreatedAt)
+                .Select(ToClaimDto)
+                .ToList(),
+            evidence);
+    }
+
+    private async Task<IReadOnlyList<PurchaseWarrantyEvidenceDto>> LoadEvidenceAsync(
+        PurchaseWarranty w,
+        CancellationToken ct)
+    {
+        var tickets = await ResolveEvidenceTicketCodesAsync(w, ct);
+        if (tickets.Count == 0) return [];
+
+        var rows = await db.WarehouseTransactionAttachments.AsNoTracking()
+            .Where(a => tickets.Contains(a.TicketCode) && (a.Kind == "nameplate" || a.Kind == "photo"))
+            .OrderBy(a => a.Kind)
+            .ThenBy(a => a.UploadedAt)
+            .ToListAsync(ct);
+
+        return rows
+            .Select(a => new PurchaseWarrantyEvidenceDto(a.Id, a.Kind, a.FileName, a.UploadedAt))
+            .ToList();
+    }
+
+    private async Task<List<string>> ResolveEvidenceTicketCodesAsync(PurchaseWarranty w, CancellationToken ct)
+    {
+        if (!string.IsNullOrWhiteSpace(w.ImportTicketCode))
+            return [w.ImportTicketCode];
+
+        var poCode = w.PoCode;
+        if (string.IsNullOrWhiteSpace(poCode)) return [];
+
+        var ticket = await db.WarehouseTransactions.AsNoTracking()
+            .Where(t => t.TransactionType == TransactionType.Import
+                        && t.ReferenceCode == poCode
+                        && (t.ApprovalStatus == ApprovalStatus.Approved
+                            || t.WarehouseApprovalStatus == WarehouseKeeperApprovalStatus.Approved))
+            .OrderByDescending(t => t.ApprovedAt ?? t.UpdatedAt)
+            .Select(t => t.TicketCode)
+            .FirstOrDefaultAsync(ct);
+
+        return string.IsNullOrWhiteSpace(ticket) ? [] : [ticket];
+    }
+
+    private static bool IsWarrantyEvidenceKind(string kind) =>
+        string.Equals(kind, "nameplate", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(kind, "photo", StringComparison.OrdinalIgnoreCase);
 
     private static PurchaseWarrantyClaimDto ToClaimDto(PurchaseWarrantyClaim c) => new(
         c.Id, c.TicketCode, c.WarrantyId, c.Status, c.Reason, c.Note,

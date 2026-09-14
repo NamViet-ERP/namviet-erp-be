@@ -44,7 +44,8 @@ public record PurchaseWarrantyDetailDto(
     string Status,
     string? ImportTicketCode,
     DateTime CreatedAt,
-    IReadOnlyList<PurchaseWarrantyClaimDto> Claims);
+    IReadOnlyList<PurchaseWarrantyClaimDto> Claims,
+    IReadOnlyList<PurchaseWarrantyEvidenceDto> Evidence);
 
 public record PurchaseWarrantyClaimDto(
     Guid Id,
@@ -109,3 +110,9 @@ public record ClosePurchaseWarrantyClaimRequest(
     string? ServiceNote = null);
 
 public record SyncPurchaseWarrantiesResult(int Created, int Updated);
+
+public record PurchaseWarrantyEvidenceDto(
+    Guid Id,
+    string Kind,
+    string FileName,
+    DateTime UploadedAt);

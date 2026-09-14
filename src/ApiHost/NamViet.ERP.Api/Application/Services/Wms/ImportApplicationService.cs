@@ -577,15 +577,19 @@ public sealed class ImportApplicationService(
     private static void EnsureApprovalEvidence(WarehouseTransaction t)
     {
         var hasEvaluation = !string.IsNullOrWhiteSpace(t.ReceiptEvaluation);
-        var hasPhoto = t.Attachments.Any(a => string.Equals(a.Kind, "photo", StringComparison.OrdinalIgnoreCase));
+        var hasGoodsPhoto = t.Attachments.Any(a => string.Equals(a.Kind, "photo", StringComparison.OrdinalIgnoreCase));
+        var hasNameplate = t.Attachments.Any(a => string.Equals(a.Kind, "nameplate", StringComparison.OrdinalIgnoreCase));
         var hasDocument = t.Attachments.Any(a => string.Equals(a.Kind, "document", StringComparison.OrdinalIgnoreCase));
 
         if (!hasEvaluation)
             throw new DomainRuleException(
                 "Thiếu đánh giá nhận hàng. Nhập đánh giá rồi lưu (hoặc bấm Duyệt kho để tự lưu).");
-        if (!hasPhoto)
+        if (!hasNameplate)
             throw new DomainRuleException(
-                "Thiếu ảnh nhận hàng. Cần ít nhất 1 ảnh nhận hàng.");
+                "Thiếu ảnh nameplate. Cần ít nhất 1 ảnh biển máy / tem hàng.");
+        if (!hasGoodsPhoto)
+            throw new DomainRuleException(
+                "Thiếu ảnh hàng. Cần ít nhất 1 ảnh tổng thể món hàng.");
         if (!hasDocument)
             throw new DomainRuleException(
                 "Thiếu file chứng từ. Cần ít nhất 1 file chứng từ (PDF/Word/Excel).");
@@ -597,6 +601,7 @@ public sealed class ImportApplicationService(
         return k switch
         {
             "photo" => "photo",
+            "nameplate" => "nameplate",
             "defect_photo" => "defect_photo",
             _ => "document",
         };
@@ -604,7 +609,7 @@ public sealed class ImportApplicationService(
 
     private static void EnsureAllowedExtension(string ext, string kind)
     {
-        if (kind is "photo" or "defect_photo")
+        if (kind is "photo" or "nameplate" or "defect_photo")
         {
             if (ext is not (".jpg" or ".jpeg" or ".png" or ".webp"))
                 throw new DomainRuleException("Ảnh chỉ chấp nhận JPG, PNG, WEBP.");

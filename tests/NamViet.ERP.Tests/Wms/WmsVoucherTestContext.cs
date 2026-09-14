@@ -92,6 +92,10 @@ internal sealed class FakePurchaseWarrantyService : IPurchaseWarrantyService
         Guid claimId, ClosePurchaseWarrantyClaimRequest request, CancellationToken ct = default) =>
         Task.FromResult<PurchaseWarrantyClaimDto?>(null);
 
+    public Task<(string FileName, string StorageKey)?> GetEvidenceFileAsync(
+        Guid warrantyId, Guid attachmentId, CancellationToken ct = default) =>
+        Task.FromResult<(string FileName, string StorageKey)?>(null);
+
     public Task UpsertFromApprovedImportAsync(WarehouseTransaction import, CancellationToken ct = default) =>
         Task.CompletedTask;
 
@@ -324,10 +328,14 @@ internal sealed class WmsVoucherTestContext : IDisposable
     public static ExportReturnItemDto ExportReturnLine(decimal qty) =>
         new("MAT-001", "MAT-001", "Vật tư test", qty, "Cái");
 
-    /** Seeds receipt evaluation + photo + document required before import approve. */
+    /** Seeds receipt evaluation + photo + nameplate + document required before import approve. */
     public async Task SeedImportApprovalEvidenceAsync(string importId, CancellationToken ct = default)
     {
         await Imports.UpdateReceiptEvaluationAsync(importId, "Hàng đúng số lượng, OK", ct);
+        await using (var nameplate = new MemoryStream([0xFF, 0xD8, 0xFF, 0xD9]))
+        {
+            await Imports.UploadAttachmentAsync(importId, "nameplate", "nameplate.jpg", "image/jpeg", nameplate, ct);
+        }
         await using (var photo = new MemoryStream([0xFF, 0xD8, 0xFF, 0xD9]))
         {
             await Imports.UploadAttachmentAsync(importId, "photo", "receipt.jpg", "image/jpeg", photo, ct);

@@ -99,8 +99,8 @@ public class MaterialsController(WarehouseDbContext db) : ControllerBase
             return BadRequest("Danh mục vật tư không tồn tại.");
 
         var leaf = await db.MaterialCategories.AsNoTracking().FirstAsync(c => c.Id == request.CategoryId, ct);
-        if (leaf.Level < 3)
-            return BadRequest("Phải chọn tối thiểu đến cấp Loại vật tư (cấp 3).");
+        if (leaf.Level < 2)
+            return BadRequest("Phải chọn tối thiểu đến cấp Nhóm vật tư (cấp 2).");
 
         var unit = MaterialUnitHelper.NormalizeDisplayName(request.Unit);
         if (string.IsNullOrEmpty(unit))
@@ -140,8 +140,8 @@ public class MaterialsController(WarehouseDbContext db) : ControllerBase
             return BadRequest("Danh mục vật tư không tồn tại.");
 
         var leaf = await db.MaterialCategories.AsNoTracking().FirstAsync(c => c.Id == request.CategoryId, ct);
-        if (leaf.Level < 3)
-            return BadRequest("Phải chọn tối thiểu đến cấp Loại vật tư (cấp 3).");
+        if (leaf.Level < 2)
+            return BadRequest("Phải chọn tối thiểu đến cấp Nhóm vật tư (cấp 2).");
 
         var unit = MaterialUnitHelper.NormalizeDisplayName(request.Unit);
         if (string.IsNullOrEmpty(unit))
