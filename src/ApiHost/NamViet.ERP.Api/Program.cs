@@ -93,24 +93,31 @@ builder.Services.AddRateLimiter(options =>
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
     options.OnRejected = async (context, ct) =>
     {
+        context.HttpContext.Response.Headers.RetryAfter = "60";
         context.HttpContext.Response.ContentType = "application/problem+json";
         await context.HttpContext.Response.WriteAsJsonAsync(new
         {
             status = 429,
             title = "Quá nhiều yêu cầu",
-            detail = "Vui lòng thử lại sau vài phút.",
+            detail = "Hệ thống đang tiếp nhận nhiều yêu cầu cùng lúc. Vui lòng thử lại sau giây lát.",
         }, ct);
     };
 
     static string ClientIp(HttpContext ctx) =>
         ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown";
 
+    var rateLimitConfig = builder.Configuration.GetSection("RateLimiting");
+    var authLimit = rateLimitConfig.GetValue<int?>("AuthPermitLimit")
+        ?? (builder.Environment.IsDevelopment() ? 200 : 120);
+    var publicWriteLimit = rateLimitConfig.GetValue<int?>("PublicWritePermitLimit") ?? 30;
+    var publicUploadLimit = rateLimitConfig.GetValue<int?>("PublicUploadPermitLimit") ?? 30;
+    var publicReadLimit = rateLimitConfig.GetValue<int?>("PublicReadPermitLimit") ?? 180;
+
     options.AddPolicy(RateLimitPolicies.Auth, ctx =>
         RateLimitPartition.GetFixedWindowLimiter(ClientIp(ctx), _ => new FixedWindowRateLimiterOptions
         {
             AutoReplenishment = true,
-            // Local Playwright / smoke login the same account many times; keep prod tight.
-            PermitLimit = builder.Environment.IsDevelopment() ? 200 : 10,
+            PermitLimit = authLimit,
             Window = TimeSpan.FromMinutes(1),
         }));
 
@@ -118,7 +125,7 @@ builder.Services.AddRateLimiter(options =>
         RateLimitPartition.GetFixedWindowLimiter(ClientIp(ctx), _ => new FixedWindowRateLimiterOptions
         {
             AutoReplenishment = true,
-            PermitLimit = 5,
+            PermitLimit = publicWriteLimit,
             Window = TimeSpan.FromMinutes(1),
         }));
 
@@ -126,7 +133,7 @@ builder.Services.AddRateLimiter(options =>
         RateLimitPartition.GetFixedWindowLimiter(ClientIp(ctx), _ => new FixedWindowRateLimiterOptions
         {
             AutoReplenishment = true,
-            PermitLimit = 10,
+            PermitLimit = publicUploadLimit,
             Window = TimeSpan.FromHours(1),
         }));
 
@@ -134,7 +141,7 @@ builder.Services.AddRateLimiter(options =>
         RateLimitPartition.GetFixedWindowLimiter(ClientIp(ctx), _ => new FixedWindowRateLimiterOptions
         {
             AutoReplenishment = true,
-            PermitLimit = 60,
+            PermitLimit = publicReadLimit,
             Window = TimeSpan.FromMinutes(1),
         }));
 });

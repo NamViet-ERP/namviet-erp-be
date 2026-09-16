@@ -40,6 +40,7 @@ COPY --from=build /app/publish .
 # LocalFileStorage ghi vào /app/App_Data (private uploads) — tạo sẵn và cấp quyền
 # cho user non-root trước khi hạ quyền.
 RUN mkdir -p /app/App_Data/private-uploads && chown -R "$APP_UID:$APP_UID" /app/App_Data
+VOLUME ["/app/App_Data"]
 # Official aspnet:8.0 sets APP_UID (non-root).
 USER $APP_UID
 # Shell form so $PORT from Render is applied at runtime.

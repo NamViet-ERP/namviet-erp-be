@@ -182,6 +182,66 @@ public sealed class IdentitySecurityTests
         Assert.True(await userManager.IsLockedOutAsync(reloaded!));
     }
 
+    [Fact]
+    public async Task Multi_device_login_preserves_concurrent_active_sessions_up_to_limit()
+    {
+        await using var provider = CreateLoginServices();
+        await using var scope = provider.CreateAsyncScope();
+        var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+        var handler = scope.ServiceProvider.GetRequiredService<LoginHandler>();
+        var db = scope.ServiceProvider.GetRequiredService<IdentityDbContext>();
+
+        var user = CreateUser("multidevice@namviet.vn");
+        Assert.True((await userManager.CreateAsync(user, "Password123!")).Succeeded);
+
+        // Simulate logging in from 3 different devices (e.g. desktop, laptop, phone)
+        var session1 = await handler.Handle(new LoginCommand(user.Email!, "Password123!"), CancellationToken.None);
+        var session2 = await handler.Handle(new LoginCommand(user.Email!, "Password123!"), CancellationToken.None);
+        var session3 = await handler.Handle(new LoginCommand(user.Email!, "Password123!"), CancellationToken.None);
+
+        Assert.NotEmpty(session1.AccessToken);
+        Assert.NotEmpty(session2.AccessToken);
+        Assert.NotEmpty(session3.AccessToken);
+
+        // Verify all 3 refresh tokens are active in DB (none were revoked)
+        var activeTokens = await db.RefreshTokens
+            .Where(t => t.UserId == user.Id && t.RevokedAt == null && t.ExpiresAt > DateTime.UtcNow)
+            .ToListAsync();
+
+        Assert.Equal(3, activeTokens.Count);
+    }
+
+    [Fact]
+    public async Task Login_prunes_excess_sessions_when_exceeding_max_limit()
+    {
+        await using var provider = CreateLoginServices();
+        await using var scope = provider.CreateAsyncScope();
+        var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+        var handler = scope.ServiceProvider.GetRequiredService<LoginHandler>();
+        var db = scope.ServiceProvider.GetRequiredService<IdentityDbContext>();
+
+        var user = CreateUser("pruning@namviet.vn");
+        Assert.True((await userManager.CreateAsync(user, "Password123!")).Succeeded);
+
+        // Login 12 times
+        for (var i = 0; i < 12; i++)
+        {
+            await handler.Handle(new LoginCommand(user.Email!, "Password123!"), CancellationToken.None);
+        }
+
+        var activeTokens = await db.RefreshTokens
+            .Where(t => t.UserId == user.Id && t.RevokedAt == null && t.ExpiresAt > DateTime.UtcNow)
+            .ToListAsync();
+
+        Assert.Equal(10, activeTokens.Count);
+
+        var revokedTokens = await db.RefreshTokens
+            .Where(t => t.UserId == user.Id && t.RevokedAt != null)
+            .ToListAsync();
+
+        Assert.Equal(2, revokedTokens.Count);
+    }
+
     private static IdentityDbContext CreateSqliteContext(string connectionString)
     {
         var options = new DbContextOptionsBuilder<IdentityDbContext>()

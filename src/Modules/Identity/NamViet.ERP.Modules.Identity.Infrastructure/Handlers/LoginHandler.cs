@@ -55,20 +55,30 @@ public class LoginHandler(
         var accessToken = tokenService.GenerateAccessToken(user, roles, permissions, linked?.EmployeeId);
         var refreshTokenValue = tokenService.GenerateRefreshToken();
 
-        var oldTokens = await db.RefreshTokens
+        // Multi-device / multi-session support (Option A):
+        // Allow concurrent active sessions across devices (e.g. desktop + laptop).
+        // Only prune oldest active sessions if a single account has accumulated more than 10 active tokens.
+        const int maxActiveSessionsPerUser = 10;
+        var activeTokens = await db.RefreshTokens
             .Where(t => t.UserId == user.Id && t.RevokedAt == null && t.ExpiresAt > DateTime.UtcNow)
+            .OrderByDescending(t => t.CreatedAt)
             .ToListAsync(ct);
-        foreach (var token in oldTokens)
+
+        if (activeTokens.Count >= maxActiveSessionsPerUser)
         {
-            token.RevokedAt = DateTime.UtcNow;
-            if (token.TokenHash is null && !string.IsNullOrWhiteSpace(token.Token))
+            var tokensToRevoke = activeTokens.Skip(maxActiveSessionsPerUser - 1);
+            foreach (var token in tokensToRevoke)
             {
-                token.TokenHash = refreshTokenHasher.Hash(token.Token);
-                token.Token = null;
+                token.RevokedAt = DateTime.UtcNow;
+                if (token.TokenHash is null && !string.IsNullOrWhiteSpace(token.Token))
+                {
+                    token.TokenHash = refreshTokenHasher.Hash(token.Token);
+                    token.Token = null;
+                }
+                if (token.ReplacedByTokenHash is null && !string.IsNullOrWhiteSpace(token.ReplacedByToken))
+                    token.ReplacedByTokenHash = refreshTokenHasher.Hash(token.ReplacedByToken);
+                token.ReplacedByToken = null;
             }
-            if (token.ReplacedByTokenHash is null && !string.IsNullOrWhiteSpace(token.ReplacedByToken))
-                token.ReplacedByTokenHash = refreshTokenHasher.Hash(token.ReplacedByToken);
-            token.ReplacedByToken = null;
         }
 
         var refreshToken = new RefreshToken

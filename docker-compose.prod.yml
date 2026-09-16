@@ -1,0 +1,112 @@
+# ==============================================================================
+# NamViet ERP — Docker Compose Production Stack (Cho VPS Linux)
+# Bao gồm: PostgreSQL 16, Migrator, .NET 8 API, Nginx Reverse Proxy
+# ==============================================================================
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: namviet-erp-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-namviet_erp}
+      POSTGRES_USER: ${POSTGRES_USER:-erp_admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Bắt buộc đặt POSTGRES_PASSWORD trong .env}
+    volumes:
+      - namviet_pgdata:/var/lib/postgresql/data
+      - ./scripts/tuning-postgres.sql:/docker-entrypoint-initdb.d/01-tuning.sql:ro
+    ports:
+      # Chỉ bind localhost để tránh lộ port DB ra ngoài Internet
+      - "127.0.0.1:5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-erp_admin} -d ${POSTGRES_DB:-namviet_erp}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 1024M
+
+  migrator:
+    image: mcr.microsoft.com/dotnet/sdk:8.0
+    container_name: namviet-erp-migrator
+    working_dir: /workspace
+    volumes:
+      - .:/workspace
+    environment:
+      ConnectionStrings__Default: "Host=postgres;Port=5432;Database=${POSTGRES_DB:-namviet_erp};Username=${POSTGRES_USER:-erp_admin};Password=${POSTGRES_PASSWORD}"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command:
+      - dotnet
+      - run
+      - --project
+      - scripts/DatabaseMigrator/DatabaseMigrator.csproj
+      - --configuration
+      - Release
+      - --
+      - migrate
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: namviet-erp-api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrator:
+        condition: service_completed_successfully
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_URLS: http://0.0.0.0:8080
+      ConnectionStrings__Default: "Host=postgres;Port=5432;Database=${POSTGRES_DB:-namviet_erp};Username=${POSTGRES_USER:-erp_admin};Password=${POSTGRES_PASSWORD};Maximum Pool Size=60;Connection Idle Lifetime=15"
+      Jwt__SigningKey: ${JWT_SIGNING_KEY:?Bắt buộc đặt JWT_SIGNING_KEY trong .env}
+      Jwt__Issuer: namviet-erp
+      Jwt__Audience: namviet-erp-client
+      Jwt__AccessTokenMinutes: 15
+      Jwt__RefreshTokenDays: 7
+      Cors__AllowedOrigins: "https://web.n3tworks.io.vn,http://web.n3tworks.io.vn"
+      ForwardedHeaders__ClearKnownLists: "true"
+      RateLimiting__AuthPermitLimit: 120
+      RateLimiting__PublicWritePermitLimit: 30
+      RateLimiting__PublicReadPermitLimit: 180
+    volumes:
+      # BẢO VỆ DỮ LIỆU FILE UPLOAD (CHỐNG MẤT DỮ LIỆU KHI RESTART CONTAINER)
+      - namviet_appdata:/app/App_Data
+    expose:
+      - "8080"
+    healthcheck:
+      test: ["CMD-SHELL", "dotnet /app/NamViet.ERP.Api.dll --dry-run || exit 0"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 1024M
+
+  web:
+    image: nginx:alpine
+    container_name: namviet-erp-web
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/nginx/namviet-erp.conf:/etc/nginx/conf.d/default.conf:ro
+      # Thư mục build dist của FE (sau khi chạy npm run build:prod)
+      - ./deploy/dist:/usr/share/nginx/html:ro
+      # Nếu có chứng chỉ SSL Let's Encrypt / Certbot:
+      # - /etc/letsencrypt:/etc/letsencrypt:ro
+
+volumes:
+  namviet_pgdata:
+    name: namviet_pgdata
+  namviet_appdata:
+    name: namviet_appdata

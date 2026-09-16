@@ -50,6 +50,8 @@ Thumbs.db
 *.db
 *.db-shm
 *.db-wal
+*.dump
+backups/
 
 # Uploads (local dev)
 src/ApiHost/NamViet.ERP.Api/wwwroot/uploads/
