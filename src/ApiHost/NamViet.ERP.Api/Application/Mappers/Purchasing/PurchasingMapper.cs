@@ -27,7 +27,10 @@ public static class PurchasingMapper
         plan.L2ApprovedByName,
         plan.L2ApprovedAt);
 
-    public static PurchasePlanDetailDto ToPlanDetailDto(PurchasePlan plan, decimal? paidTotal = null) => new(
+    public static PurchasePlanDetailDto ToPlanDetailDto(
+        PurchasePlan plan,
+        decimal? paidTotal = null,
+        IReadOnlyDictionary<int, decimal>? pendingOrderedByLineId = null) => new(
         plan.Code,
         plan.ProjectCode,
         plan.Project?.ProjectName,
@@ -43,7 +46,11 @@ public static class PurchasingMapper
         plan.CreatedByName,
         plan.Lines
             .OrderBy(l => l.LineNo)
-            .Select(ToPlanLineDto)
+            .Select(l => ToPlanLineDto(
+                l,
+                pendingOrderedByLineId != null && pendingOrderedByLineId.TryGetValue(l.Id, out var pending)
+                    ? Math.Max(0m, l.Quantity - l.OrderedQty - pending)
+                    : l.RemainingOrderableQty))
             .ToList(),
         plan.SubmittedAt,
         plan.L1ApprovedByName,
@@ -56,7 +63,10 @@ public static class PurchasingMapper
         plan.RemadeFromCode,
         plan.RemadeToCode);
 
-    public static PurchasePlanLineDto ToPlanLineDto(PurchasePlanLine line) => new(
+    public static PurchasePlanLineDto ToPlanLineDto(PurchasePlanLine line) =>
+        ToPlanLineDto(line, line.RemainingOrderableQty);
+
+    public static PurchasePlanLineDto ToPlanLineDto(PurchasePlanLine line, decimal remainingOrderableQty) => new(
         line.Id,
         line.LineNo,
         line.SystemName,
@@ -95,7 +105,7 @@ public static class PurchasingMapper
         line.OrderedQty,
         line.ReceivedQty,
         line.DefectQty,
-        line.RemainingOrderableQty,
+        remainingOrderableQty,
         line.Quotes
             .OrderBy(q => q.SortOrder)
             .Select(q => new PurchasePlanLineQuoteDto(

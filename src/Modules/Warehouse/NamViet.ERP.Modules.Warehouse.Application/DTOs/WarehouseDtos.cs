@@ -49,6 +49,7 @@ public record UpsertSupplierRequest(
 public record SupplierNextCodeDto(string NextCode);
 
 // ── Projects ──────────────────────────────────────────────────────────────
+public record NextProjectCodeResponse(string ProjectCode);
 public record ProjectWarehouseKeeperDto(Guid UserId, string DisplayName);
 public record ProjectPersonnelDto(Guid? Id, string Name, string? EmployeeCode = null, string? Email = null);
 

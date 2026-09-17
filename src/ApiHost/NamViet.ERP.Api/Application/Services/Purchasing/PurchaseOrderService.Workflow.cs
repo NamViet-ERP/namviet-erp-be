@@ -49,15 +49,25 @@ public sealed partial class PurchaseOrderService
         if (planLines.Count != lineIds.Count)
             throw new PurchasingConflictException("Một hoặc nhiều dòng không thuộc KHMH đã chọn.");
 
+        var pendingByLineId = await db.PurchaseOrderItems.AsNoTracking()
+            .Where(i => i.PlanLineId.HasValue && lineIds.Contains(i.PlanLineId.Value))
+            .Where(i => i.PurchaseOrder.OrderPlacementStatus != PurchaseOrderPlacementStatuses.Placed)
+            .GroupBy(i => i.PlanLineId!.Value)
+            .Select(g => new { LineId = g.Key, Qty = g.Sum(x => x.Ordered) })
+            .ToDictionaryAsync(x => x.LineId, x => x.Qty, ct);
+
         foreach (var reqLine in request.Lines)
         {
             var planLine = planLines[reqLine.PlanLineId];
             ValidateSupplierMatch(planLine, supplier);
             if (reqLine.Qty <= 0)
                 throw new PurchasingConflictException($"Số lượng dòng {planLine.LineNo} phải > 0.");
-            if (reqLine.Qty > planLine.RemainingOrderableQty)
+
+            var pending = pendingByLineId.GetValueOrDefault(planLine.Id, 0m);
+            var remaining = Math.Max(0m, planLine.Quantity - planLine.OrderedQty - pending);
+            if (reqLine.Qty > remaining)
                 throw new PurchasingConflictException(
-                    $"Số lượng dòng {planLine.LineNo} vượt phần còn lại ({planLine.RemainingOrderableQty}).");
+                    $"Số lượng dòng {planLine.LineNo} vượt phần còn lại ({remaining}).");
             if (reqLine.UnitPrice < 0)
                 throw new PurchasingConflictException($"Đơn giá dòng {planLine.LineNo} không hợp lệ.");
         }
@@ -189,6 +199,15 @@ public sealed partial class PurchaseOrderService
         var plan = order.Plan ?? await RequirePlanAsync(order.PlanCode, ct);
         var planLines = plan.Lines.ToDictionary(l => l.Id);
 
+        var reqLineIds = request.Lines.Select(l => l.PlanLineId).Distinct().ToList();
+        var pendingByLineId = await db.PurchaseOrderItems.AsNoTracking()
+            .Where(i => i.PlanLineId.HasValue && reqLineIds.Contains(i.PlanLineId.Value))
+            .Where(i => i.PoCode != order.Code)
+            .Where(i => i.PurchaseOrder.OrderPlacementStatus != PurchaseOrderPlacementStatuses.Placed)
+            .GroupBy(i => i.PlanLineId!.Value)
+            .Select(g => new { LineId = g.Key, Qty = g.Sum(x => x.Ordered) })
+            .ToDictionaryAsync(x => x.LineId, x => x.Qty, ct);
+
         // Remaining must ignore current PO quantities (draft not yet placed).
         foreach (var reqLine in request.Lines)
         {
@@ -197,9 +216,12 @@ public sealed partial class PurchaseOrderService
             ValidateSupplierMatch(planLine, supplier);
             if (reqLine.Qty <= 0)
                 throw new PurchasingConflictException($"Số lượng dòng {planLine.LineNo} phải > 0.");
-            if (reqLine.Qty > planLine.RemainingOrderableQty)
+
+            var pending = pendingByLineId.GetValueOrDefault(planLine.Id, 0m);
+            var remaining = Math.Max(0m, planLine.Quantity - planLine.OrderedQty - pending);
+            if (reqLine.Qty > remaining)
                 throw new PurchasingConflictException(
-                    $"Số lượng dòng {planLine.LineNo} vượt phần còn lại ({planLine.RemainingOrderableQty}).");
+                    $"Số lượng dòng {planLine.LineNo} vượt phần còn lại ({remaining}).");
         }
 
         await using var tx = await db.Database.BeginTransactionAsync(ct);

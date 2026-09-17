@@ -134,7 +134,8 @@ public sealed class PurchasePlanService(
         var plan = await LoadDetailAsync(code, ct);
         if (plan is null) return null;
         var paid = await SumPaidTotalForPlanAsync(code, ct);
-        return PurchasingMapper.ToPlanDetailDto(plan, paid);
+        var pendingByLineId = await LoadPendingOrderedByLineIdAsync(plan.Lines.Select(l => l.Id), ct);
+        return PurchasingMapper.ToPlanDetailDto(plan, paid, pendingByLineId);
     }
 
     public async Task<PurchasePlanDetailDto> CreateAsync(CreatePurchasePlanRequest request, CancellationToken ct = default)
@@ -747,6 +748,23 @@ public sealed class PurchasePlanService(
             .Include(p => p.Lines)
                 .ThenInclude(l => l.Quotes)
             .FirstOrDefaultAsync(p => p.Code == code, ct);
+
+    private async Task<Dictionary<int, decimal>> LoadPendingOrderedByLineIdAsync(
+        IEnumerable<int> lineIds,
+        CancellationToken ct)
+    {
+        var ids = lineIds.Distinct().ToList();
+        if (ids.Count == 0) return [];
+
+        var items = await db.PurchaseOrderItems.AsNoTracking()
+            .Where(i => i.PlanLineId.HasValue && ids.Contains(i.PlanLineId.Value))
+            .Where(i => i.PurchaseOrder.OrderPlacementStatus != PurchaseOrderPlacementStatuses.Placed)
+            .GroupBy(i => i.PlanLineId!.Value)
+            .Select(g => new { LineId = g.Key, Qty = g.Sum(x => x.Ordered) })
+            .ToListAsync(ct);
+
+        return items.ToDictionary(x => x.LineId, x => x.Qty);
+    }
 
     private async Task<Dictionary<string, Material>> LoadMaterialsByCodesAsync(
         IEnumerable<string?> codes, CancellationToken ct)

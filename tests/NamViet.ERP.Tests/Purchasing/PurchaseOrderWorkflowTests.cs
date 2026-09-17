@@ -97,6 +97,72 @@ public class PurchaseOrderWorkflowTests : IDisposable
     }
 
     [Fact]
+    public async Task Create_ReservesQuantityFromPlan_ReducesRemainingOrderableQty()
+    {
+        // 1. Plan with Qty = 8
+        var plan = await SeedPlanWithLineAsync(supplierName: "NCC Alpha", qty: 8);
+        var initialPlan = await _plans.GetByCodeAsync(plan.Code);
+        Assert.Equal(8m, initialPlan!.Lines[0].RemainingOrderableQty);
+
+        // 2. Create PO1 with Qty = 7 (draft)
+        var order1 = await _orders.CreateAsync(new CreatePurchaseOrderRequest(
+            plan.Code, 1, null, null,
+            [new CreatePurchaseOrderLineRequest(plan.Lines[0].Id, 7, 1000, null, null)],
+            Installments: OneInstallment()),
+            CancellationToken.None);
+
+        var afterPo1 = await _plans.GetByCodeAsync(plan.Code);
+        Assert.Equal(1m, afterPo1!.Lines[0].RemainingOrderableQty);
+
+        // 3. Create PO2 with Qty = 1 (draft)
+        var order2 = await _orders.CreateAsync(new CreatePurchaseOrderRequest(
+            plan.Code, 1, null, null,
+            [new CreatePurchaseOrderLineRequest(plan.Lines[0].Id, 1, 1000, null, null)],
+            Installments: OneInstallment()),
+            CancellationToken.None);
+
+        var afterPo2 = await _plans.GetByCodeAsync(plan.Code);
+        Assert.Equal(0m, afterPo2!.Lines[0].RemainingOrderableQty);
+
+        // 4. Attempt to create PO3 with Qty = 1 -> Must be rejected (0 remaining)
+        var ex = await Assert.ThrowsAsync<PurchasingConflictException>(() =>
+            _orders.CreateAsync(new CreatePurchaseOrderRequest(
+                plan.Code, 1, null, null,
+                [new CreatePurchaseOrderLineRequest(plan.Lines[0].Id, 1, 1000, null, null)],
+                Installments: OneInstallment()),
+                CancellationToken.None));
+        Assert.Contains("vượt phần còn lại", ex.Message, StringComparison.OrdinalIgnoreCase);
+
+        // 5. Update PO1: reduce Qty from 7 to 5 -> Remaining becomes 2 (8 - 5 in PO1 - 1 in PO2)
+        await _orders.UpdateAsync(order1.Code, new UpdatePurchaseOrderRequest(
+            null, null,
+            [new CreatePurchaseOrderLineRequest(plan.Lines[0].Id, 5, 1000, null, null)],
+            Installments: OneInstallment()),
+            CancellationToken.None);
+
+        var afterUpdatePo1 = await _plans.GetByCodeAsync(plan.Code);
+        Assert.Equal(2m, afterUpdatePo1!.Lines[0].RemainingOrderableQty);
+
+        // 6. Approve and Place PO1: OrderedQty becomes 5, remaining stays 2
+        await _orders.ApproveAsync(order1.Code, CancellationToken.None);
+        await _orders.PlaceAsync(order1.Code, CancellationToken.None);
+
+        var afterPlacePo1 = await _plans.GetByCodeAsync(plan.Code);
+        Assert.Equal(5m, afterPlacePo1!.Lines[0].OrderedQty);
+        Assert.Equal(2m, afterPlacePo1!.Lines[0].RemainingOrderableQty);
+
+        // 7. Create PO3 with remaining Qty = 2 -> Succeeds and remaining becomes 0
+        var order3 = await _orders.CreateAsync(new CreatePurchaseOrderRequest(
+            plan.Code, 1, null, null,
+            [new CreatePurchaseOrderLineRequest(plan.Lines[0].Id, 2, 1000, null, null)],
+            Installments: OneInstallment()),
+            CancellationToken.None);
+
+        var afterPo3 = await _plans.GetByCodeAsync(plan.Code);
+        Assert.Equal(0m, afterPo3!.Lines[0].RemainingOrderableQty);
+    }
+
+    [Fact]
     public async Task Place_WhenPlanSoftDeleted_StillPlaces()
     {
         var plan = await SeedPlanWithLineAsync(supplierName: "NCC Alpha", qty: 10);

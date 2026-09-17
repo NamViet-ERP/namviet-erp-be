@@ -135,6 +135,34 @@ public class ProjectsController(
         return Ok(result.OrderBy(p => p.Name).ToList());
     }
 
+    /// <summary>Sinh mã dự án tuần tự tự tăng theo năm: DA-{year}-001, DA-{year}-002...</summary>
+    [HttpGet("next-code")]
+    [RequirePermission("wms.projects.view:all")]
+    public async Task<ActionResult<NextProjectCodeResponse>> GetNextCode(
+        [FromQuery] int? year,
+        CancellationToken ct = default)
+    {
+        var targetYear = year.GetValueOrDefault(DateTime.UtcNow.Year);
+        var prefix = $"DA-{targetYear}-";
+        var existingCodes = await db.Projects
+            .AsNoTracking()
+            .Where(p => p.ProjectCode.StartsWith(prefix))
+            .Select(p => p.ProjectCode)
+            .ToListAsync(ct);
+
+        var used = new HashSet<string>(
+            existingCodes.Select(c => c.Trim().ToUpperInvariant()),
+            StringComparer.OrdinalIgnoreCase);
+
+        var n = 1;
+        while (used.Contains($"{prefix}{n:D3}"))
+        {
+            n++;
+        }
+
+        return Ok(new NextProjectCodeResponse($"{prefix}{n:D3}"));
+    }
+
     [HttpGet("{code}")]
     [RequirePermission("wms.projects.view:all")]
     public async Task<ActionResult<ProjectDto>> GetById(string code, CancellationToken ct)
