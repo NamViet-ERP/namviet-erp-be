@@ -577,19 +577,15 @@ public sealed class ImportApplicationService(
     private static void EnsureApprovalEvidence(WarehouseTransaction t)
     {
         var hasEvaluation = !string.IsNullOrWhiteSpace(t.ReceiptEvaluation);
-        var hasGoodsPhoto = t.Attachments.Any(a => string.Equals(a.Kind, "photo", StringComparison.OrdinalIgnoreCase));
-        var hasNameplate = t.Attachments.Any(a => string.Equals(a.Kind, "nameplate", StringComparison.OrdinalIgnoreCase));
+        var hasPhoto = t.Attachments.Any(a => string.Equals(a.Kind, "photo", StringComparison.OrdinalIgnoreCase));
         var hasDocument = t.Attachments.Any(a => string.Equals(a.Kind, "document", StringComparison.OrdinalIgnoreCase));
 
         if (!hasEvaluation)
             throw new DomainRuleException(
                 "Thiếu đánh giá nhận hàng. Nhập đánh giá rồi lưu (hoặc bấm Duyệt kho để tự lưu).");
-        if (!hasNameplate)
+        if (!hasPhoto)
             throw new DomainRuleException(
-                "Thiếu ảnh nameplate. Cần ít nhất 1 ảnh biển máy / tem hàng.");
-        if (!hasGoodsPhoto)
-            throw new DomainRuleException(
-                "Thiếu ảnh hàng. Cần ít nhất 1 ảnh tổng thể món hàng.");
+                "Thiếu ảnh nhận hàng. Cần ít nhất 1 ảnh nhận hàng.");
         if (!hasDocument)
             throw new DomainRuleException(
                 "Thiếu file chứng từ. Cần ít nhất 1 file chứng từ (PDF/Word/Excel).");
