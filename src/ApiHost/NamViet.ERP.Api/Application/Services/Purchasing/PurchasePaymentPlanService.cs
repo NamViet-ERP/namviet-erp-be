@@ -13,6 +13,7 @@ public interface IPurchasePaymentPlanService
         int pageSize,
         string? search,
         string? projectCode,
+        string? paymentStatus,
         CancellationToken ct = default);
 }
 
@@ -27,6 +28,7 @@ public sealed class PurchasePaymentPlanService(WarehouseDbContext db) : IPurchas
         int pageSize,
         string? search,
         string? projectCode,
+        string? paymentStatus,
         CancellationToken ct = default)
     {
         (page, pageSize) = Paging.Normalize(page, pageSize);
@@ -42,6 +44,27 @@ public sealed class PurchasePaymentPlanService(WarehouseDbContext db) : IPurchas
         {
             var pc = projectCode.Trim();
             q = q.Where(o => o.ProjectCode == pc);
+        }
+
+        if (!string.IsNullOrWhiteSpace(paymentStatus))
+        {
+            var ps = paymentStatus.Trim().ToLowerInvariant();
+            if (ps is "paid" or "completed")
+            {
+                q = q.Where(o => o.PaymentStatus == PurchaseOrderPaymentStatuses.Paid);
+            }
+            else if (ps is "uncompleted" or "has_unpaid" or "unpaid")
+            {
+                q = q.Where(o => o.PaymentStatus != PurchaseOrderPaymentStatuses.Paid);
+            }
+            else if (ps is "partial")
+            {
+                q = q.Where(o => o.PaymentStatus == PurchaseOrderPaymentStatuses.Partial);
+            }
+            else if (ps is "none" or "strictly_unpaid")
+            {
+                q = q.Where(o => o.PaymentStatus == PurchaseOrderPaymentStatuses.Unpaid);
+            }
         }
 
         if (!string.IsNullOrWhiteSpace(search))
@@ -107,13 +130,19 @@ public sealed class PurchasePaymentPlanService(WarehouseDbContext db) : IPurchas
             }).ToList();
 
             var completed = stages.Count(s => s.PaymentStatus == StagePaid);
+            var computedPaymentStatus = (stages.Count > 0 && completed >= stages.Count)
+                ? PurchaseOrderPaymentStatuses.Paid
+                : completed > 0
+                    ? PurchaseOrderPaymentStatuses.Partial
+                    : order.PaymentStatus;
+
             return new PurchasePaymentPlanRowDto(
                 order.Code,
                 order.ProjectCode,
                 order.Project?.ProjectName,
                 order.TotalAmount,
                 order.ApprovalStatus,
-                order.PaymentStatus,
+                computedPaymentStatus,
                 completed,
                 stages.Count,
                 stages);

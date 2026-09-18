@@ -82,7 +82,43 @@ public sealed partial class PurchaseOrderService(
     public async Task<PurchaseOrderDetailDto?> GetByCodeAsync(string code, CancellationToken ct = default)
     {
         var order = await LoadDetailAsync(code, ct);
-        return order is null ? null : PurchasingMapper.ToOrderDetailDto(order);
+        if (order is null) return null;
+
+        await ReconcilePoPaymentStatusIfMismatchedAsync(order, ct);
+
+        return PurchasingMapper.ToOrderDetailDto(order);
+    }
+
+    private async Task ReconcilePoPaymentStatusIfMismatchedAsync(PurchaseOrder order, CancellationToken ct)
+    {
+        var payments = await db.PurchasePayments
+            .AsNoTracking()
+            .Where(p => p.PoCode == order.Code && p.Status == PurchasePaymentStatuses.Paid)
+            .ToListAsync(ct);
+
+        var stageCount = order.Installments.Count;
+        var paidStages = payments.Select(p => p.StageNumber).Distinct().Count();
+        var paidAmount = payments.Sum(p => p.Amount);
+
+        string expected;
+        if (paidStages <= 0 && paidAmount <= 0)
+            expected = PurchaseOrderPaymentStatuses.Unpaid;
+        else if ((stageCount > 0 && paidStages >= stageCount)
+                 || (order.TotalAmount > 0 && paidAmount >= order.TotalAmount - 0.01m))
+            expected = PurchaseOrderPaymentStatuses.Paid;
+        else
+            expected = PurchaseOrderPaymentStatuses.Partial;
+
+        if (!string.Equals(order.PaymentStatus, expected, StringComparison.OrdinalIgnoreCase))
+        {
+            order.PaymentStatus = expected;
+            order.UpdatedAt = DateTime.UtcNow;
+            await db.PurchaseOrders
+                .Where(o => o.Code == order.Code)
+                .ExecuteUpdateAsync(s => s
+                    .SetProperty(o => o.PaymentStatus, expected)
+                    .SetProperty(o => o.UpdatedAt, DateTime.UtcNow), ct);
+        }
     }
 
     private static PurchaseOrderAttachmentDto ToAttachmentDto(PurchaseOrderAttachment a) => new(

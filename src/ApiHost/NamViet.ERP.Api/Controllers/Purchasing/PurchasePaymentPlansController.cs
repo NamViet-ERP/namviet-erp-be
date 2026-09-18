@@ -18,6 +18,7 @@ public class PurchasePaymentPlansController(IPurchasePaymentPlanService plans) :
         [FromQuery] int pageSize = 20,
         [FromQuery] string? search = null,
         [FromQuery] string? projectCode = null,
+        [FromQuery] string? paymentStatus = null,
         CancellationToken ct = default) =>
-        Ok(await plans.ListAsync(page, pageSize, search, projectCode, ct));
+        Ok(await plans.ListAsync(page, pageSize, search, projectCode, paymentStatus, ct));
 }

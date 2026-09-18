@@ -241,6 +241,8 @@ public sealed class PurchasePaymentService(
             ? (string.IsNullOrWhiteSpace(currentUser.Name) ? currentUser.Email : currentUser.Name)
             : null;
 
+        await db.SaveChangesAsync(ct);
+
         var order = await db.PurchaseOrders
             .Include(o => o.Installments)
             .FirstOrDefaultAsync(o => o.Code == payment.PoCode, ct);
@@ -248,9 +250,8 @@ public sealed class PurchasePaymentService(
         {
             await SyncPoPaymentStatusAsync(order, ct);
             order.UpdatedAt = DateTime.UtcNow;
+            await db.SaveChangesAsync(ct);
         }
-
-        await db.SaveChangesAsync(ct);
 
         await activity.WriteAsync(new ActivityEventWriteRequest(
             ActivityModules.Purchasing,
@@ -274,6 +275,8 @@ public sealed class PurchasePaymentService(
         payment.Status = PurchasePaymentStatuses.Cancelled;
         payment.UpdatedAt = DateTime.UtcNow;
 
+        await db.SaveChangesAsync(ct);
+
         var order = await db.PurchaseOrders
             .Include(o => o.Installments)
             .FirstOrDefaultAsync(o => o.Code == payment.PoCode, ct);
@@ -281,9 +284,8 @@ public sealed class PurchasePaymentService(
         {
             await SyncPoPaymentStatusAsync(order, ct);
             order.UpdatedAt = DateTime.UtcNow;
+            await db.SaveChangesAsync(ct);
         }
-
-        await db.SaveChangesAsync(ct);
 
         await activity.WriteAsync(new ActivityEventWriteRequest(
             ActivityModules.Purchasing,
@@ -339,28 +341,33 @@ public sealed class PurchasePaymentService(
 
     private async Task SyncPoPaymentStatusAsync(PurchaseOrder order, CancellationToken ct)
     {
-        var stageCount = order.Installments.Count;
-        if (stageCount == 0)
-        {
-            order.PaymentStatus = PurchaseOrderPaymentStatuses.Unpaid;
-            order.PaymentWarning = false;
-            return;
-        }
-
-        var paidStages = await db.PurchasePayments
+        var payments = await db.PurchasePayments
             .AsNoTracking()
             .Where(p => p.PoCode == order.Code
                         && p.Status == PurchasePaymentStatuses.Paid)
+            .ToListAsync(ct);
+
+        var stageCount = order.Installments.Count;
+        var paidStages = payments
             .Select(p => p.StageNumber)
             .Distinct()
-            .CountAsync(ct);
+            .Count();
 
-        if (paidStages <= 0)
+        var paidAmount = payments.Sum(p => p.Amount);
+
+        if (paidStages <= 0 && paidAmount <= 0)
+        {
             order.PaymentStatus = PurchaseOrderPaymentStatuses.Unpaid;
-        else if (paidStages >= stageCount)
+        }
+        else if ((stageCount > 0 && paidStages >= stageCount)
+                 || (order.TotalAmount > 0 && paidAmount >= order.TotalAmount - 0.01m))
+        {
             order.PaymentStatus = PurchaseOrderPaymentStatuses.Paid;
+        }
         else
+        {
             order.PaymentStatus = PurchaseOrderPaymentStatuses.Partial;
+        }
 
         order.PaymentWarning = false;
     }
