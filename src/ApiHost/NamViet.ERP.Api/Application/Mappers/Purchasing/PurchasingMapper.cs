@@ -30,7 +30,9 @@ public static class PurchasingMapper
     public static PurchasePlanDetailDto ToPlanDetailDto(
         PurchasePlan plan,
         decimal? paidTotal = null,
-        IReadOnlyDictionary<int, decimal>? pendingOrderedByLineId = null) => new(
+        IReadOnlyDictionary<int, decimal>? pendingOrderedByLineId = null,
+        IReadOnlyDictionary<int, List<PurchasePlanLinePoDto>>? posByLineId = null,
+        IReadOnlyList<PurchasePlanRelatedPoDto>? relatedOrders = null) => new(
         plan.Code,
         plan.ProjectCode,
         plan.Project?.ProjectName,
@@ -50,7 +52,8 @@ public static class PurchasingMapper
                 l,
                 pendingOrderedByLineId != null && pendingOrderedByLineId.TryGetValue(l.Id, out var pending)
                     ? Math.Max(0m, l.Quantity - l.OrderedQty - pending)
-                    : l.RemainingOrderableQty))
+                    : l.RemainingOrderableQty,
+                posByLineId != null && posByLineId.TryGetValue(l.Id, out var pos) ? pos : null))
             .ToList(),
         plan.SubmittedAt,
         plan.L1ApprovedByName,
@@ -61,12 +64,16 @@ public static class PurchasingMapper
         plan.RejectedAt,
         plan.RejectReason,
         plan.RemadeFromCode,
-        plan.RemadeToCode);
+        plan.RemadeToCode,
+        relatedOrders?.ToList());
 
     public static PurchasePlanLineDto ToPlanLineDto(PurchasePlanLine line) =>
         ToPlanLineDto(line, line.RemainingOrderableQty);
 
-    public static PurchasePlanLineDto ToPlanLineDto(PurchasePlanLine line, decimal remainingOrderableQty) => new(
+    public static PurchasePlanLineDto ToPlanLineDto(
+        PurchasePlanLine line,
+        decimal remainingOrderableQty,
+        IReadOnlyList<PurchasePlanLinePoDto>? pos = null) => new(
         line.Id,
         line.LineNo,
         line.SystemName,
@@ -110,7 +117,8 @@ public static class PurchasingMapper
             .OrderBy(q => q.SortOrder)
             .Select(q => new PurchasePlanLineQuoteDto(
                 q.Id, q.SortOrder, q.KgPerUnit, q.UnitPrice, q.Amount, q.SupplierName, q.Note, q.Status))
-            .ToList());
+            .ToList(),
+        pos?.ToList());
 
     public static PurchaseOrderDto ToOrderDto(PurchaseOrder order) => new(
         order.Code,

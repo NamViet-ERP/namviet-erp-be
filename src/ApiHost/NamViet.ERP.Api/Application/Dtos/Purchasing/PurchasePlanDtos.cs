@@ -45,7 +45,24 @@ public record PurchasePlanDetailDto(
     DateTime? RejectedAt = null,
     string? RejectReason = null,
     string? RemadeFromCode = null,
-    string? RemadeToCode = null);
+    string? RemadeToCode = null,
+    List<PurchasePlanRelatedPoDto>? RelatedOrders = null);
+
+public record PurchasePlanRelatedPoDto(
+    string Code,
+    string? SupplierName,
+    decimal TotalAmount,
+    string ApprovalStatus,
+    string OrderPlacementStatus,
+    string DeliveryStatus,
+    string PaymentStatus,
+    int ItemCount,
+    DateTime CreatedAt);
+
+public record PurchasePlanLinePoDto(
+    string PoCode,
+    decimal OrderedQty,
+    decimal ReceivedQty);
 
 public record PurchasePlanLineDto(
     int Id,
@@ -87,7 +104,8 @@ public record PurchasePlanLineDto(
     decimal ReceivedQty,
     decimal DefectQty,
     decimal RemainingOrderableQty,
-    List<PurchasePlanLineQuoteDto> Quotes);
+    List<PurchasePlanLineQuoteDto> Quotes,
+    List<PurchasePlanLinePoDto>? Pos = null);
 
 public record PurchasePlanLineQuoteDto(
     int Id,

@@ -135,7 +135,41 @@ public sealed class PurchasePlanService(
         if (plan is null) return null;
         var paid = await SumPaidTotalForPlanAsync(code, ct);
         var pendingByLineId = await LoadPendingOrderedByLineIdAsync(plan.Lines.Select(l => l.Id), ct);
-        return PurchasingMapper.ToPlanDetailDto(plan, paid, pendingByLineId);
+
+        var relatedOrders = await db.PurchaseOrders.AsNoTracking()
+            .Where(o => o.PlanCode == code)
+            .OrderByDescending(o => o.CreatedAt)
+            .Select(o => new PurchasePlanRelatedPoDto(
+                o.Code,
+                o.SupplierNameSnapshot ?? (o.Supplier != null ? o.Supplier.SupplierName : null),
+                o.TotalAmount,
+                o.ApprovalStatus,
+                o.OrderPlacementStatus,
+                o.DeliveryStatus,
+                o.PaymentStatus,
+                o.Items.Count,
+                o.CreatedAt))
+            .ToListAsync(ct);
+
+        var lineIds = plan.Lines.Select(l => l.Id).Distinct().ToList();
+        var poItems = await db.PurchaseOrderItems.AsNoTracking()
+            .Where(i => i.PlanLineId.HasValue && lineIds.Contains(i.PlanLineId.Value))
+            .Select(i => new
+            {
+                PlanLineId = i.PlanLineId!.Value,
+                i.PoCode,
+                i.Ordered,
+                i.Received
+            })
+            .ToListAsync(ct);
+
+        var posByLineId = poItems
+            .GroupBy(i => i.PlanLineId)
+            .ToDictionary(
+                g => g.Key,
+                g => g.Select(x => new PurchasePlanLinePoDto(x.PoCode, x.Ordered, x.Received)).ToList());
+
+        return PurchasingMapper.ToPlanDetailDto(plan, paid, pendingByLineId, posByLineId, relatedOrders);
     }
 
     public async Task<PurchasePlanDetailDto> CreateAsync(CreatePurchasePlanRequest request, CancellationToken ct = default)
