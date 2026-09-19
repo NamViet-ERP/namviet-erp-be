@@ -52,6 +52,9 @@ internal sealed class FakeFileStorage : IFileStorage
 
     public StoredFileContent? Get(string storageKey) => null;
 
+    public Task<StoredFileStream?> OpenReadAsync(string storageKey, CancellationToken ct = default) =>
+        Task.FromResult<StoredFileStream?>(null);
+
     public Task<int> DeleteUnreferencedOlderThanAsync(
         IReadOnlySet<string> referencedKeys, DateTime olderThanUtc, CancellationToken ct = default) =>
         Task.FromResult(0);

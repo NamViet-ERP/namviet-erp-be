@@ -50,6 +50,40 @@ public class LocalFileStorage(IWebHostEnvironment env, IConfiguration configurat
                 : null;
     }
 
+    public Task<StoredFileStream?> OpenReadAsync(string storageKey, CancellationToken ct = default)
+    {
+        var stored = Get(storageKey);
+        if (stored is null) return Task.FromResult<StoredFileStream?>(null);
+
+        var stream = new FileStream(
+            stored.FullPath,
+            FileMode.Open,
+            FileAccess.Read,
+            FileShare.Read,
+            bufferSize: 4096,
+            useAsync: true);
+
+        return Task.FromResult<StoredFileStream?>(new StoredFileStream(stream, GuessContentType(stored.FullPath), stored.Size));
+    }
+
+    private static string GuessContentType(string path)
+    {
+        var ext = Path.GetExtension(path).ToLowerInvariant();
+        return ext switch
+        {
+            ".jpg" or ".jpeg" => "image/jpeg",
+            ".png" => "image/png",
+            ".webp" => "image/webp",
+            ".gif" => "image/gif",
+            ".pdf" => "application/pdf",
+            ".doc" => "application/msword",
+            ".docx" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            ".xls" => "application/vnd.ms-excel",
+            ".xlsx" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            _ => "application/octet-stream",
+        };
+    }
+
     public Task<int> DeleteUnreferencedOlderThanAsync(
         IReadOnlySet<string> referencedKeys,
         DateTime olderThanUtc,

@@ -195,7 +195,7 @@ builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Hr.IEmployeeAcco
 builder.Services.AddScoped<IAdminUserQueryService, AdminUserQueryService>();
 builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Hr.IEmployeeAccessService, NamViet.ERP.Api.Application.Services.Hr.EmployeeAccessService>();
 builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Hr.IEmployeeOnboardingInviteService, NamViet.ERP.Api.Application.Services.Hr.EmployeeOnboardingInviteService>();
-builder.Services.AddSingleton<NamViet.ERP.Api.Services.Storage.IFileStorage, NamViet.ERP.Api.Services.Storage.LocalFileStorage>();
+RegisterFileStorage(builder.Services, builder.Configuration);
 builder.Services.AddHostedService<NamViet.ERP.Api.Application.Services.Hr.EmployeeAccountLinkHostedService>();
 builder.Services.AddHostedService<NamViet.ERP.Api.Application.Services.Hr.HrPrivateUploadCleanupService>();
 builder.Services.AddSignalR();
@@ -318,3 +318,54 @@ app.MapHealthChecks("/health/ready", new HealthCheckOptions
 });
 
 app.Run();
+
+static void RegisterFileStorage(IServiceCollection services, IConfiguration configuration)
+{
+    var provider = configuration["FileStorage:Provider"]?.Trim();
+    var isExplicitLocal = string.Equals(provider, "Local", StringComparison.OrdinalIgnoreCase);
+
+    var s3Options = configuration.GetSection(NamViet.ERP.Api.Services.Storage.S3FileStorageOptions.SectionName)
+                        .Get<NamViet.ERP.Api.Services.Storage.S3FileStorageOptions>()
+                    ?? new NamViet.ERP.Api.Services.Storage.S3FileStorageOptions();
+
+    var hasS3Config = !string.IsNullOrWhiteSpace(s3Options.BucketName)
+                      && (!string.IsNullOrWhiteSpace(s3Options.ServiceUrl) || !string.IsNullOrWhiteSpace(s3Options.Region));
+
+    var useS3 = !isExplicitLocal && (string.Equals(provider, "S3", StringComparison.OrdinalIgnoreCase) || hasS3Config);
+
+    if (useS3 && !string.IsNullOrWhiteSpace(s3Options.BucketName))
+    {
+        services.AddSingleton(s3Options);
+        services.AddSingleton<Amazon.S3.IAmazonS3>(_ =>
+        {
+            var s3Config = new Amazon.S3.AmazonS3Config
+            {
+                ForcePathStyle = s3Options.ForcePathStyle,
+            };
+
+            if (!string.IsNullOrWhiteSpace(s3Options.ServiceUrl))
+            {
+                s3Config.ServiceURL = s3Options.ServiceUrl;
+            }
+
+            if (!string.IsNullOrWhiteSpace(s3Options.Region))
+            {
+                s3Config.AuthenticationRegion = s3Options.Region;
+            }
+
+            if (!string.IsNullOrWhiteSpace(s3Options.AccessKey) && !string.IsNullOrWhiteSpace(s3Options.SecretKey))
+            {
+                var credentials = new Amazon.Runtime.BasicAWSCredentials(s3Options.AccessKey, s3Options.SecretKey);
+                return new Amazon.S3.AmazonS3Client(credentials, s3Config);
+            }
+
+            return new Amazon.S3.AmazonS3Client(s3Config);
+        });
+
+        services.AddSingleton<NamViet.ERP.Api.Services.Storage.IFileStorage, NamViet.ERP.Api.Services.Storage.S3FileStorage>();
+    }
+    else
+    {
+        services.AddSingleton<NamViet.ERP.Api.Services.Storage.IFileStorage, NamViet.ERP.Api.Services.Storage.LocalFileStorage>();
+    }
+}

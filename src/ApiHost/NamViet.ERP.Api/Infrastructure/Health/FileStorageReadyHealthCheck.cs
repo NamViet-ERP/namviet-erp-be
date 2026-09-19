@@ -16,6 +16,14 @@ public sealed class FileStorageReadyHealthCheck(
     {
         try
         {
+            var provider = configuration["FileStorage:Provider"]?.Trim();
+            var s3Bucket = configuration["FileStorage:S3:BucketName"]?.Trim();
+            if (string.Equals(provider, "S3", StringComparison.OrdinalIgnoreCase)
+                || (!string.Equals(provider, "Local", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(s3Bucket)))
+            {
+                return Task.FromResult(HealthCheckResult.Healthy($"S3 storage configured for bucket '{s3Bucket}'"));
+            }
+
             var root = ResolveRoot();
             Directory.CreateDirectory(root);
 
