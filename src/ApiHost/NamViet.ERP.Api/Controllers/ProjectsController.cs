@@ -18,6 +18,7 @@ using NamViet.ERP.Modules.Identity.Domain.Entities;
 using NamViet.ERP.Modules.Hr.Infrastructure.Persistence;
 using NamViet.ERP.Modules.Hr.Domain.Entities;
 using System.Text.Json;
+using NamViet.ERP.SharedKernel.Authorization;
 
 namespace NamViet.ERP.Api.Controllers;
 
@@ -341,6 +342,78 @@ public class ProjectsController(
         p.ScMembers = NormalizeOptional(request.ScMembers);
         p.UpdatedAt = DateTime.UtcNow;
         await ReplaceKeepersAsync(code, request.WarehouseKeepers, ct);
+        await db.SaveChangesAsync(ct);
+        return NoContent();
+    }
+
+    [HttpDelete("{code}")]
+    [Authorize(Roles = RolePermissionTemplates.AdminRole)]
+    public async Task<IActionResult> Delete(string code, CancellationToken ct)
+    {
+        var project = await db.Projects.FirstOrDefaultAsync(p => p.ProjectCode == code, ct);
+        if (project is null) return NotFound();
+
+        // 1. Kiểm tra mặt hàng: không cho phép xóa nếu có bất kỳ tồn kho thực tế, dự kiến, hoặc giữ chỗ nào
+        var hasStock = await db.ProjectInventories.AnyAsync(pi =>
+            pi.ProjectCode == code && (
+                (pi.ActualImportQty - pi.ActualExportQty) != 0
+                || pi.PlannedImportQty != 0
+                || pi.PlannedExportQty != 0
+                || pi.ReservedQty != 0), ct);
+
+        if (hasStock)
+        {
+            return BadRequest("Không thể xóa kho dự án đang có mặt hàng hoặc tồn kho vật tư.");
+        }
+
+        // 2. Kiểm tra chứng từ phát sinh (Nhập / Xuất / Chuyển kho)
+        var hasTransactions = await db.WarehouseTransactions.AnyAsync(t =>
+            t.ProjectCode == code || t.FromWarehouseId == code || t.ToWarehouseId == code, ct);
+
+        if (hasTransactions)
+        {
+            return BadRequest("Không thể xóa kho dự án đã phát sinh chứng từ nhập/xuất/chuyển kho.");
+        }
+
+        // 3. Kiểm tra phiếu mượn vật tư
+        var hasLoans = await db.ProjectMaterialLoans.AnyAsync(l =>
+            l.BorrowingProjectCode == code || l.LendingProjectCode == code, ct);
+
+        if (hasLoans)
+        {
+            return BadRequest("Không thể xóa kho dự án đang có phiếu mượn/cho mượn vật tư.");
+        }
+
+        // Thực hiện xóa mềm dự án
+        project.DeletedAt = DateTime.UtcNow;
+
+        // Xóa sạch các dòng tồn kho rỗng của dự án (nếu có)
+        var inventories = await db.ProjectInventories
+            .Where(pi => pi.ProjectCode == code)
+            .ToListAsync(ct);
+        if (inventories.Count > 0)
+        {
+            db.ProjectInventories.RemoveRange(inventories);
+        }
+
+        // Dọn dẹp phân công thủ kho
+        var keepers = await db.ProjectWarehouseKeepers
+            .Where(k => k.ProjectCode == code)
+            .ToListAsync(ct);
+        if (keepers.Count > 0)
+        {
+            db.ProjectWarehouseKeepers.RemoveRange(keepers);
+        }
+
+        // Xóa mềm các công việc thi công đính kèm (nếu có)
+        var tasks = await db.ProjectConstructionTasks
+            .Where(t => t.ProjectCode == code)
+            .ToListAsync(ct);
+        foreach (var task in tasks)
+        {
+            task.DeletedAt = DateTime.UtcNow;
+        }
+
         await db.SaveChangesAsync(ct);
         return NoContent();
     }
