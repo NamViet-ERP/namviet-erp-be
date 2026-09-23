@@ -67,6 +67,25 @@ public class ProjectsController(
         }));
     }
 
+    private async Task EnsureProjectWarehouseAsync(string projectCode, string projectName, CancellationToken ct)
+    {
+        var exists = await db.WmsWarehouses.AnyAsync(w => w.Id == projectCode, ct);
+        if (exists) return;
+
+        db.WmsWarehouses.Add(new WmsWarehouse
+        {
+            Id = projectCode,
+            Code = projectCode,
+            Name = string.IsNullOrWhiteSpace(projectName) ? projectCode : projectName,
+            Group = "Kho dự án",
+            Address = "",
+            Branch = "",
+            Manager = "",
+            Status = "active",
+        });
+        await db.SaveChangesAsync(ct);
+    }
+
     [HttpGet]
     [RequirePermission("wms.projects.view:all")]
     public async Task<ActionResult<PagedResult<ProjectDto>>> GetAll(
@@ -315,9 +334,21 @@ public class ProjectsController(
             ClientName = NormalizeOptional(request.ClientName),
             ScMembers = NormalizeOptional(request.ScMembers),
         };
+        await using var tx = db.Database.IsRelational() ? await db.Database.BeginTransactionAsync(ct) : null;
+
         db.Projects.Add(project);
+        await db.SaveChangesAsync(ct);
+
         await ReplaceKeepersAsync(project.ProjectCode, request.WarehouseKeepers, ct);
         await db.SaveChangesAsync(ct);
+
+        await EnsureProjectWarehouseAsync(project.ProjectCode, project.ProjectName, ct);
+
+        if (tx is not null)
+        {
+            await tx.CommitAsync(ct);
+        }
+
         var items = await MapProjectsWithStockAsync([project], ct);
         return CreatedAtAction(nameof(GetById), new { code = project.ProjectCode }, items[0]);
     }
@@ -342,6 +373,18 @@ public class ProjectsController(
         p.ScMembers = NormalizeOptional(request.ScMembers);
         p.UpdatedAt = DateTime.UtcNow;
         await ReplaceKeepersAsync(code, request.WarehouseKeepers, ct);
+
+        var warehouse = await db.WmsWarehouses.FirstOrDefaultAsync(w => w.Id == code, ct);
+        if (warehouse != null)
+        {
+            warehouse.Name = request.ProjectName;
+            warehouse.UpdatedAt = DateTime.UtcNow;
+        }
+        else
+        {
+            await EnsureProjectWarehouseAsync(code, request.ProjectName, ct);
+        }
+
         await db.SaveChangesAsync(ct);
         return NoContent();
     }
