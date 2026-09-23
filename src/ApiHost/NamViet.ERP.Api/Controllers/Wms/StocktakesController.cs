@@ -101,6 +101,7 @@ public class StocktakesController(
                 SystemQty = i.SystemQty,
                 ActualQty = i.ActualQty,
                 Diff = i.ActualQty - i.SystemQty,
+                Reason = i.Reason,
             }).ToList(),
         };
         foreach (var item in s.Items) item.StocktakeId = s.Id;
@@ -190,6 +191,7 @@ public class StocktakesController(
                 SystemQty = i.SystemQty,
                 ActualQty = i.ActualQty,
                 Diff = i.ActualQty - i.SystemQty,
+                Reason = i.Reason,
             }).ToList();
         }
 

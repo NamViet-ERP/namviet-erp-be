@@ -32,6 +32,7 @@ public class StocktakeItem
     public decimal SystemQty { get; set; }
     public decimal ActualQty { get; set; }
     public decimal Diff { get; set; }
+    public string? Reason { get; set; }
 
     public Stocktake Stocktake { get; set; } = null!;
     public Material? Material { get; set; }

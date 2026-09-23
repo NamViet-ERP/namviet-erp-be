@@ -478,6 +478,7 @@ public class WarehouseDbContext(DbContextOptions<WarehouseDbContext> options) : 
             e.ToTable("stocktake_items");
             e.HasKey(i => i.Id);
             e.Property(i => i.MaterialCode).HasMaxLength(100);
+            e.Property(i => i.Reason).HasMaxLength(500);
             e.HasOne(i => i.Stocktake).WithMany(s => s.Items)
              .HasForeignKey(i => i.StocktakeId).OnDelete(DeleteBehavior.Cascade);
             e.HasOne(i => i.Material).WithMany()

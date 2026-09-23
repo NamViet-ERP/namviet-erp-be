@@ -208,7 +208,7 @@ public static class WmsMapper
         new(s.Id, s.VoucherCode, FormatDate(s.VoucherDate), s.CreatedByName, s.Status,
             s.WarehouseId, s.WarehouseName, s.Condition, s.IsFrozen, s.Note,
             s.Items.Select(i => new StocktakeItemDto(
-                i.MaterialCode, i.Sku, i.Name, i.SystemQty, i.ActualQty, i.Diff)).ToList());
+                i.MaterialCode, i.Sku, i.Name, i.SystemQty, i.ActualQty, i.Diff, i.Reason)).ToList());
 
     public static ConversionDto ToConversion(Conversion c) =>
         new(c.Id, c.VoucherCode, FormatDate(c.VoucherDate), c.FromWarehouseId, c.FromWarehouseName,

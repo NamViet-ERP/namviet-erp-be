@@ -134,7 +134,7 @@ public record CreateExportReturnDto(
     string VoucherCode, string Date, string SourceExportId,
     List<ExportReturnItemDto> Items, string Status, string? CreatedBy, string Note, string? Project);
 
-public record StocktakeItemDto(string ProductId, string Sku, string Name, decimal SystemQty, decimal ActualQty, decimal Diff);
+public record StocktakeItemDto(string ProductId, string Sku, string Name, decimal SystemQty, decimal ActualQty, decimal Diff, string? Reason = null);
 public record CreateStocktakeDto(
     string? VoucherCode, string Date, string? CreatedBy, string Status,
     string WarehouseId, string WarehouseName, string Condition, bool IsFrozen,

@@ -60,6 +60,7 @@ public class StocktakeWorkflowTests : IDisposable
                     SystemQty = 0m,
                     ActualQty = 7m,
                     Diff = 7m,
+                    Reason = "Thừa do đối tác bàn giao thêm",
                 },
             ],
         };
@@ -74,6 +75,7 @@ public class StocktakeWorkflowTests : IDisposable
         Assert.Equal("pending", saved.Status);
         Assert.Single(saved.Items);
         Assert.Equal(7m, saved.Items.First().ActualQty);
+        Assert.Equal("Thừa do đối tác bàn giao thêm", saved.Items.First().Reason);
     }
 
     private static CreateStocktakeDto NewCreateDto() =>
@@ -89,7 +91,7 @@ public class StocktakeWorkflowTests : IDisposable
             Note: "",
             Items:
             [
-                new StocktakeItemDto("MAT-001", "MAT-001", "Vật tư test", 0m, 7m, 7m),
+                new StocktakeItemDto("MAT-001", "MAT-001", "Vật tư test", 0m, 7m, 7m, "Thừa do đối tác bàn giao thêm"),
             ]);
 
     private void SeedBaseline()
