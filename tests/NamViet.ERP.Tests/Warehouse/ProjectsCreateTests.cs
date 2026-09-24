@@ -58,6 +58,7 @@ public class ProjectsCreateTests : IDisposable
         var dto = Assert.IsType<ProjectDto>(createdResult.Value);
         Assert.Equal("DA-2026-002", dto.ProjectCode);
         Assert.Equal("Triệu phú lộc", dto.ProjectName);
+        Assert.NotNull(dto.WarehouseKeepers);
         Assert.Single(dto.WarehouseKeepers);
         Assert.Equal(keeperId, dto.WarehouseKeepers[0].UserId);
 
