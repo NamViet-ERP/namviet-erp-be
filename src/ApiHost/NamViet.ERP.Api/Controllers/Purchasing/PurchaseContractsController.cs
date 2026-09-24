@@ -111,10 +111,10 @@ public class PurchaseContractsController(
         var result = await contracts.GetForDownloadAsync(id, ct);
         if (result is null) return NotFound();
 
-        var stored = fileStorage.Get(result.Value.StorageKey);
+        var stored = await fileStorage.OpenReadAsync(result.Value.StorageKey, ct);
         if (stored is null) return NotFound();
 
-        return PhysicalFile(stored.FullPath, GuessContentType(result.Value.Dto.FileName!), result.Value.Dto.FileName);
+        return File(stored.Stream, stored.ResolveContentType(result.Value.Dto.FileName), result.Value.Dto.FileName);
     }
 
     [HttpDelete("{id:guid}")]
@@ -123,23 +123,5 @@ public class PurchaseContractsController(
     {
         var ok = await contracts.SoftDeleteAsync(id, ct);
         return ok ? NoContent() : NotFound();
-    }
-
-    private static string GuessContentType(string fileName)
-    {
-        var ext = Path.GetExtension(fileName).ToLowerInvariant();
-        return ext switch
-        {
-            ".pdf" => "application/pdf",
-            ".png" => "image/png",
-            ".jpg" or ".jpeg" => "image/jpeg",
-            ".webp" => "image/webp",
-            ".gif" => "image/gif",
-            ".doc" => "application/msword",
-            ".docx" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            ".xls" => "application/vnd.ms-excel",
-            ".xlsx" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            _ => "application/octet-stream",
-        };
     }
 }

@@ -138,27 +138,9 @@ public class DefectsController(
     {
         var dto = await defects.GetAttachmentAsync(id, attachmentId, ct);
         if (dto is null) return NotFound();
-        var stored = fileStorage.Get(dto.StorageKey);
+        var stored = await fileStorage.OpenReadAsync(dto.StorageKey, ct);
         if (stored is null) return NotFound();
-        var contentType = GuessContentType(dto.FileName);
-        return PhysicalFile(stored.FullPath, contentType, dto.FileName);
-    }
-
-    private static string GuessContentType(string fileName)
-    {
-        var ext = Path.GetExtension(fileName).ToLowerInvariant();
-        return ext switch
-        {
-            ".jpg" or ".jpeg" => "image/jpeg",
-            ".png" => "image/png",
-            ".gif" => "image/gif",
-            ".webp" => "image/webp",
-            ".bmp" => "image/bmp",
-            ".pdf" => "application/pdf",
-            ".xlsx" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            ".xls" => "application/vnd.ms-excel",
-            _ => "application/octet-stream",
-        };
+        return File(stored.Stream, stored.ResolveContentType(dto.FileName), dto.FileName);
     }
 
     [HttpDelete("{id}/attachments/{attachmentId:guid}")]

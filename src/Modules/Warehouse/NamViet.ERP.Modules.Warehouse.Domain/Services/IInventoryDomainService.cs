@@ -74,4 +74,5 @@ public interface IInventoryDomainService
 
     Task<decimal> GetAvailableQtyAsync(string warehouseId, string materialCode, CancellationToken ct = default);
     Task<string> GetGeneralWarehouseIdAsync(CancellationToken ct = default);
+    Task EnsureGeneralWarehouseAsync(string? warehouseId = null, CancellationToken ct = default);
 }

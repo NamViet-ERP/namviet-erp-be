@@ -300,13 +300,76 @@ public class ProjectsController(
         if (project.Status == ProjectStatus.Closed)
             return BadRequest("Dự án đã đóng kho.");
 
-        await using var tx = await db.Database.BeginTransactionAsync(ct);
+        // Kiểm tra các chứng từ chưa duyệt / còn nháp liên quan đến dự án
+        var pendingTransactions = await db.WarehouseTransactions
+            .AsNoTracking()
+            .Where(t => (t.ProjectCode == code
+                         || t.BeneficiaryProjectCode == code
+                         || t.WarehouseId == code
+                         || t.FromWarehouseId == code
+                         || t.ToWarehouseId == code)
+                        && (t.ApprovalStatus == ApprovalStatus.Draft || t.ApprovalStatus == ApprovalStatus.Pending))
+            .Select(t => new { t.TicketCode, t.TransactionType, t.ApprovalStatus })
+            .ToListAsync(ct);
+
+        var pendingStocktakes = await db.Stocktakes
+            .AsNoTracking()
+            .Where(s => s.WarehouseId == code && s.Status != "completed" && s.Status != "approved")
+            .Select(s => new { TicketCode = s.VoucherCode, Status = s.Status })
+            .ToListAsync(ct);
+
+        if (pendingTransactions.Count > 0 || pendingStocktakes.Count > 0)
+        {
+            var ticketList = new List<string>();
+            foreach (var pt in pendingTransactions)
+            {
+                var typeName = pt.TransactionType switch
+                {
+                    TransactionType.Export => "Phiếu xuất kho",
+                    TransactionType.Import => "Phiếu nhập kho",
+                    TransactionType.Transfer => "Phiếu chuyển kho",
+                    TransactionType.ExportReturn => "Phiếu hoàn trả",
+                    _ => $"Phiếu {pt.TransactionType}"
+                };
+                var statusName = pt.ApprovalStatus == ApprovalStatus.Draft ? "Bản nháp" : "Chờ duyệt";
+                ticketList.Add($"{pt.TicketCode} ({typeName} - {statusName})");
+            }
+            foreach (var st in pendingStocktakes)
+            {
+                ticketList.Add($"{st.TicketCode} (Phiếu kiểm kê - {st.Status})");
+            }
+
+            return BadRequest(
+                $"Không thể đóng kho dự án '{code}' vì vẫn còn {ticketList.Count} chứng từ chưa xử lý: {string.Join(", ", ticketList)}. " +
+                "Vui lòng Duyệt (nếu đã xuất/nhập thực tế) hoặc Hủy các phiếu này trước khi đóng kho.");
+        }
+
+        // Kiểm tra tồn kho dự án còn đang giữ chỗ chờ xuất hoặc chờ chuyển
+        var pendingInventories = await db.ProjectInventories
+            .AsNoTracking()
+            .Where(pi => pi.ProjectCode == code && pi.PlannedExportQty > 0)
+            .Select(pi => new { pi.MaterialCode, pi.PlannedExportQty })
+            .ToListAsync(ct);
+
+        if (pendingInventories.Count > 0)
+        {
+            var details = pendingInventories.Select(pi =>
+                $"{pi.MaterialCode} (chờ xuất: {pi.PlannedExportQty:0.##})");
+            return BadRequest(
+                $"Không thể đóng kho dự án '{code}' vì vẫn còn vật tư đang ở trạng thái chờ xuất: {string.Join(", ", details)}. " +
+                "Vui lòng xử lý dứt điểm các phiếu liên quan trước khi đóng kho.");
+        }
+
+        await using var tx = db.Database.IsRelational() ? await db.Database.BeginTransactionAsync(ct) : null;
         await inventory.ApplyProjectCloseTransferAsync(code, ct);
         project.Status = ProjectStatus.Closed;
         project.EndDate = DateOnly.FromDateTime(DateTime.UtcNow);
         project.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
-        await tx.CommitAsync(ct);
+        if (tx is not null)
+        {
+            await tx.CommitAsync(ct);
+        }
         return Ok(new { projectCode = code, status = project.Status.ToString() });
     }
 

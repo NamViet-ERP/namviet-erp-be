@@ -155,15 +155,15 @@ public class CandidatesController(
         if (candidate is null || string.IsNullOrWhiteSpace(candidate.CvFileUrl))
             return NotFound("Không tìm thấy file CV.");
 
-        var stored = storage.Get(candidate.CvFileUrl);
+        var stored = await storage.OpenReadAsync(candidate.CvFileUrl, ct);
         if (stored is null)
             return NotFound("File CV không tồn tại trên máy chủ.");
 
         var downloadName = string.IsNullOrWhiteSpace(candidate.CvFileName)
-            ? Path.GetFileName(stored.FullPath)
+            ? Path.GetFileName(candidate.CvFileUrl)
             : candidate.CvFileName;
 
-        return PhysicalFile(stored.FullPath, CandidateMapper.ResolveCvContentType(downloadName), downloadName);
+        return File(stored.Stream, stored.ResolveContentType(downloadName), downloadName);
     }
 
     [HttpPost]

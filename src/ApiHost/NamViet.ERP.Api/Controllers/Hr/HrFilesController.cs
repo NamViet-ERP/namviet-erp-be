@@ -123,20 +123,11 @@ public class HrFilesController(
             || !await employeeAccess.CanViewEmployeeAsync(currentUser, employeeId.Value, ct))
             return NotFound();
 
-        var stored = storage.Get(normalized);
+        var stored = await storage.OpenReadAsync(normalized, ct);
         if (stored is null) return NotFound();
         var downloadName = string.IsNullOrWhiteSpace(fileName)
-            ? Path.GetFileName(stored.FullPath)
+            ? Path.GetFileName(normalized)
             : Path.GetFileName(fileName);
-        var contentType = Path.GetExtension(downloadName).ToLowerInvariant() switch
-        {
-            ".pdf" => "application/pdf",
-            ".png" => "image/png",
-            ".jpg" or ".jpeg" => "image/jpeg",
-            ".doc" => "application/msword",
-            ".docx" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            _ => "application/octet-stream",
-        };
-        return PhysicalFile(stored.FullPath, contentType, downloadName);
+        return File(stored.Stream, stored.ResolveContentType(downloadName), downloadName);
     }
 }

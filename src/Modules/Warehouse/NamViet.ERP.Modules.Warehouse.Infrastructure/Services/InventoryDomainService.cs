@@ -550,6 +550,7 @@ public class InventoryDomainService(WarehouseDbContext db) : IInventoryDomainSer
             throw new DomainRuleException("Phiếu hoàn trả yêu cầu mã kho dự án.");
 
         var generalWarehouseId = await GetGeneralWarehouseIdAsync(ct);
+        await EnsureGeneralWarehouseAsync(generalWarehouseId, ct);
         transaction.ToWarehouseId = generalWarehouseId;
 
         var pendingHl = await GetPendingStockDefectQtyByMaterialAsync(projectCode, null, ct);
@@ -677,9 +678,33 @@ public class InventoryDomainService(WarehouseDbContext db) : IInventoryDomainSer
         }
     }
 
+    public async Task EnsureGeneralWarehouseAsync(string? warehouseId = null, CancellationToken ct = default)
+    {
+        var targetId = !string.IsNullOrWhiteSpace(warehouseId)
+            ? warehouseId
+            : await GetGeneralWarehouseIdAsync(ct);
+
+        var exists = await db.WmsWarehouses.AnyAsync(w => w.Id == targetId, ct);
+        if (exists) return;
+
+        db.WmsWarehouses.Add(new WmsWarehouse
+        {
+            Id = targetId,
+            Code = targetId,
+            Name = "Kho Tổng",
+            Group = "Kho trung tâm",
+            Address = "",
+            Branch = "",
+            Manager = "",
+            Status = "active",
+        });
+        await db.SaveChangesAsync(ct);
+    }
+
     public async Task ApplyProjectCloseTransferAsync(string projectCode, CancellationToken ct = default)
     {
         var generalWarehouseId = await GetGeneralWarehouseIdAsync(ct);
+        await EnsureGeneralWarehouseAsync(generalWarehouseId, ct);
         var inventories = await db.ProjectInventories
             .Where(pi => pi.ProjectCode == projectCode)
             .ToListAsync(ct);

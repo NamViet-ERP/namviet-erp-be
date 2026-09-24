@@ -316,9 +316,9 @@ public class ImportsController(
     {
         var dto = await imports.GetAttachmentAsync(id, attachmentId, ct);
         if (dto is null) return NotFound();
-        var stored = fileStorage.Get(dto.StorageKey);
+        var stored = await fileStorage.OpenReadAsync(dto.StorageKey, ct);
         if (stored is null) return NotFound();
-        return PhysicalFile(stored.FullPath, "application/octet-stream", dto.FileName);
+        return File(stored.Stream, stored.ResolveContentType(dto.FileName), dto.FileName);
     }
 
     [HttpPost("{id}/submit")]

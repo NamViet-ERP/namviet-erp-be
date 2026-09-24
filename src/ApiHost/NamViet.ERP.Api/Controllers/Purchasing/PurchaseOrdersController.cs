@@ -237,9 +237,9 @@ public class PurchaseOrdersController(
         var dto = await orders.GetInstallmentDocumentAsync(code, stageNumber, documentId, ct);
         if (dto is null) return NotFound();
 
-        var stored = fileStorage.Get(dto.StoragePath);
+        var stored = await fileStorage.OpenReadAsync(dto.StoragePath, ct);
         if (stored is null) return NotFound();
-        return PhysicalFile(stored.FullPath, dto.ContentType, dto.FileName);
+        return File(stored.Stream, stored.ResolveContentType(dto.FileName), dto.FileName);
     }
 
     [HttpDelete("{code}/installments/{stageNumber:int}/documents/{documentId:int}")]
