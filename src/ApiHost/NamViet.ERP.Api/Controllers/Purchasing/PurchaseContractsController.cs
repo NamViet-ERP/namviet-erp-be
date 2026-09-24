@@ -109,10 +109,12 @@ public class PurchaseContractsController(
     public async Task<IActionResult> Download(Guid id, CancellationToken ct)
     {
         var result = await contracts.GetForDownloadAsync(id, ct);
-        if (result is null) return NotFound();
+        if (result is null)
+            return NotFound("Không tìm thấy hợp đồng hoặc hợp đồng chưa có file đính kèm.");
 
         var stored = await fileStorage.OpenReadAsync(result.Value.StorageKey, ct);
-        if (stored is null) return NotFound();
+        if (stored is null)
+            return NotFound("Tệp đính kèm không còn tồn tại trên máy chủ lưu trữ (có thể do máy chủ khởi động lại làm mất file lưu tạm). Vui lòng tải lại file lên hợp đồng.");
 
         return File(stored.Stream, stored.ResolveContentType(result.Value.Dto.FileName), result.Value.Dto.FileName);
     }

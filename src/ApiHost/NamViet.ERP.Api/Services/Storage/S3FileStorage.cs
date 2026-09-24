@@ -34,7 +34,7 @@ public sealed class S3FileStorage(
         CancellationToken ct = default)
     {
         var normalized = relativePath.Replace('\\', '/').TrimStart('/');
-        var s3Key = _prefix + normalized;
+        var s3Key = ResolveS3Key(normalized);
 
         var request = new PutObjectRequest
         {
@@ -63,7 +63,7 @@ public sealed class S3FileStorage(
         if (string.IsNullOrWhiteSpace(storageKey)) return null;
 
         var normalized = storageKey.Replace('\\', '/').TrimStart('/');
-        var s3Key = _prefix + normalized;
+        var s3Key = ResolveS3Key(normalized);
 
         try
         {
@@ -90,5 +90,14 @@ public sealed class S3FileStorage(
     {
         // Object cleanup on cloud storage is typically managed via bucket lifecycle policies.
         return Task.FromResult(0);
+    }
+
+    private string ResolveS3Key(string relativePath)
+    {
+        var normalized = relativePath.Replace('\\', '/').TrimStart('/');
+        if (string.IsNullOrWhiteSpace(_prefix)) return normalized;
+        return normalized.StartsWith(_prefix, StringComparison.OrdinalIgnoreCase)
+            ? normalized
+            : _prefix + normalized;
     }
 }

@@ -119,12 +119,14 @@ public class PurchaseOrdersController(
     public async Task<IActionResult> DownloadAttachment(string code, Guid id, CancellationToken ct)
     {
         var dto = await orders.GetAttachmentAsync(code, id, ct);
-        if (dto is null) return NotFound();
+        if (dto is null)
+            return NotFound("Không tìm thấy hồ sơ đính kèm.");
 
-        var stored = fileStorage.Get(dto.StorageKey);
-        if (stored is null) return NotFound();
+        var stored = await fileStorage.OpenReadAsync(dto.StorageKey, ct);
+        if (stored is null)
+            return NotFound("Tệp đính kèm không còn tồn tại trên máy chủ lưu trữ (có thể do máy chủ khởi động lại làm mất file lưu tạm). Vui lòng tải lại hồ sơ.");
 
-        return PhysicalFile(stored.FullPath, GuessContentType(dto.FileName), dto.FileName);
+        return File(stored.Stream, stored.ResolveContentType(dto.FileName), dto.FileName);
     }
 
     [HttpDelete("{code}/attachments/{id:guid}")]

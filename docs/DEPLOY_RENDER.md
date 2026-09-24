@@ -41,6 +41,19 @@ Repo BE cần có `Dockerfile` ở root (đã thêm). FE đã ở: https://namvi
 | `AuthCookies__SameSite` | `None` |
 | `DOTNET_HOSTBUILDER_RELOADCONFIGONCHANGE` | `false` |
 | `DOTNET_USE_POLLING_FILE_WATCHER` | `1` |
+| `FileStorage__Provider` | `S3` |
+| `FileStorage__S3__ServiceUrl` | `https://<supabase-project-ref>.storage.supabase.co/storage/v1/s3` |
+| `FileStorage__S3__BucketName` | `erp-uploads` |
+| `FileStorage__S3__Region` | `ap-southeast-1` |
+| `FileStorage__S3__AccessKey` | *(lấy từ Supabase: Project Settings → Storage → S3 Credentials)* |
+| `FileStorage__S3__SecretKey` | *(lấy từ Supabase: Project Settings → Storage → S3 Credentials)* |
+| `FileStorage__S3__ForcePathStyle` | `true` |
+
+> **Lưu ý cấu hình Supabase Storage:**
+> 1. Mở Supabase Dashboard → **Storage** → Bấm **New bucket** → đặt tên `erp-uploads` (chọn Private).
+> 2. Vào **Project Settings** → **Storage** → phần **S3 Credentials** → Bấm **Generate new credentials** để lấy `Access Key ID` và `Secret Access Key`.
+> 3. `<supabase-project-ref>` là mã dự án của bạn trên URL dashboard Supabase (`https://supabase.com/dashboard/project/<project-ref>`).
+> Khi cấu hình S3, toàn bộ file đính kèm hợp đồng, PO, tuyển dụng sẽ được lưu bền vững trên Supabase Storage, không bao giờ bị mất khi Render restart/redeploy.
 
 > Cookie SameSite=`None` + Secure=`true` cần khi FE (Vercel) và API (Render) **khác domain**. Nếu login cookie bị browser chặn, báo mình để chỉnh FE gọi absolute API URL.
 
