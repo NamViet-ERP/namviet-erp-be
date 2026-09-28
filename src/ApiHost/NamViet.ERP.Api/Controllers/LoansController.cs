@@ -6,6 +6,7 @@ using NamViet.ERP.Modules.Warehouse.Application.DTOs;
 using NamViet.ERP.Modules.Warehouse.Domain.Entities;
 using NamViet.ERP.Modules.Warehouse.Domain.Enums;
 using NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence;
+using NamViet.ERP.Api.Application.Services.Wms;
 using NamViet.ERP.SharedKernel.Common;
 
 namespace NamViet.ERP.Api.Controllers;
@@ -13,7 +14,7 @@ namespace NamViet.ERP.Api.Controllers;
 [ApiController]
 [Route("api/warehouse/loans")]
 [Authorize]
-public class LoansController(WarehouseDbContext db) : ControllerBase
+public class LoansController(WarehouseDbContext db, ProjectWarehouseAccessService projectAccess) : ControllerBase
 {
     [HttpGet]
     [RequirePermission("wms.loans.view:all")]
@@ -66,22 +67,38 @@ public class LoansController(WarehouseDbContext db) : ControllerBase
     [RequirePermission("wms.loans.create")]
     public async Task<IActionResult> Create([FromBody] CreateLoanRequest request, CancellationToken ct)
     {
-        var dateStr = DateTime.UtcNow.ToString("yyyyMMdd");
-        var count = await db.ProjectMaterialLoans.CountAsync(ct);
-        var loanCode = $"MT-{dateStr}-{(count + 1):D4}";
-
-        var loan = new ProjectMaterialLoan
+        if (!string.IsNullOrWhiteSpace(request.BorrowingProjectCode))
         {
-            LoanCode = loanCode,
-            BorrowingProjectCode = request.BorrowingProjectCode,
-            LendingProjectCode = request.LendingProjectCode,
-            MaterialCode = request.MaterialCode,
-            LoanQty = request.LoanQty,
-            DueDate = request.DueDate,
-            LoanReason = request.LoanReason
-        };
-        db.ProjectMaterialLoans.Add(loan);
-        await db.SaveChangesAsync(ct);
+            await projectAccess.EnsureCanOperateOnProjectAsync(request.BorrowingProjectCode, ct);
+        }
+
+        var dateStr = DateTime.UtcNow.ToString("yyyyMMdd");
+        var prefix = $"MT-{dateStr}-";
+
+        var loan = await SequentialCodeHelper.ExecuteWithUniqueRetryAsync(async () =>
+        {
+            var existingCodes = await db.ProjectMaterialLoans.AsNoTracking()
+                .Where(x => x.LoanCode.StartsWith(prefix))
+                .Select(x => x.LoanCode)
+                .ToListAsync(ct);
+            var seq = SequentialCodeHelper.NextSequence(existingCodes, prefix);
+            var loanCode = SequentialCodeHelper.Format(prefix, seq, 4);
+
+            var item = new ProjectMaterialLoan
+            {
+                LoanCode = loanCode,
+                BorrowingProjectCode = request.BorrowingProjectCode,
+                LendingProjectCode = request.LendingProjectCode,
+                MaterialCode = request.MaterialCode,
+                LoanQty = request.LoanQty,
+                DueDate = request.DueDate,
+                LoanReason = request.LoanReason
+            };
+            db.ProjectMaterialLoans.Add(item);
+            await db.SaveChangesAsync(ct);
+            return item;
+        }, ct: ct);
+
         return CreatedAtAction(nameof(GetById), new { loanCode = loan.LoanCode }, new { loan.LoanCode });
     }
 

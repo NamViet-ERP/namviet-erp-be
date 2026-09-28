@@ -371,6 +371,7 @@ public sealed partial class PurchaseOrderService
             return await GetByCodeAsync(code, ct);
 
         await using var tx = await db.Database.BeginTransactionAsync(ct);
+        await TicketCodeAllocator.AcquireNamedLockAsync(db, $"pur_plan_{order.PlanCode}", ct);
 
         var planLineIds = order.Items
             .Where(i => i.PlanLineId.HasValue)
