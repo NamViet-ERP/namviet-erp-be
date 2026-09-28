@@ -4,7 +4,9 @@ using Microsoft.EntityFrameworkCore;
 using NamViet.ERP.Api.Infrastructure.Authorization;
 using NamViet.ERP.Modules.Hr.Domain.Entities;
 using NamViet.ERP.Modules.Hr.Infrastructure.Persistence;
+using NamViet.ERP.Api.Application.Services.Hr;
 using NamViet.ERP.SharedKernel.Common;
+using NamViet.ERP.SharedKernel.Interfaces;
 
 namespace NamViet.ERP.Api.Controllers;
 
@@ -22,7 +24,10 @@ public record SetLeaveBalanceRequest(int EmployeeId, int Year, decimal TotalDays
 [ApiController]
 [Route("api/hr/leaves")]
 [Authorize]
-public class LeaveController(HrDbContext db) : ControllerBase
+public class LeaveController(
+    HrDbContext db,
+    ICurrentUser currentUser,
+    IEmployeeAccessService employeeAccess) : ControllerBase
 {
     // ── Loại nghỉ phép ─────────────────────────────────────────────────────────
     [HttpGet("types")]
@@ -91,9 +96,16 @@ public class LeaveController(HrDbContext db) : ControllerBase
             !DateOnly.TryParse(request.ToDate, out var to))
             return BadRequest("Ngày không hợp lệ.");
 
+        var employeeId = request.EmployeeId;
+        var ownEmployeeId = await employeeAccess.ResolveLinkedEmployeeIdAsync(currentUser, ct);
+        if (ownEmployeeId.HasValue && !await employeeAccess.CanViewEmployeeAsync(currentUser, employeeId, ct))
+        {
+            employeeId = ownEmployeeId.Value;
+        }
+
         var leave = new LeaveRequest
         {
-            EmployeeId = request.EmployeeId,
+            EmployeeId = employeeId,
             LeaveTypeId = request.LeaveTypeId,
             FromDate = from,
             ToDate = to,
@@ -114,8 +126,10 @@ public class LeaveController(HrDbContext db) : ControllerBase
         if (leave.Status != LeaveStatus.Pending)
             return BadRequest("Đơn không ở trạng thái chờ duyệt.");
 
+        var approverEmpId = await employeeAccess.ResolveLinkedEmployeeIdAsync(currentUser, ct);
+
         leave.Status = request.Approve ? LeaveStatus.Approved : LeaveStatus.Rejected;
-        leave.ApproverId = request.ApproverId;
+        leave.ApproverId = approverEmpId ?? request.ApproverId;
         leave.UpdatedAt = DateTime.UtcNow;
 
         if (request.Approve)

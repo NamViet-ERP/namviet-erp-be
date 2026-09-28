@@ -1,5 +1,6 @@
 using FluentValidation;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using NamViet.ERP.Api.Application.Services.Purchasing;
 using NamViet.ERP.Api.Application.Services.Wms;
 using NamViet.ERP.SharedKernel.Common;
@@ -62,8 +63,22 @@ public class ExceptionMiddleware(RequestDelegate next, ILogger<ExceptionMiddlewa
     {
         for (var current = ex; current is not null; current = current.InnerException)
         {
-            var typeName = current.GetType().FullName ?? current.GetType().Name;
+            var sqlState = current.GetType().GetProperty("SqlState")?.GetValue(current) as string;
+            if (!string.IsNullOrEmpty(sqlState) && (sqlState.StartsWith("23") || sqlState.StartsWith("42")))
+            {
+                return false;
+            }
+
             var message = current.Message ?? string.Empty;
+            if (message.Contains("23505", StringComparison.Ordinal)
+                || message.Contains("23503", StringComparison.Ordinal)
+                || message.Contains("23502", StringComparison.Ordinal)
+                || message.Contains("42703", StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            var typeName = current.GetType().FullName ?? current.GetType().Name;
             if (typeName.Contains("Npgsql", StringComparison.OrdinalIgnoreCase)
                 || typeName.Contains("Postgres", StringComparison.OrdinalIgnoreCase)
                 || typeName.Contains("SqlException", StringComparison.OrdinalIgnoreCase)
@@ -98,6 +113,10 @@ public class ExceptionMiddleware(RequestDelegate next, ILogger<ExceptionMiddlewa
         {
             ValidationException ve => (400, "Dữ liệu không hợp lệ",
                 string.Join("; ", ve.Errors.Select(e => e.ErrorMessage))),
+            DbUpdateException dbEx when SequentialCodeHelper.IsUniqueViolation(dbEx) =>
+                (StatusCodes.Status409Conflict, "Dữ liệu trùng lặp", "Mã chứng từ hoặc dữ liệu đã tồn tại trong hệ thống."),
+            DbUpdateException dbEx when dbEx.InnerException?.Message.Contains("23503") == true =>
+                (StatusCodes.Status400BadRequest, "Dữ liệu không hợp lệ", "Dữ liệu tham chiếu không tồn tại trong hệ thống."),
             ForbiddenException => (403, "Không đủ quyền",
                 string.IsNullOrWhiteSpace(ex.Message)
                     ? "Bạn không có quyền thực hiện thao tác này."

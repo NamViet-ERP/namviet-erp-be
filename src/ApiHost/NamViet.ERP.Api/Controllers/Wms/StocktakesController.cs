@@ -27,10 +27,14 @@ public class StocktakesController(
         currentUser.IsInRole(RolePermissionTemplates.AdminRole)
         || currentUser.HasPermission("wms.stocktakes.approve");
 
+    private static bool _schemaEnsured;
+    private static readonly SemaphoreSlim _schemaLock = new(1, 1);
+
     [HttpGet]
     [RequirePermission("wms.stocktakes.view:all")]
     public async Task<ActionResult<List<StocktakeDto>>> List(CancellationToken ct)
     {
+        await EnsureStocktakeSchemaAsync(ct);
         var items = await db.Stocktakes
             .Include(s => s.Items)
             .Where(s => s.DeletedAt == null)
@@ -43,6 +47,7 @@ public class StocktakesController(
     [RequirePermission("wms.stocktakes.view:all")]
     public async Task<ActionResult<StocktakeDto>> GetById(string id, CancellationToken ct)
     {
+        await EnsureStocktakeSchemaAsync(ct);
         var s = await FindAsync(id, ct);
         if (s is null) return NotFound();
         return Ok(WmsMapper.ToStocktake(s));
@@ -52,6 +57,8 @@ public class StocktakesController(
     [RequirePermission("wms.stocktakes.create")]
     public async Task<ActionResult<StocktakeDto>> Create([FromBody] CreateStocktakeDto dto, CancellationToken ct)
     {
+        await EnsureStocktakeSchemaAsync(ct);
+
         var projectCode = dto.WarehouseId?.Trim() ?? "";
         if (string.IsNullOrWhiteSpace(projectCode))
             return BadRequest("Vui lòng chọn kho dự án kiểm kê.");
@@ -75,39 +82,84 @@ public class StocktakesController(
         if (project is null)
             return BadRequest($"Không tìm thấy kho dự án '{projectCode}'.");
 
-        var count = await db.Stocktakes.CountAsync(ct);
-        var voucherCode = string.IsNullOrWhiteSpace(dto.VoucherCode)
-            ? Stocktake.GenerateVoucherCode(count + 1)
-            : dto.VoucherCode.Trim();
+        var warehouseId = await EnsureProjectWarehouseAsync(projectCode, project.ProjectName, ct);
 
-        var s = new Stocktake
+        if (dto.Items == null || dto.Items.Count == 0)
+            return BadRequest("Phiếu kiểm kê phải có ít nhất 1 vật tư.");
+
+        var items = dto.Items.Select(i =>
         {
-            Id = $"st-{Guid.NewGuid():N}"[..10],
-            VoucherCode = voucherCode,
-            VoucherDate = WmsMapper.ParseClientDate(dto.Date),
-            CreatedById = currentUser.Id,
-            CreatedByName = string.IsNullOrEmpty(dto.CreatedBy) ? currentUser.Name : dto.CreatedBy,
-            Status = requestedStatus,
-            WarehouseId = projectCode,
-            WarehouseName = string.IsNullOrWhiteSpace(dto.WarehouseName) ? project.ProjectName : dto.WarehouseName,
-            Condition = string.IsNullOrWhiteSpace(dto.Condition) ? "counting" : dto.Condition,
-            IsFrozen = dto.IsFrozen,
-            Note = dto.Note ?? "",
-            Items = dto.Items.Select(i => new StocktakeItem
+            var matCode = string.IsNullOrWhiteSpace(i.Sku) ? (i.ProductId ?? "").Trim() : i.Sku.Trim();
+            var sku = string.IsNullOrWhiteSpace(i.Sku) ? matCode : i.Sku.Trim();
+            var name = string.IsNullOrWhiteSpace(i.Name) ? matCode : i.Name.Trim();
+            var reason = string.IsNullOrWhiteSpace(i.Reason) ? null : i.Reason.Trim();
+            if (reason != null && reason.Length > 500) reason = reason[..500];
+
+            return new StocktakeItem
             {
-                MaterialCode = string.IsNullOrEmpty(i.Sku) ? i.ProductId : i.Sku,
-                Sku = i.Sku,
-                Name = i.Name,
+                MaterialCode = matCode,
+                Sku = sku,
+                Name = name,
                 SystemQty = i.SystemQty,
                 ActualQty = i.ActualQty,
                 Diff = i.ActualQty - i.SystemQty,
-                Reason = i.Reason,
-            }).ToList(),
-        };
-        foreach (var item in s.Items) item.StocktakeId = s.Id;
-        await EnsureProjectWarehouseAsync(projectCode, project.ProjectName, ct);
-        db.Stocktakes.Add(s);
-        await db.SaveChangesAsync(ct);
+                Reason = reason,
+            };
+        }).ToList();
+
+        if (items.Any(i => string.IsNullOrWhiteSpace(i.MaterialCode)))
+            return BadRequest("Mã vật tư trong phiếu kiểm kê không được để trống.");
+
+        await EnsureMaterialsExistAsync(items, ct);
+
+        var s = await SequentialCodeHelper.ExecuteWithUniqueRetryAsync(async () =>
+        {
+            string voucherCode;
+            if (!string.IsNullOrWhiteSpace(dto.VoucherCode))
+            {
+                voucherCode = dto.VoucherCode.Trim();
+            }
+            else
+            {
+                var existingCodes = await db.Stocktakes
+                    .IgnoreQueryFilters()
+                    .Select(st => st.VoucherCode)
+                    .ToListAsync(ct);
+                var nextSeq = SequentialCodeHelper.NextSequence(existingCodes, "KK-");
+                voucherCode = Stocktake.GenerateVoucherCode(nextSeq);
+            }
+
+            var stocktake = new Stocktake
+            {
+                Id = $"st-{Guid.NewGuid():N}"[..10],
+                VoucherCode = voucherCode,
+                VoucherDate = WmsMapper.ParseClientDate(dto.Date),
+                CreatedById = currentUser.Id,
+                CreatedByName = string.IsNullOrEmpty(dto.CreatedBy) ? currentUser.Name : dto.CreatedBy,
+                Status = requestedStatus,
+                WarehouseId = warehouseId,
+                WarehouseName = string.IsNullOrWhiteSpace(dto.WarehouseName) ? project.ProjectName : dto.WarehouseName,
+                Condition = string.IsNullOrWhiteSpace(dto.Condition) ? "counting" : dto.Condition,
+                IsFrozen = dto.IsFrozen,
+                Note = dto.Note ?? "",
+                Items = items.Select(i => new StocktakeItem
+                {
+                    MaterialCode = i.MaterialCode,
+                    Sku = i.Sku,
+                    Name = i.Name,
+                    SystemQty = i.SystemQty,
+                    ActualQty = i.ActualQty,
+                    Diff = i.Diff,
+                    Reason = i.Reason,
+                }).ToList(),
+            };
+            foreach (var item in stocktake.Items) item.StocktakeId = stocktake.Id;
+
+            db.Stocktakes.Add(stocktake);
+            await db.SaveChangesAsync(ct);
+            return stocktake;
+        }, maxAttempts: 5, ct: ct);
+
         return Ok(WmsMapper.ToStocktake(s));
     }
 
@@ -115,6 +167,7 @@ public class StocktakesController(
     [RequirePermission("wms.stocktakes.create")]
     public async Task<ActionResult<StocktakeDto>> Update(string id, [FromBody] StocktakeDto dto, CancellationToken ct)
     {
+        await EnsureStocktakeSchemaAsync(ct);
         var s = await FindAsync(id, ct);
         if (s is null) return NotFound();
         if (s.Status == "approved")
@@ -160,8 +213,8 @@ public class StocktakesController(
                 .FirstOrDefaultAsync(p => p.ProjectCode == dto.WarehouseId && p.DeletedAt == null, ct);
             if (project is null)
                 return BadRequest($"Không tìm thấy kho dự án '{dto.WarehouseId}'.");
-            await EnsureProjectWarehouseAsync(dto.WarehouseId, project.ProjectName, ct);
-            s.WarehouseId = dto.WarehouseId;
+            var whId = await EnsureProjectWarehouseAsync(dto.WarehouseId, project.ProjectName, ct);
+            s.WarehouseId = whId;
             s.WarehouseName = string.IsNullOrWhiteSpace(dto.WarehouseName) ? project.ProjectName : dto.WarehouseName;
         }
 
@@ -181,18 +234,34 @@ public class StocktakesController(
 
         if (dto.Items.Count > 0)
         {
-            db.StocktakeItems.RemoveRange(s.Items);
-            s.Items = dto.Items.Select(i => new StocktakeItem
+            var items = dto.Items.Select(i =>
             {
-                StocktakeId = s.Id,
-                MaterialCode = string.IsNullOrEmpty(i.Sku) ? i.ProductId : i.Sku,
-                Sku = i.Sku,
-                Name = i.Name,
-                SystemQty = i.SystemQty,
-                ActualQty = i.ActualQty,
-                Diff = i.ActualQty - i.SystemQty,
-                Reason = i.Reason,
+                var matCode = string.IsNullOrWhiteSpace(i.Sku) ? (i.ProductId ?? "").Trim() : i.Sku.Trim();
+                var sku = string.IsNullOrWhiteSpace(i.Sku) ? matCode : i.Sku.Trim();
+                var name = string.IsNullOrWhiteSpace(i.Name) ? matCode : i.Name.Trim();
+                var reason = string.IsNullOrWhiteSpace(i.Reason) ? null : i.Reason.Trim();
+                if (reason != null && reason.Length > 500) reason = reason[..500];
+
+                return new StocktakeItem
+                {
+                    StocktakeId = s.Id,
+                    MaterialCode = matCode,
+                    Sku = sku,
+                    Name = name,
+                    SystemQty = i.SystemQty,
+                    ActualQty = i.ActualQty,
+                    Diff = i.ActualQty - i.SystemQty,
+                    Reason = reason,
+                };
             }).ToList();
+
+            if (items.Any(i => string.IsNullOrWhiteSpace(i.MaterialCode)))
+                return BadRequest("Mã vật tư trong phiếu kiểm kê không được để trống.");
+
+            await EnsureMaterialsExistAsync(items, ct);
+
+            db.StocktakeItems.RemoveRange(s.Items);
+            s.Items = items;
         }
 
         await db.SaveChangesAsync(ct);
@@ -242,14 +311,75 @@ public class StocktakesController(
         await db.Stocktakes.Include(s => s.Items)
             .FirstOrDefaultAsync(s => s.Id == id && s.DeletedAt == null, ct);
 
+    private async Task EnsureStocktakeSchemaAsync(CancellationToken ct)
+    {
+        if (_schemaEnsured || !db.Database.IsRelational()) return;
+        await _schemaLock.WaitAsync(ct);
+        try
+        {
+            if (_schemaEnsured) return;
+            await db.Database.ExecuteSqlRawAsync(
+                "ALTER TABLE warehouse.stocktake_items ADD COLUMN IF NOT EXISTS \"Reason\" character varying(500);",
+                ct);
+            _schemaEnsured = true;
+        }
+        catch
+        {
+            // Bỏ qua nếu user DB không có quyền DDL hoặc cột đã tồn tại
+        }
+        finally
+        {
+            _schemaLock.Release();
+        }
+    }
+
+    private async Task EnsureMaterialsExistAsync(List<StocktakeItem> items, CancellationToken ct)
+    {
+        var itemMaterialCodes = items.Select(i => i.MaterialCode).Distinct().ToList();
+        var existingMaterialCodes = await db.Materials.IgnoreQueryFilters()
+            .Where(m => itemMaterialCodes.Contains(m.MaterialCode))
+            .Select(m => m.MaterialCode)
+            .ToListAsync(ct);
+        var missingCodes = itemMaterialCodes.Except(existingMaterialCodes, StringComparer.OrdinalIgnoreCase).ToList();
+        if (missingCodes.Count > 0)
+        {
+            foreach (var code in missingCodes)
+            {
+                var refItem = items.FirstOrDefault(i => string.Equals(i.MaterialCode, code, StringComparison.OrdinalIgnoreCase));
+                db.Materials.Add(new Material
+                {
+                    MaterialCode = code,
+                    MaterialName = refItem?.Name ?? code,
+                    Unit = "cái",
+                    IsActive = true,
+                });
+            }
+            await db.SaveChangesAsync(ct);
+        }
+    }
+
     /// <summary>
     /// Stocktake.WarehouseId stores project code (app convention) but EF FK targets warehouses.Id.
     /// Ensure a mirror row exists so SaveChanges succeeds for projects without demo warehouse seed.
     /// </summary>
-    private async Task EnsureProjectWarehouseAsync(string projectCode, string projectName, CancellationToken ct)
+    private async Task<string> EnsureProjectWarehouseAsync(string projectCode, string projectName, CancellationToken ct)
     {
-        var exists = await db.WmsWarehouses.AnyAsync(w => w.Id == projectCode, ct);
-        if (exists) return;
+        var existing = await db.WmsWarehouses
+            .IgnoreQueryFilters()
+            .FirstOrDefaultAsync(w => w.Id == projectCode || w.Code == projectCode, ct);
+
+        if (existing != null)
+        {
+            if (existing.DeletedAt != null)
+            {
+                existing.DeletedAt = null;
+                existing.Status = "active";
+                if (!string.IsNullOrWhiteSpace(projectName))
+                    existing.Name = projectName;
+                await db.SaveChangesAsync(ct);
+            }
+            return existing.Id;
+        }
 
         db.WmsWarehouses.Add(new WmsWarehouse
         {
@@ -263,5 +393,6 @@ public class StocktakesController(
             Status = "active",
         });
         await db.SaveChangesAsync(ct);
+        return projectCode;
     }
 }

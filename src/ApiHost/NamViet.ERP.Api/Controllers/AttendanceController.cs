@@ -4,7 +4,9 @@ using Microsoft.EntityFrameworkCore;
 using NamViet.ERP.Api.Infrastructure.Authorization;
 using NamViet.ERP.Modules.Hr.Domain.Entities;
 using NamViet.ERP.Modules.Hr.Infrastructure.Persistence;
+using NamViet.ERP.Api.Application.Services.Hr;
 using NamViet.ERP.SharedKernel.Common;
+using NamViet.ERP.SharedKernel.Interfaces;
 
 namespace NamViet.ERP.Api.Controllers;
 
@@ -21,7 +23,10 @@ public record UpsertAttendanceSummaryRequest(
 [Route("api/hr/attendance")]
 [Authorize]
 [RequirePermission("hrm.attendance.view")]
-public class AttendanceController(HrDbContext db) : ControllerBase
+public class AttendanceController(
+    HrDbContext db,
+    ICurrentUser currentUser,
+    IEmployeeAccessService employeeAccess) : ControllerBase
 {
     // ── Chấm công ngày ─────────────────────────────────────────────────────────
     [HttpGet]
@@ -37,7 +42,12 @@ public class AttendanceController(HrDbContext db) : ControllerBase
             .Include(a => a.Employee)
             .AsQueryable();
 
-        if (employeeId.HasValue) query = query.Where(a => a.EmployeeId == employeeId.Value);
+        if (employeeId.HasValue)
+        {
+            if (!await employeeAccess.CanViewEmployeeAsync(currentUser, employeeId.Value, ct))
+                return Forbid();
+            query = query.Where(a => a.EmployeeId == employeeId.Value);
+        }
         if (DateOnly.TryParse(fromDate, out var fd)) query = query.Where(a => a.Date >= fd);
         if (DateOnly.TryParse(toDate, out var td)) query = query.Where(a => a.Date <= td);
 
