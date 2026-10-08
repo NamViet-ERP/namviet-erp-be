@@ -91,7 +91,7 @@ public class AdminRequestsController(
         return Ok(new
         {
             r.Id, Type = HrEnumMapper.ToDisplayString(r.Type), r.EmployeeId, EmployeeName = r.Employee.FullName,
-            r.Title, r.Content, r.Quantity, r.Status, r.ApproverId, r.CreatedAt
+            r.Title, r.Content, r.Quantity, r.Status, r.ApproverId, r.CreatedAt,
         });
     }
 

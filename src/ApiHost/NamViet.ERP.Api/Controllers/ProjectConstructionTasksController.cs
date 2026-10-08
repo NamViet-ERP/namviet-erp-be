@@ -61,6 +61,14 @@ public class ProjectConstructionTasksController(WarehouseDbContext db) : Control
             ActualEnd = request.ActualEnd,
             PercentComplete = request.PercentComplete,
             SortOrder = maxOrder + 1,
+            WbsCode = request.WbsCode ?? string.Empty,
+            Level = request.Level,
+            ParentId = request.ParentId,
+            IsGroup = request.IsGroup,
+            Department = request.Department,
+            StatusLabel = request.StatusLabel,
+            StatusTone = request.StatusTone,
+            Notes = request.Notes,
         };
         db.ProjectConstructionTasks.Add(row);
         await db.SaveChangesAsync(ct);
@@ -94,9 +102,67 @@ public class ProjectConstructionTasksController(WarehouseDbContext db) : Control
         row.ActualEnd = request.ActualEnd;
         row.PercentComplete = request.PercentComplete;
         row.SortOrder = request.SortOrder;
+        if (request.WbsCode is not null) row.WbsCode = request.WbsCode;
+        row.Level = request.Level;
+        row.ParentId = request.ParentId;
+        row.IsGroup = request.IsGroup;
+        if (request.Department is not null) row.Department = request.Department;
+        if (request.StatusLabel is not null) row.StatusLabel = request.StatusLabel;
+        if (request.StatusTone is not null) row.StatusTone = request.StatusTone;
+        if (request.Notes is not null) row.Notes = request.Notes;
         row.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
+        await RecalculateWbsProgressAsync(code, ct);
         return Ok(ToDto(row, project.ProjectName, TodayVn()));
+    }
+
+    [HttpPost("{code}/construction-tasks/sync-wbs")]
+    [RequirePermission("wms.projects.update")]
+    public async Task<ActionResult<List<ProjectConstructionTaskDto>>> SyncWbs(
+        string code,
+        [FromBody] SyncProjectConstructionTasksRequest request,
+        CancellationToken ct)
+    {
+        var project = await db.Projects.FirstOrDefaultAsync(p => p.ProjectCode == code, ct);
+        if (project is null) return NotFound();
+
+        var existing = await db.ProjectConstructionTasks
+            .Where(t => t.ProjectCode == code)
+            .ToListAsync(ct);
+
+        db.ProjectConstructionTasks.RemoveRange(existing);
+
+        var rows = new List<ProjectConstructionTask>();
+        for (var i = 0; i < request.Tasks.Count; i++)
+        {
+            var item = request.Tasks[i];
+            rows.Add(new ProjectConstructionTask
+            {
+                Id = item.Id ?? Guid.NewGuid(),
+                ProjectCode = code,
+                Name = item.Name.Trim(),
+                PlannedStart = item.PlannedStart,
+                PlannedEnd = item.PlannedEnd,
+                PercentComplete = item.PercentComplete,
+                SortOrder = item.SortOrder > 0 ? item.SortOrder : i + 1,
+                WbsCode = item.WbsCode ?? string.Empty,
+                Level = item.Level,
+                ParentId = item.ParentId,
+                IsGroup = item.IsGroup,
+                Department = item.Department,
+                StatusLabel = item.StatusLabel,
+                StatusTone = item.StatusTone,
+                Notes = item.Notes,
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow,
+            });
+        }
+
+        db.ProjectConstructionTasks.AddRange(rows);
+        await db.SaveChangesAsync(ct);
+
+        var today = TodayVn();
+        return Ok(rows.OrderBy(r => r.SortOrder).Select(r => ToDto(r, project.ProjectName, today)).ToList());
     }
 
     [HttpDelete("{code}/construction-tasks/{id:guid}")]
@@ -109,7 +175,45 @@ public class ProjectConstructionTasksController(WarehouseDbContext db) : Control
         row.DeletedAt = DateTime.UtcNow;
         row.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
+        await RecalculateWbsProgressAsync(code, ct);
         return NoContent();
+    }
+
+    
+    private async Task RecalculateWbsProgressAsync(string projectCode, CancellationToken ct)
+    {
+        var allTasks = await db.ProjectConstructionTasks
+            .Where(t => t.ProjectCode == projectCode && t.DeletedAt == null)
+            .ToListAsync(ct);
+
+        var groups = allTasks.Where(t => t.IsGroup).OrderByDescending(t => t.Level).ToList();
+
+        foreach (var group in groups)
+        {
+            var children = allTasks.Where(t => t.ParentId == group.Id).ToList();
+            if (!children.Any()) continue;
+
+            var minStart = children.Min(c => c.PlannedStart);
+            var maxEnd = children.Max(c => c.PlannedEnd);
+
+            double totalWeight = 0;
+            double weightedProgress = 0;
+
+            foreach (var child in children)
+            {
+                var days = child.PlannedEnd.DayNumber - child.PlannedStart.DayNumber + 1;
+                if (days < 1) days = 1;
+                totalWeight += days;
+                weightedProgress += child.PercentComplete * days;
+            }
+
+            group.PlannedStart = minStart;
+            group.PlannedEnd = maxEnd;
+            group.PercentComplete = totalWeight > 0 ? (int)Math.Round(weightedProgress / totalWeight) : 0;
+            group.UpdatedAt = DateTime.UtcNow;
+        }
+
+        await db.SaveChangesAsync(ct);
     }
 
     private static DateOnly TodayVn()
@@ -139,6 +243,8 @@ public class ProjectConstructionTasksController(WarehouseDbContext db) : Control
         return new ProjectConstructionTaskDto(
             t.Id, t.ProjectCode, projectName, t.Name,
             t.PlannedStart, t.PlannedEnd, t.ActualEnd,
-            t.PercentComplete, t.SortOrder, status);
+            t.PercentComplete, t.SortOrder, status,
+            t.WbsCode, t.Level, t.ParentId, t.IsGroup,
+            t.Department, t.StatusLabel, t.StatusTone, t.Notes);
     }
 }

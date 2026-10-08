@@ -14,5 +14,14 @@ public class ProjectConstructionTask : BaseEntity
     public int PercentComplete { get; set; }
     public int SortOrder { get; set; }
 
+    public string WbsCode { get; set; } = string.Empty;
+    public int Level { get; set; } = 0;
+    public Guid? ParentId { get; set; }
+    public bool IsGroup { get; set; } = false;
+    public string? Department { get; set; }
+    public string? StatusLabel { get; set; }
+    public string? StatusTone { get; set; }
+    public string? Notes { get; set; }
+
     public Project? Project { get; set; }
 }

@@ -50,6 +50,15 @@ public class WarehouseDbContext(DbContextOptions<WarehouseDbContext> options) : 
     public DbSet<Project> Projects => Set<Project>();
     public DbSet<ProjectWarehouseKeeper> ProjectWarehouseKeepers => Set<ProjectWarehouseKeeper>();
     public DbSet<ProjectConstructionTask> ProjectConstructionTasks => Set<ProjectConstructionTask>();
+    public DbSet<ProjectGanttSnapshot> ProjectGanttSnapshots => Set<ProjectGanttSnapshot>();
+    public DbSet<ProjectGanttSnapshotItem> ProjectGanttSnapshotItems => Set<ProjectGanttSnapshotItem>();
+
+    public DbSet<ProjectDocument> ProjectDocuments => Set<ProjectDocument>();
+    public DbSet<ProjectBottleneck> ProjectBottlenecks => Set<ProjectBottleneck>();
+    public DbSet<ProjectRequest> ProjectRequests => Set<ProjectRequest>();
+    public DbSet<ProjectMeeting> ProjectMeetings => Set<ProjectMeeting>();
+    public DbSet<ProjectMeetingAction> ProjectMeetingActions => Set<ProjectMeetingAction>();
+
     public DbSet<ProjectInventory> ProjectInventories => Set<ProjectInventory>();
     public DbSet<ProjectMaterialLoan> ProjectMaterialLoans => Set<ProjectMaterialLoan>();
     public DbSet<WarehouseTransaction> WarehouseTransactions => Set<WarehouseTransaction>();
@@ -300,6 +309,10 @@ public class WarehouseDbContext(DbContextOptions<WarehouseDbContext> options) : 
             e.HasKey(t => t.Id);
             e.Property(t => t.ProjectCode).HasMaxLength(50).IsRequired();
             e.Property(t => t.Name).HasMaxLength(255).IsRequired();
+            e.Property(t => t.WbsCode).HasMaxLength(50);
+            e.Property(t => t.Department).HasMaxLength(255);
+            e.Property(t => t.StatusLabel).HasMaxLength(100);
+            e.Property(t => t.StatusTone).HasMaxLength(20);
             e.HasIndex(t => t.ProjectCode);
             e.HasIndex(t => new { t.ProjectCode, t.SortOrder });
             e.HasQueryFilter(t => t.DeletedAt == null);

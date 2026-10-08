@@ -106,14 +106,30 @@ public record ProjectConstructionTaskDto(
     DateOnly? ActualEnd,
     int PercentComplete,
     int SortOrder,
-    string Status);
+    string Status,
+    string? WbsCode = null,
+    int Level = 0,
+    Guid? ParentId = null,
+    bool IsGroup = false,
+    string? Department = null,
+    string? StatusLabel = null,
+    string? StatusTone = null,
+    string? Notes = null);
 
 public record CreateProjectConstructionTaskRequest(
     string Name,
     DateOnly PlannedStart,
     DateOnly PlannedEnd,
     DateOnly? ActualEnd,
-    int PercentComplete = 0);
+    int PercentComplete = 0,
+    string? WbsCode = null,
+    int Level = 0,
+    Guid? ParentId = null,
+    bool IsGroup = false,
+    string? Department = null,
+    string? StatusLabel = null,
+    string? StatusTone = null,
+    string? Notes = null);
 
 public record UpdateProjectConstructionTaskRequest(
     string Name,
@@ -121,7 +137,34 @@ public record UpdateProjectConstructionTaskRequest(
     DateOnly PlannedEnd,
     DateOnly? ActualEnd,
     int PercentComplete,
-    int SortOrder);
+    int SortOrder,
+    string? WbsCode = null,
+    int Level = 0,
+    Guid? ParentId = null,
+    bool IsGroup = false,
+    string? Department = null,
+    string? StatusLabel = null,
+    string? StatusTone = null,
+    string? Notes = null);
+
+public record SyncWbsTaskItem(
+    Guid? Id,
+    string Name,
+    DateOnly PlannedStart,
+    DateOnly PlannedEnd,
+    int PercentComplete,
+    int SortOrder,
+    string? WbsCode = null,
+    int Level = 0,
+    Guid? ParentId = null,
+    bool IsGroup = false,
+    string? Department = null,
+    string? StatusLabel = null,
+    string? StatusTone = null,
+    string? Notes = null);
+
+public record SyncProjectConstructionTasksRequest(
+    List<SyncWbsTaskItem> Tasks);
 
 public record ProjectPurchasingProgressLineDto(
     int Id,
