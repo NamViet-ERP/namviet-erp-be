@@ -9,6 +9,10 @@ public class Material : BaseEntity
     public string MaterialName { get; set; } = string.Empty;
     public int CategoryId { get; set; }
     public string Unit { get; set; } = string.Empty;
+    /// <summary>Xuất xứ vật tư (nước/nơi sản xuất).</summary>
+    public string? Origin { get; set; }
+    /// <summary>Ảnh vật tư (đường dẫn hoặc storage key).</summary>
+    public string? ImageUrl { get; set; }
     /// <summary>Quy cách (ngắn).</summary>
     public string? TechnicalSpec { get; set; }
     /// <summary>Thông số kỹ thuật chung — nhập tay dạng văn bản.</summary>

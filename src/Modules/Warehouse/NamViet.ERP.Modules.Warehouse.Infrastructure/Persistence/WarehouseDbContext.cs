@@ -40,6 +40,7 @@ public class WarehouseDbContext(DbContextOptions<WarehouseDbContext> options) : 
     public DbSet<Material> Materials => Set<Material>();
     public DbSet<MaterialCategory> MaterialCategories => Set<MaterialCategory>();
     public DbSet<MaterialUnit> MaterialUnits => Set<MaterialUnit>();
+    public DbSet<MaterialOrigin> MaterialOrigins => Set<MaterialOrigin>();
     public DbSet<InventoryReservation> InventoryReservations => Set<InventoryReservation>();
     public DbSet<Supplier> Suppliers => Set<Supplier>();
     public DbSet<SupplierGroup> SupplierGroups => Set<SupplierGroup>();
@@ -127,6 +128,15 @@ public class WarehouseDbContext(DbContextOptions<WarehouseDbContext> options) : 
             e.Property(u => u.IsActive).HasDefaultValue(true);
         });
 
+        model.Entity<MaterialOrigin>(e =>
+        {
+            e.ToTable("material_origins");
+            e.HasKey(o => o.Id);
+            e.Property(o => o.Name).HasMaxLength(100).IsRequired();
+            e.HasIndex(o => o.Name).IsUnique();
+            e.Property(o => o.IsActive).HasDefaultValue(true);
+        });
+
         model.Entity<Material>(e =>
         {
             e.ToTable("materials");
@@ -134,6 +144,8 @@ public class WarehouseDbContext(DbContextOptions<WarehouseDbContext> options) : 
             e.Property(m => m.MaterialCode).HasMaxLength(100);
             e.Property(m => m.MaterialName).HasMaxLength(255).IsRequired();
             e.Property(m => m.Unit).HasMaxLength(50).IsRequired();
+            e.Property(m => m.Origin).HasMaxLength(100);
+            e.Property(m => m.ImageUrl).HasMaxLength(500);
             e.Property(m => m.CeilingPrice).HasColumnType("numeric(18,2)");
             e.Property(m => m.AbcClass).HasMaxLength(1);
             e.Property(m => m.IsActive).HasDefaultValue(true);

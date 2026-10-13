@@ -32,7 +32,7 @@ ConfigurationSecurityValidator.Validate(builder.Configuration, builder.Environme
 
 // ── Serilog ────────────────────────────────────────────────────────────────
 builder.Host.UseSerilog((ctx, cfg) =>
-    cfg.ReadFrom.Configuration(ctx.Configuration).Enrich.FromLogContext());
+    cfg.ReadFrom.Configuration(ctx.Configuration).Enrich.FromLogContext().WriteTo.Console());
 
 // ── Forwarded headers (TLS reverse proxy → real client IP for rate limit) ──
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
@@ -323,16 +323,18 @@ app.Run();
 static void RegisterFileStorage(IServiceCollection services, IConfiguration configuration)
 {
     var provider = configuration["FileStorage:Provider"]?.Trim();
-    var isExplicitLocal = string.Equals(provider, "Local", StringComparison.OrdinalIgnoreCase);
 
     var s3Options = configuration.GetSection(NamViet.ERP.Api.Services.Storage.S3FileStorageOptions.SectionName)
                         .Get<NamViet.ERP.Api.Services.Storage.S3FileStorageOptions>()
                     ?? new NamViet.ERP.Api.Services.Storage.S3FileStorageOptions();
 
-    var hasS3Config = !string.IsNullOrWhiteSpace(s3Options.BucketName)
-                      && (!string.IsNullOrWhiteSpace(s3Options.ServiceUrl) || !string.IsNullOrWhiteSpace(s3Options.Region));
+    var hasS3Credentials = !string.IsNullOrWhiteSpace(s3Options.BucketName)
+                           && !string.IsNullOrWhiteSpace(s3Options.ServiceUrl)
+                           && !string.IsNullOrWhiteSpace(s3Options.AccessKey)
+                           && !string.IsNullOrWhiteSpace(s3Options.SecretKey);
 
-    var useS3 = !isExplicitLocal && (string.Equals(provider, "S3", StringComparison.OrdinalIgnoreCase) || hasS3Config);
+    var useS3 = string.Equals(provider, "S3", StringComparison.OrdinalIgnoreCase)
+                || (hasS3Credentials && !string.Equals(provider, "LocalForce", StringComparison.OrdinalIgnoreCase));
 
     if (useS3 && !string.IsNullOrWhiteSpace(s3Options.BucketName))
     {

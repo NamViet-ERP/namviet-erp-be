@@ -108,12 +108,15 @@ public class MaterialsController(WarehouseDbContext db) : ControllerBase
         if (!await db.MaterialUnits.AnyAsync(u => u.Name == unit && u.IsActive, ct))
             return BadRequest("Đơn vị tính không tồn tại hoặc đã ngừng dùng.");
 
+        var origin = MaterialOriginHelper.NormalizeDisplayName(request.Origin);
         var material = new Material
         {
             MaterialCode = request.MaterialCode.Trim(),
             MaterialName = request.MaterialName.Trim(),
             CategoryId = request.CategoryId,
             Unit = unit,
+            Origin = string.IsNullOrEmpty(origin) ? null : origin,
+            ImageUrl = string.IsNullOrWhiteSpace(request.ImageUrl) ? null : request.ImageUrl.Trim(),
             TechnicalSpec = request.TechnicalSpec,
             GeneralTechnicalSpec = request.GeneralTechnicalSpec,
             QualityStandard = request.QualityStandard,
@@ -128,6 +131,49 @@ public class MaterialsController(WarehouseDbContext db) : ControllerBase
         var categoryById = await LoadCategoryLookupAsync([material.CategoryId], ct);
         return CreatedAtAction(nameof(GetById), new { code = material.MaterialCode },
             ToDto(material, categoryById));
+    }
+
+    [HttpPost("upload-image")]
+    [RequireAnyPermission("wms.materials.create", "wms.materials.update")]
+    [RequestSizeLimit(10 * 1024 * 1024)]
+    public async Task<IActionResult> UploadImage(
+        IFormFile file,
+        [FromForm] string? materialCode,
+        [FromServices] NamViet.ERP.Api.Services.Storage.IFileStorage storage,
+        CancellationToken ct)
+    {
+        if (file is null || file.Length == 0)
+            return BadRequest("File ảnh không hợp lệ hoặc rỗng.");
+
+        if (file.Length > 10 * 1024 * 1024)
+            return BadRequest("Kích thước ảnh tối đa là 10MB.");
+
+        var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
+        if (ext is not (".jpg" or ".jpeg" or ".png" or ".webp" or ".gif"))
+            return BadRequest("Định dạng file không hỗ trợ. Vui lòng chọn ảnh JPG, PNG, WEBP hoặc GIF.");
+
+        var contentType = file.ContentType ?? "image/jpeg";
+        var safeCode = string.IsNullOrWhiteSpace(materialCode) ? "mat" : materialCode.Trim().Replace('/', '_').Replace('\\', '_');
+        var relativePath = $"materials/{safeCode}_{Guid.NewGuid():N}{ext}";
+
+        await using var stream = file.OpenReadStream();
+        var stored = await storage.SaveAsync(stream, relativePath, contentType, ct);
+
+        var imageUrl = $"/api/warehouse/materials/images/{stored.StorageKey}";
+        return Ok(new { imageUrl, storageKey = stored.StorageKey });
+    }
+
+    [HttpGet("images/{*key}")]
+    [AllowAnonymous]
+    public async Task<IActionResult> GetImage(
+        string key,
+        [FromServices] NamViet.ERP.Api.Services.Storage.IFileStorage storage,
+        CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(key)) return NotFound();
+        var stored = await storage.OpenReadAsync(key, ct);
+        if (stored is null) return NotFound();
+        return File(stored.Stream, stored.ResolveContentType(key), enableRangeProcessing: true);
     }
 
     [HttpPut("{code}")]
@@ -149,9 +195,12 @@ public class MaterialsController(WarehouseDbContext db) : ControllerBase
         if (!await db.MaterialUnits.AnyAsync(u => u.Name == unit && u.IsActive, ct))
             return BadRequest("Đơn vị tính không tồn tại hoặc đã ngừng dùng.");
 
+        var origin = MaterialOriginHelper.NormalizeDisplayName(request.Origin);
         m.MaterialName = request.MaterialName.Trim();
         m.CategoryId = request.CategoryId;
         m.Unit = unit;
+        m.Origin = string.IsNullOrEmpty(origin) ? null : origin;
+        m.ImageUrl = string.IsNullOrWhiteSpace(request.ImageUrl) ? null : request.ImageUrl.Trim();
         m.TechnicalSpec = request.TechnicalSpec;
         m.GeneralTechnicalSpec = request.GeneralTechnicalSpec;
         m.QualityStandard = request.QualityStandard;
@@ -254,6 +303,7 @@ public class MaterialsController(WarehouseDbContext db) : ControllerBase
             path,
             m.Unit, m.TechnicalSpec, m.GeneralTechnicalSpec, m.QualityStandard,
             m.CeilingPrice, m.AbcClass,
-            m.IsConsumable, m.IsActive);
+            m.IsConsumable, m.IsActive,
+            m.Origin, m.ImageUrl);
     }
 }

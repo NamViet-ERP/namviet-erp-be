@@ -39,4 +39,13 @@ public class ProjectRequestsController(ICskhCoordinationService cskhService) : C
         if (updated == null) return NotFound();
         return Ok(updated);
     }
+
+    [HttpDelete("{id}")]
+    [RequirePermission("wms.projects.update")]
+    public IActionResult Delete(string code, string id)
+    {
+        var deleted = cskhService.DeleteRequest(code, id);
+        if (!deleted) return NotFound();
+        return NoContent();
+    }
 }

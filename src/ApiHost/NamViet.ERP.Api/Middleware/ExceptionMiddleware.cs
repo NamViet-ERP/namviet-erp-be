@@ -151,6 +151,16 @@ public class ExceptionMiddleware(RequestDelegate next, ILogger<ExceptionMiddlewa
             Instance = ctx.Request.Path
         };
 
+        if (ex is ValidationException ve)
+        {
+            problem.Extensions["errors"] = ve.Errors
+                .GroupBy(e => e.PropertyName)
+                .ToDictionary(
+                    g => g.Key,
+                    g => g.Select(e => e.ErrorMessage).ToArray()
+                );
+        }
+
         await ctx.Response.WriteAsync(JsonSerializer.Serialize(problem, ProblemJsonOptions));
     }
 }

@@ -48,4 +48,22 @@ public class ProjectMeetingsController(ICskhCoordinationService cskhService) : C
         if (updated == null) return NotFound();
         return Ok(updated);
     }
+
+    [HttpPut("{id}")]
+    [RequirePermission("wms.projects.update")]
+    public ActionResult<ProjectMeetingDto> Update(string code, string id, [FromBody] CreateProjectMeetingRequest request)
+    {
+        var updated = cskhService.UpdateMeeting(code, id, request);
+        if (updated == null) return NotFound();
+        return Ok(updated);
+    }
+
+    [HttpDelete("{id}")]
+    [RequirePermission("wms.projects.update")]
+    public IActionResult Delete(string code, string id)
+    {
+        var deleted = cskhService.DeleteMeeting(code, id);
+        if (!deleted) return NotFound();
+        return NoContent();
+    }
 }

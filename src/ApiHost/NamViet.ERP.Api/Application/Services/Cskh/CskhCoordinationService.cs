@@ -33,6 +33,7 @@ public interface ICskhCoordinationService
     // Meetings
     IReadOnlyList<ProjectMeetingDto> GetMeetings(string projectCode);
     ProjectMeetingDto CreateMeeting(string projectCode, CreateProjectMeetingRequest request);
+    ProjectMeetingDto? UpdateMeeting(string projectCode, string id, CreateProjectMeetingRequest request);
     ProjectMeetingDto? UpdateMeetingMinutes(string projectCode, string id, UpdateProjectMeetingMinutesRequest request);
     ProjectMeetingDto? ToggleMeetingAction(string projectCode, string id, string actionId, bool done);
     bool DeleteMeeting(string projectCode, string id);
@@ -113,8 +114,9 @@ public class CskhCoordinationService : ICskhCoordinationService
 
     public ProjectBottleneckDto? UpdateBottleneck(string projectCode, string id, UpdateProjectBottleneckRequest request)
     {
+        if (!Guid.TryParse(id, out var guidId)) return null;
         var (clean, alt) = NormalizeProjectCode(projectCode);
-        var entity = _dbContext.ProjectBottlenecks.FirstOrDefault(x => (x.ProjectCode == clean || x.ProjectCode == alt) && x.Id == Guid.Parse(id));
+        var entity = _dbContext.ProjectBottlenecks.FirstOrDefault(x => (x.ProjectCode == clean || x.ProjectCode == alt) && x.Id == guidId);
         if (entity == null) return null;
         
         if (request.Name != null) entity.Title = request.Name;
@@ -135,8 +137,9 @@ public class CskhCoordinationService : ICskhCoordinationService
 
     public bool DeleteBottleneck(string projectCode, string id)
     {
+        if (!Guid.TryParse(id, out var guidId)) return false;
         var (clean, alt) = NormalizeProjectCode(projectCode);
-        var entity = _dbContext.ProjectBottlenecks.FirstOrDefault(x => (x.ProjectCode == clean || x.ProjectCode == alt) && x.Id == Guid.Parse(id));
+        var entity = _dbContext.ProjectBottlenecks.FirstOrDefault(x => (x.ProjectCode == clean || x.ProjectCode == alt) && x.Id == guidId);
         if (entity == null) return false;
         _dbContext.ProjectBottlenecks.Remove(entity);
         _dbContext.SaveChanges();
@@ -236,8 +239,9 @@ public class CskhCoordinationService : ICskhCoordinationService
 
     public ProjectDocumentDto? UpdateDocumentStatus(string projectCode, string id, UpdateProjectDocumentStatusRequest request)
     {
+        if (!Guid.TryParse(id, out var guidId)) return null;
         var (clean, alt) = NormalizeProjectCode(projectCode);
-        var entity = _dbContext.ProjectDocuments.FirstOrDefault(x => (x.ProjectCode == clean || x.ProjectCode == alt) && x.Id == Guid.Parse(id));
+        var entity = _dbContext.ProjectDocuments.FirstOrDefault(x => (x.ProjectCode == clean || x.ProjectCode == alt) && x.Id == guidId);
         if (entity == null) return null;
         
         entity.Stage = request.Stage;
@@ -263,8 +267,9 @@ public class CskhCoordinationService : ICskhCoordinationService
 
     public ProjectDocumentDto? UpdateDocument(string projectCode, string id, CreateProjectDocumentRequest request)
     {
+        if (!Guid.TryParse(id, out var guidId)) return null;
         var (clean, alt) = NormalizeProjectCode(projectCode);
-        var entity = _dbContext.ProjectDocuments.FirstOrDefault(x => (x.ProjectCode == clean || x.ProjectCode == alt) && x.Id == Guid.Parse(id));
+        var entity = _dbContext.ProjectDocuments.FirstOrDefault(x => (x.ProjectCode == clean || x.ProjectCode == alt) && x.Id == guidId);
         if (entity == null) return null;
         
         entity.Name = request.Name;
@@ -295,8 +300,9 @@ public class CskhCoordinationService : ICskhCoordinationService
 
     public ProjectDocumentDto? UpdateDocumentFile(string projectCode, string id, string fileName, string fileSize, string downloadUrl)
     {
+        if (!Guid.TryParse(id, out var guidId)) return null;
         var (clean, alt) = NormalizeProjectCode(projectCode);
-        var entity = _dbContext.ProjectDocuments.FirstOrDefault(x => (x.ProjectCode == clean || x.ProjectCode == alt) && x.Id == Guid.Parse(id));
+        var entity = _dbContext.ProjectDocuments.FirstOrDefault(x => (x.ProjectCode == clean || x.ProjectCode == alt) && x.Id == guidId);
         if (entity == null) return null;
         
         entity.FileName = fileName;
@@ -314,8 +320,9 @@ public class CskhCoordinationService : ICskhCoordinationService
 
     public bool DeleteDocument(string projectCode, string id)
     {
+        if (!Guid.TryParse(id, out var guidId)) return false;
         var (clean, alt) = NormalizeProjectCode(projectCode);
-        var entity = _dbContext.ProjectDocuments.FirstOrDefault(x => (x.ProjectCode == clean || x.ProjectCode == alt) && x.Id == Guid.Parse(id));
+        var entity = _dbContext.ProjectDocuments.FirstOrDefault(x => (x.ProjectCode == clean || x.ProjectCode == alt) && x.Id == guidId);
         if (entity == null) return false;
         _dbContext.ProjectDocuments.Remove(entity);
         _dbContext.SaveChanges();
@@ -361,7 +368,9 @@ public class CskhCoordinationService : ICskhCoordinationService
 
     public ProjectRequestCenterDto? UpdateRequest(string projectCode, string id, UpdateProjectRequestCenterRequest request)
     {
-        var entity = _dbContext.ProjectRequests.FirstOrDefault(x => x.ProjectCode == projectCode && x.Id == Guid.Parse(id));
+        if (!Guid.TryParse(id, out var guidId)) return null;
+        var (clean, alt) = NormalizeProjectCode(projectCode);
+        var entity = _dbContext.ProjectRequests.FirstOrDefault(x => (x.ProjectCode == clean || x.ProjectCode == alt) && x.Id == guidId);
         if (entity == null) return null;
         
         entity.Status = request.Status;
@@ -376,8 +385,9 @@ public class CskhCoordinationService : ICskhCoordinationService
 
     public bool DeleteRequest(string projectCode, string id)
     {
+        if (!Guid.TryParse(id, out var guidId)) return false;
         var (clean, alt) = NormalizeProjectCode(projectCode);
-        var entity = _dbContext.ProjectRequests.FirstOrDefault(x => (x.ProjectCode == clean || x.ProjectCode == alt) && x.Id == Guid.Parse(id));
+        var entity = _dbContext.ProjectRequests.FirstOrDefault(x => (x.ProjectCode == clean || x.ProjectCode == alt) && x.Id == guidId);
         if (entity == null) return false;
         _dbContext.ProjectRequests.Remove(entity);
         _dbContext.SaveChanges();
@@ -441,10 +451,35 @@ public class CskhCoordinationService : ICskhCoordinationService
         );
     }
 
+    public ProjectMeetingDto? UpdateMeeting(string projectCode, string id, CreateProjectMeetingRequest request)
+    {
+        if (!Guid.TryParse(id, out var guidId)) return null;
+        var (clean, alt) = NormalizeProjectCode(projectCode);
+        var entity = _dbContext.ProjectMeetings.Include(x => x.Actions).FirstOrDefault(x => (x.ProjectCode == clean || x.ProjectCode == alt) && x.Id == guidId);
+        if (entity == null) return null;
+
+        entity.Title = request.Name;
+        entity.MeetingDate = ParseDate(request.Date);
+        entity.Organizer = request.Attendees ?? "";
+        entity.MinutesHtml = request.Agenda ?? "";
+
+        _dbContext.SaveChanges();
+
+        return new ProjectMeetingDto(
+            entity.Id.ToString(), entity.Code, entity.ProjectCode, entity.Title, entity.MeetingDate.ToString("yyyy-MM-dd"), 
+            entity.Organizer, null, entity.MinutesHtml, 0,
+            entity.Actions.Select(a => new ProjectMeetingActionDto(
+                a.Id.ToString(), a.Name, a.DueDate.ToString("yyyy-MM-dd"), a.IsDone, a.Assignee, false
+            )).ToList(),
+            new List<ProjectMeetingAttachmentDto>()
+        );
+    }
+
     public ProjectMeetingDto? UpdateMeetingMinutes(string projectCode, string id, UpdateProjectMeetingMinutesRequest request)
     {
+        if (!Guid.TryParse(id, out var guidId)) return null;
         var (clean, alt) = NormalizeProjectCode(projectCode);
-        var entity = _dbContext.ProjectMeetings.Include(x => x.Actions).FirstOrDefault(x => (x.ProjectCode == clean || x.ProjectCode == alt) && x.Id == Guid.Parse(id));
+        var entity = _dbContext.ProjectMeetings.Include(x => x.Actions).FirstOrDefault(x => (x.ProjectCode == clean || x.ProjectCode == alt) && x.Id == guidId);
         if (entity == null) return null;
         
         entity.MinutesHtml = request.Minutes;
@@ -463,16 +498,17 @@ public class CskhCoordinationService : ICskhCoordinationService
 
     public ProjectMeetingDto? ToggleMeetingAction(string projectCode, string id, string actionId, bool done)
     {
+        if (!Guid.TryParse(id, out var guidId)) return null;
+        if (!Guid.TryParse(actionId, out var actionGuid)) return null;
         var (clean, alt) = NormalizeProjectCode(projectCode);
-        var entity = _dbContext.ProjectMeetings.Include(x => x.Actions).FirstOrDefault(x => (x.ProjectCode == clean || x.ProjectCode == alt) && x.Id == Guid.Parse(id));
+        var entity = _dbContext.ProjectMeetings.Include(x => x.Actions).FirstOrDefault(x => (x.ProjectCode == clean || x.ProjectCode == alt) && x.Id == guidId);
         if (entity == null) return null;
         
-        var action = entity.Actions.FirstOrDefault(a => a.Id == Guid.Parse(actionId));
-        if (action != null)
-        {
-            action.IsDone = done;
-            _dbContext.SaveChanges();
-        }
+        var action = entity.Actions.FirstOrDefault(a => a.Id == actionGuid);
+        if (action == null) return null;
+
+        action.IsDone = done;
+        _dbContext.SaveChanges();
         
         return new ProjectMeetingDto(
             entity.Id.ToString(), entity.Code, entity.ProjectCode, entity.Title, entity.MeetingDate.ToString("yyyy-MM-dd"), 
@@ -486,8 +522,9 @@ public class CskhCoordinationService : ICskhCoordinationService
 
     public bool DeleteMeeting(string projectCode, string id)
     {
+        if (!Guid.TryParse(id, out var guidId)) return false;
         var (clean, alt) = NormalizeProjectCode(projectCode);
-        var entity = _dbContext.ProjectMeetings.FirstOrDefault(x => (x.ProjectCode == clean || x.ProjectCode == alt) && x.Id == Guid.Parse(id));
+        var entity = _dbContext.ProjectMeetings.FirstOrDefault(x => (x.ProjectCode == clean || x.ProjectCode == alt) && x.Id == guidId);
         if (entity == null) return false;
         _dbContext.ProjectMeetings.Remove(entity);
         _dbContext.SaveChanges();

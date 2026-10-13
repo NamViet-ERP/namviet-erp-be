@@ -9,13 +9,17 @@ public record MaterialDto(
     string Unit, string? TechnicalSpec, string? GeneralTechnicalSpec, string? QualityStandard,
     decimal? CeilingPrice, string? AbcClass,
     bool IsConsumable,
-    bool IsActive);
+    bool IsActive,
+    string? Origin = null,
+    string? ImageUrl = null);
 
 public record UpsertMaterialRequest(
     string MaterialCode, string MaterialName, int CategoryId,
     string Unit, string? TechnicalSpec, string? GeneralTechnicalSpec, string? QualityStandard,
     decimal? CeilingPrice = null, string? AbcClass = null,
-    bool IsConsumable = false);
+    bool IsConsumable = false,
+    string? Origin = null,
+    string? ImageUrl = null);
 
 // ── Suppliers ─────────────────────────────────────────────────────────────
 public record SupplierDto(
@@ -248,6 +252,12 @@ public record MaterialUnitDto(
     int Id, string Name, int SortOrder, bool IsActive);
 
 public record UpsertMaterialUnitRequest(
+    string Name, int SortOrder = 0, bool IsActive = true);
+
+public record MaterialOriginDto(
+    int Id, string Name, int SortOrder, bool IsActive);
+
+public record UpsertMaterialOriginRequest(
     string Name, int SortOrder = 0, bool IsActive = true);
 
 // ── Transactions ──────────────────────────────────────────────────────────
