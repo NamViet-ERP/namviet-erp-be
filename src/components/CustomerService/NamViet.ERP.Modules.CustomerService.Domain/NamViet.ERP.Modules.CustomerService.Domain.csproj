@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>NamViet.ERP.Modules.CustomerService.Domain</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\libraries\NamViet.ERP.SharedKernel\NamViet.ERP.SharedKernel.csproj" />
+    <ProjectReference Include="..\..\Warehouse\NamViet.ERP.Modules.Warehouse.Domain\NamViet.ERP.Modules.Warehouse.Domain.csproj" />
+  </ItemGroup>
+</Project>

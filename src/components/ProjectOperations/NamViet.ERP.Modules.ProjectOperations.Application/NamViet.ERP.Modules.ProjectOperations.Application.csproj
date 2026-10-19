@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>NamViet.ERP.Modules.ProjectOperations.Application</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\NamViet.ERP.Modules.ProjectOperations.Domain\NamViet.ERP.Modules.ProjectOperations.Domain.csproj" />
+    <ProjectReference Include="..\..\..\libraries\NamViet.ERP.Application.Abstractions\NamViet.ERP.Application.Abstractions.csproj" />
+    <ProjectReference Include="..\..\Warehouse\NamViet.ERP.Modules.Warehouse.Application\NamViet.ERP.Modules.Warehouse.Application.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="FluentValidation" Version="11.12.0" />
+    <PackageReference Include="Mapster" Version="7.4.0" />
+  </ItemGroup>
+</Project>

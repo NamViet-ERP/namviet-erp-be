@@ -161,7 +161,7 @@ static void AppendIdempotentScript(StringBuilder output, string moduleName, DbCo
 }
 
 static IdentityContext CreateIdentityContext(string connectionString)
-{
+{   
     var options = new DbContextOptionsBuilder<IdentityContext>()
         .UseNpgsql(connectionString, postgres =>
             postgres.MigrationsHistoryTable("__ef_migrations_identity", "identity"))

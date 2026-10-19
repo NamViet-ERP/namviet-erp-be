@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>NamViet.ERP.Modules.Procurement.Infrastructure</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\NamViet.ERP.Modules.Procurement.Application\NamViet.ERP.Modules.Procurement.Application.csproj" />
+    <ProjectReference Include="..\..\..\libraries\NamViet.ERP.SharedKernel\NamViet.ERP.SharedKernel.csproj" />
+    <ProjectReference Include="..\..\Warehouse\NamViet.ERP.Modules.Warehouse.Infrastructure\NamViet.ERP.Modules.Warehouse.Infrastructure.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="8.0.11" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="8.0.29">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+  </ItemGroup>
+</Project>

@@ -6,17 +6,17 @@ WORKDIR /src
 # khi chỉ thay đổi source. Không COPY .sln — sln còn Tests/Migrator mà
 # .dockerignore loại tests/ và scripts/, restore theo sln sẽ fail ngay.
 COPY Directory.Build.props ./
-COPY src/BuildingBlocks/NamViet.ERP.SharedKernel/NamViet.ERP.SharedKernel.csproj src/BuildingBlocks/NamViet.ERP.SharedKernel/
-COPY src/BuildingBlocks/NamViet.ERP.Application.Abstractions/NamViet.ERP.Application.Abstractions.csproj src/BuildingBlocks/NamViet.ERP.Application.Abstractions/
-COPY src/Modules/Identity/NamViet.ERP.Modules.Identity.Domain/NamViet.ERP.Modules.Identity.Domain.csproj src/Modules/Identity/NamViet.ERP.Modules.Identity.Domain/
-COPY src/Modules/Identity/NamViet.ERP.Modules.Identity.Application/NamViet.ERP.Modules.Identity.Application.csproj src/Modules/Identity/NamViet.ERP.Modules.Identity.Application/
-COPY src/Modules/Identity/NamViet.ERP.Modules.Identity.Infrastructure/NamViet.ERP.Modules.Identity.Infrastructure.csproj src/Modules/Identity/NamViet.ERP.Modules.Identity.Infrastructure/
-COPY src/Modules/Warehouse/NamViet.ERP.Modules.Warehouse.Domain/NamViet.ERP.Modules.Warehouse.Domain.csproj src/Modules/Warehouse/NamViet.ERP.Modules.Warehouse.Domain/
-COPY src/Modules/Warehouse/NamViet.ERP.Modules.Warehouse.Application/NamViet.ERP.Modules.Warehouse.Application.csproj src/Modules/Warehouse/NamViet.ERP.Modules.Warehouse.Application/
-COPY src/Modules/Warehouse/NamViet.ERP.Modules.Warehouse.Infrastructure/NamViet.ERP.Modules.Warehouse.Infrastructure.csproj src/Modules/Warehouse/NamViet.ERP.Modules.Warehouse.Infrastructure/
-COPY src/Modules/Hr/NamViet.ERP.Modules.Hr.Domain/NamViet.ERP.Modules.Hr.Domain.csproj src/Modules/Hr/NamViet.ERP.Modules.Hr.Domain/
-COPY src/Modules/Hr/NamViet.ERP.Modules.Hr.Application/NamViet.ERP.Modules.Hr.Application.csproj src/Modules/Hr/NamViet.ERP.Modules.Hr.Application/
-COPY src/Modules/Hr/NamViet.ERP.Modules.Hr.Infrastructure/NamViet.ERP.Modules.Hr.Infrastructure.csproj src/Modules/Hr/NamViet.ERP.Modules.Hr.Infrastructure/
+COPY src/libraries/NamViet.ERP.SharedKernel/NamViet.ERP.SharedKernel.csproj src/libraries/NamViet.ERP.SharedKernel/
+COPY src/libraries/NamViet.ERP.Application.Abstractions/NamViet.ERP.Application.Abstractions.csproj src/libraries/NamViet.ERP.Application.Abstractions/
+COPY src/components/Identity/NamViet.ERP.Modules.Identity.Domain/NamViet.ERP.Modules.Identity.Domain.csproj src/components/Identity/NamViet.ERP.Modules.Identity.Domain/
+COPY src/components/Identity/NamViet.ERP.Modules.Identity.Application/NamViet.ERP.Modules.Identity.Application.csproj src/components/Identity/NamViet.ERP.Modules.Identity.Application/
+COPY src/components/Identity/NamViet.ERP.Modules.Identity.Infrastructure/NamViet.ERP.Modules.Identity.Infrastructure.csproj src/components/Identity/NamViet.ERP.Modules.Identity.Infrastructure/
+COPY src/components/Warehouse/NamViet.ERP.Modules.Warehouse.Domain/NamViet.ERP.Modules.Warehouse.Domain.csproj src/components/Warehouse/NamViet.ERP.Modules.Warehouse.Domain/
+COPY src/components/Warehouse/NamViet.ERP.Modules.Warehouse.Application/NamViet.ERP.Modules.Warehouse.Application.csproj src/components/Warehouse/NamViet.ERP.Modules.Warehouse.Application/
+COPY src/components/Warehouse/NamViet.ERP.Modules.Warehouse.Infrastructure/NamViet.ERP.Modules.Warehouse.Infrastructure.csproj src/components/Warehouse/NamViet.ERP.Modules.Warehouse.Infrastructure/
+COPY src/components/Hr/NamViet.ERP.Modules.Hr.Domain/NamViet.ERP.Modules.Hr.Domain.csproj src/components/Hr/NamViet.ERP.Modules.Hr.Domain/
+COPY src/components/Hr/NamViet.ERP.Modules.Hr.Application/NamViet.ERP.Modules.Hr.Application.csproj src/components/Hr/NamViet.ERP.Modules.Hr.Application/
+COPY src/components/Hr/NamViet.ERP.Modules.Hr.Infrastructure/NamViet.ERP.Modules.Hr.Infrastructure.csproj src/components/Hr/NamViet.ERP.Modules.Hr.Infrastructure/
 COPY src/ApiHost/NamViet.ERP.Api/NamViet.ERP.Api.csproj src/ApiHost/NamViet.ERP.Api/
 RUN dotnet restore src/ApiHost/NamViet.ERP.Api/NamViet.ERP.Api.csproj
 

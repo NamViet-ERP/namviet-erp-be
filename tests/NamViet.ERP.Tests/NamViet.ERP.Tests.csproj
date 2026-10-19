@@ -25,7 +25,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\ApiHost\NamViet.ERP.Api\NamViet.ERP.Api.csproj" />
-    <ProjectReference Include="..\..\src\Modules\Identity\NamViet.ERP.Modules.Identity.Application\NamViet.ERP.Modules.Identity.Application.csproj" />
+    <ProjectReference Include="..\..\src\components\Identity\NamViet.ERP.Modules.Identity.Application\NamViet.ERP.Modules.Identity.Application.csproj" />
   </ItemGroup>
 
 </Project>

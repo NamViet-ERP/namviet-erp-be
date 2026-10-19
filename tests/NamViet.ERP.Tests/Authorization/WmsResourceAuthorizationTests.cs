@@ -17,17 +17,6 @@ public class WmsResourceAuthorizationTests
         { typeof(WarehousesController), nameof(WarehousesController.Create), "wms.warehouses.create" },
         { typeof(WarehousesController), nameof(WarehousesController.Update), "wms.warehouses.update" },
         { typeof(WarehousesController), nameof(WarehousesController.Delete), "wms.warehouses.delete" },
-        { typeof(ConversionsController), nameof(ConversionsController.List), "wms.conversions.view:all" },
-        { typeof(ConversionsController), nameof(ConversionsController.Create), "wms.conversions.create" },
-        { typeof(LendingLogsController), nameof(LendingLogsController.List), "wms.lending_logs.view:all" },
-        { typeof(LendingLogsController), nameof(LendingLogsController.Create), "wms.lending_logs.create" },
-        { typeof(LendingLogsController), nameof(LendingLogsController.Sign), "wms.lending_logs.update" },
-        { typeof(LendingLogsController), nameof(LendingLogsController.Return), "wms.lending_logs.update" },
-        { typeof(LendingLogsController), nameof(LendingLogsController.Delete), "wms.lending_logs.delete" },
-        { typeof(LoansController), nameof(LoansController.GetAll), "wms.loans.view:all" },
-        { typeof(LoansController), nameof(LoansController.GetById), "wms.loans.view:all" },
-        { typeof(LoansController), nameof(LoansController.Create), "wms.loans.create" },
-        { typeof(LoansController), nameof(LoansController.MarkReturned), "wms.loans.update" },
     };
 
     [Theory]

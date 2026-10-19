@@ -161,6 +161,7 @@ builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Wms.ProjectWareh
 builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Wms.IStocktakeFreezeGuard, NamViet.ERP.Api.Application.Services.Wms.StocktakeFreezeGuard>();
 builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Wms.IImportApplicationService, NamViet.ERP.Api.Application.Services.Wms.ImportApplicationService>();
 builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Wms.IImportExcelService, NamViet.ERP.Api.Application.Services.Wms.ImportExcelService>();
+builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Wms.IMaterialImportExcelService, NamViet.ERP.Api.Application.Services.Wms.MaterialImportExcelService>();
 builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Wms.IExportApplicationService, NamViet.ERP.Api.Application.Services.Wms.ExportApplicationService>();
 builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Wms.ITransferApplicationService, NamViet.ERP.Api.Application.Services.Wms.TransferApplicationService>();
 builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Wms.IExportReturnApplicationService, NamViet.ERP.Api.Application.Services.Wms.ExportReturnApplicationService>();
@@ -227,9 +228,9 @@ builder.Services.AddSwaggerGen(opt =>
 {
     opt.SwaggerDoc("v1", new OpenApiInfo
     {
-        Title = "NamViet ERP API",
+        Title = "Mayzer ERP API",
         Version = "v1",
-        Description = "Backend API for NamViet ERP"
+        Description = "Enterprise Backend API for Mayzer ERP System"
     });
     // Emit accurate nullability from C# NRT so FE OpenAPI codegen gets required vs optional right.
     opt.SupportNonNullableReferenceTypes();

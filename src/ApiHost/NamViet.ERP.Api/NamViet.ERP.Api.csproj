@@ -4,13 +4,19 @@
     <UserSecretsId>namviet-erp-api</UserSecretsId>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="..\..\BuildingBlocks\NamViet.ERP.Application.Abstractions\NamViet.ERP.Application.Abstractions.csproj" />
-    <ProjectReference Include="..\..\Modules\Identity\NamViet.ERP.Modules.Identity.Infrastructure\NamViet.ERP.Modules.Identity.Infrastructure.csproj" />
-    <ProjectReference Include="..\..\Modules\Warehouse\NamViet.ERP.Modules.Warehouse.Infrastructure\NamViet.ERP.Modules.Warehouse.Infrastructure.csproj" />
-    <ProjectReference Include="..\..\Modules\Hr\NamViet.ERP.Modules.Hr.Infrastructure\NamViet.ERP.Modules.Hr.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\libraries\NamViet.ERP.Application.Abstractions\NamViet.ERP.Application.Abstractions.csproj" />
+    <ProjectReference Include="..\..\components\Identity\NamViet.ERP.Modules.Identity.Infrastructure\NamViet.ERP.Modules.Identity.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\components\Warehouse\NamViet.ERP.Modules.Warehouse.Infrastructure\NamViet.ERP.Modules.Warehouse.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\components\Hr\NamViet.ERP.Modules.Hr.Infrastructure\NamViet.ERP.Modules.Hr.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\components\Procurement\NamViet.ERP.Modules.Procurement.Infrastructure\NamViet.ERP.Modules.Procurement.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\components\ProjectOperations\NamViet.ERP.Modules.ProjectOperations.Infrastructure\NamViet.ERP.Modules.ProjectOperations.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\components\CustomerService\NamViet.ERP.Modules.CustomerService.Infrastructure\NamViet.ERP.Modules.CustomerService.Infrastructure.csproj" />
   </ItemGroup>
   <ItemGroup>
     <Content Remove="wwwroot\uploads\**" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="..\..\components\*\Api\**\*.cs" Link="Controllers\%(RecursiveDir)%(Filename)%(Extension)" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.EntityFrameworkCore.Abstractions" Version="8.0.29" />
