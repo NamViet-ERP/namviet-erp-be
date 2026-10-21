@@ -187,8 +187,15 @@ public class ExportReturnsController(
     {
         var dto = await exportReturns.GetAttachmentAsync(id, attachmentId, ct);
         if (dto is null) return NotFound();
-        var stored = await fileStorage.OpenReadAsync(dto.StorageKey, ct);
-        if (stored is null) return NotFound();
-        return File(stored.Stream, stored.ResolveContentType(dto.FileName), dto.FileName);
+        try
+        {
+            var stored = await fileStorage.OpenReadAsync(dto.StorageKey, ct);
+            if (stored is null) return NotFound();
+            return File(stored.Stream, stored.ResolveContentType(dto.FileName), dto.FileName);
+        }
+        catch (Exception)
+        {
+            return NotFound();
+        }
     }
 }

@@ -75,10 +75,18 @@ public sealed class S3FileStorage(
         }
         catch (AmazonS3Exception ex) when (
             ex.StatusCode == System.Net.HttpStatusCode.NotFound
+            || ex.StatusCode == System.Net.HttpStatusCode.Forbidden
             || string.Equals(ex.ErrorCode, "NoSuchKey", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(ex.ErrorCode, "NotFound", StringComparison.OrdinalIgnoreCase))
+            || string.Equals(ex.ErrorCode, "NotFound", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(ex.ErrorCode, "AccessDenied", StringComparison.OrdinalIgnoreCase))
         {
-            logger.LogDebug("S3 object not found: {Key} in bucket {Bucket}", s3Key, _bucketName);
+            logger.LogDebug("S3 object not found or access denied: {Key} in bucket {Bucket} (StatusCode={StatusCode}, ErrorCode={ErrorCode})",
+                s3Key, _bucketName, ex.StatusCode, ex.ErrorCode);
+            return null;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Unexpected error reading S3 object: {Key} in bucket {Bucket}", s3Key, _bucketName);
             return null;
         }
     }

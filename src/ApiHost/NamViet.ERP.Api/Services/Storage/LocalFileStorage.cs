@@ -55,15 +55,22 @@ public class LocalFileStorage(IWebHostEnvironment env, IConfiguration configurat
         var stored = Get(storageKey);
         if (stored is null) return Task.FromResult<StoredFileStream?>(null);
 
-        var stream = new FileStream(
-            stored.FullPath,
-            FileMode.Open,
-            FileAccess.Read,
-            FileShare.Read,
-            bufferSize: 4096,
-            useAsync: true);
+        try
+        {
+            var stream = new FileStream(
+                stored.FullPath,
+                FileMode.Open,
+                FileAccess.Read,
+                FileShare.Read,
+                bufferSize: 4096,
+                useAsync: true);
 
-        return Task.FromResult<StoredFileStream?>(new StoredFileStream(stream, GuessContentType(stored.FullPath), stored.Size));
+            return Task.FromResult<StoredFileStream?>(new StoredFileStream(stream, GuessContentType(stored.FullPath), stored.Size));
+        }
+        catch (Exception)
+        {
+            return Task.FromResult<StoredFileStream?>(null);
+        }
     }
 
     private static string GuessContentType(string path)
