@@ -17,6 +17,15 @@ COPY src/components/Warehouse/NamViet.ERP.Modules.Warehouse.Infrastructure/NamVi
 COPY src/components/Hr/NamViet.ERP.Modules.Hr.Domain/NamViet.ERP.Modules.Hr.Domain.csproj src/components/Hr/NamViet.ERP.Modules.Hr.Domain/
 COPY src/components/Hr/NamViet.ERP.Modules.Hr.Application/NamViet.ERP.Modules.Hr.Application.csproj src/components/Hr/NamViet.ERP.Modules.Hr.Application/
 COPY src/components/Hr/NamViet.ERP.Modules.Hr.Infrastructure/NamViet.ERP.Modules.Hr.Infrastructure.csproj src/components/Hr/NamViet.ERP.Modules.Hr.Infrastructure/
+COPY src/components/Procurement/NamViet.ERP.Modules.Procurement.Domain/NamViet.ERP.Modules.Procurement.Domain.csproj src/components/Procurement/NamViet.ERP.Modules.Procurement.Domain/
+COPY src/components/Procurement/NamViet.ERP.Modules.Procurement.Application/NamViet.ERP.Modules.Procurement.Application.csproj src/components/Procurement/NamViet.ERP.Modules.Procurement.Application/
+COPY src/components/Procurement/NamViet.ERP.Modules.Procurement.Infrastructure/NamViet.ERP.Modules.Procurement.Infrastructure.csproj src/components/Procurement/NamViet.ERP.Modules.Procurement.Infrastructure/
+COPY src/components/ProjectOperations/NamViet.ERP.Modules.ProjectOperations.Domain/NamViet.ERP.Modules.ProjectOperations.Domain.csproj src/components/ProjectOperations/NamViet.ERP.Modules.ProjectOperations.Domain/
+COPY src/components/ProjectOperations/NamViet.ERP.Modules.ProjectOperations.Application/NamViet.ERP.Modules.ProjectOperations.Application.csproj src/components/ProjectOperations/NamViet.ERP.Modules.ProjectOperations.Application/
+COPY src/components/ProjectOperations/NamViet.ERP.Modules.ProjectOperations.Infrastructure/NamViet.ERP.Modules.ProjectOperations.Infrastructure.csproj src/components/ProjectOperations/NamViet.ERP.Modules.ProjectOperations.Infrastructure/
+COPY src/components/CustomerService/NamViet.ERP.Modules.CustomerService.Domain/NamViet.ERP.Modules.CustomerService.Domain.csproj src/components/CustomerService/NamViet.ERP.Modules.CustomerService.Domain/
+COPY src/components/CustomerService/NamViet.ERP.Modules.CustomerService.Application/NamViet.ERP.Modules.CustomerService.Application.csproj src/components/CustomerService/NamViet.ERP.Modules.CustomerService.Application/
+COPY src/components/CustomerService/NamViet.ERP.Modules.CustomerService.Infrastructure/NamViet.ERP.Modules.CustomerService.Infrastructure.csproj src/components/CustomerService/NamViet.ERP.Modules.CustomerService.Infrastructure/
 COPY src/ApiHost/NamViet.ERP.Api/NamViet.ERP.Api.csproj src/ApiHost/NamViet.ERP.Api/
 RUN dotnet restore src/ApiHost/NamViet.ERP.Api/NamViet.ERP.Api.csproj
 
