@@ -319,6 +319,8 @@ app.MapHealthChecks("/health/ready", new HealthCheckOptions
     },
 });
 
+await app.ApplyDatabaseMigrationsAsync();
+
 app.Run();
 
 static void RegisterFileStorage(IServiceCollection services, IConfiguration configuration)
