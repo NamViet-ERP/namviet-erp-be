@@ -28,6 +28,11 @@ public sealed partial class PurchaseOrderService
         var planCode = request.PlanCode?.Trim()
             ?? throw new PurchasingConflictException("PlanCode là bắt buộc.");
 
+        EnsureUniquePlanLines(request.Lines);
+        // Hold the plan lock while checking AND reserving its unplaced quantities.
+        await using var tx = await db.Database.BeginTransactionAsync(ct);
+        await TicketCodeAllocator.AcquireNamedLockAsync(db, $"pur_plan_{planCode}", ct);
+
         var plan = await db.PurchasePlans
             .Include(p => p.Lines)
             .FirstOrDefaultAsync(p => p.Code == planCode, ct)
@@ -72,7 +77,6 @@ public sealed partial class PurchaseOrderService
                 throw new PurchasingConflictException($"Đơn giá dòng {planLine.LineNo} không hợp lệ.");
         }
 
-        await using var tx = await db.Database.BeginTransactionAsync(ct);
         await TicketCodeAllocator.AcquireNamedLockAsync(db, "pur_po_code", ct);
 
         var code = await codeGenerator.NextAsync(ct);
@@ -166,6 +170,9 @@ public sealed partial class PurchaseOrderService
     {
         await updateValidator.ValidateAndThrowAsync(request, ct);
 
+        await using var tx = await db.Database.BeginTransactionAsync(ct);
+        if (!await LockOrderPlanAsync(code, ct)) return null;
+
         var order = await db.PurchaseOrders
             .Include(o => o.Items)
             .Include(o => o.Installments)
@@ -180,6 +187,7 @@ public sealed partial class PurchaseOrderService
 
         if (request.Lines is null || request.Lines.Count == 0)
             throw new PurchasingConflictException("PO phải có ít nhất một dòng.");
+        EnsureUniquePlanLines(request.Lines);
         var replaceInstallments = request.InstallmentCount is not null || request.Installments is not null;
         var installmentSpecs = replaceInstallments
             ? BuildInstallmentSpecs(request.InstallmentCount, request.Installments)
@@ -223,8 +231,6 @@ public sealed partial class PurchaseOrderService
                 throw new PurchasingConflictException(
                     $"Số lượng dòng {planLine.LineNo} vượt phần còn lại ({remaining}).");
         }
-
-        await using var tx = await db.Database.BeginTransactionAsync(ct);
 
         if (request.Note is not null)
             order.Note = string.IsNullOrWhiteSpace(request.Note) ? null : request.Note.Trim();
@@ -302,6 +308,8 @@ public sealed partial class PurchaseOrderService
 
     public async Task<PurchaseOrderDetailDto?> ApproveAsync(string code, CancellationToken ct = default)
     {
+        await using var tx = await db.Database.BeginTransactionAsync(ct);
+        if (!await LockOrderPlanAsync(code, ct)) return null;
         var order = await db.PurchaseOrders.FirstOrDefaultAsync(o => o.Code == code, ct);
         if (order is null) return null;
 
@@ -314,6 +322,7 @@ public sealed partial class PurchaseOrderService
         order.ApprovedAt = DateTime.UtcNow;
         order.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
+        await tx.CommitAsync(ct);
 
         await activity.WriteAsync(new ActivityEventWriteRequest(
             ActivityModules.Purchasing,
@@ -328,6 +337,8 @@ public sealed partial class PurchaseOrderService
 
     public async Task<PurchaseOrderDetailDto?> UnapproveAsync(string code, CancellationToken ct = default)
     {
+        await using var tx = await db.Database.BeginTransactionAsync(ct);
+        if (!await LockOrderPlanAsync(code, ct)) return null;
         var order = await db.PurchaseOrders
             .Include(o => o.Items)
             .FirstOrDefaultAsync(o => o.Code == code, ct);
@@ -345,6 +356,7 @@ public sealed partial class PurchaseOrderService
         order.ApprovedAt = null;
         order.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
+        await tx.CommitAsync(ct);
 
         await activity.WriteAsync(new ActivityEventWriteRequest(
             ActivityModules.Purchasing,
@@ -359,6 +371,8 @@ public sealed partial class PurchaseOrderService
 
     public async Task<PurchaseOrderDetailDto?> PlaceAsync(string code, CancellationToken ct = default)
     {
+        await using var tx = await db.Database.BeginTransactionAsync(ct);
+        if (!await LockOrderPlanAsync(code, ct)) return null;
         var order = await db.PurchaseOrders
             .Include(o => o.Items)
             .FirstOrDefaultAsync(o => o.Code == code, ct);
@@ -369,9 +383,6 @@ public sealed partial class PurchaseOrderService
 
         if (string.Equals(order.OrderPlacementStatus, PurchaseOrderPlacementStatuses.Placed, StringComparison.OrdinalIgnoreCase))
             return await GetByCodeAsync(code, ct);
-
-        await using var tx = await db.Database.BeginTransactionAsync(ct);
-        await TicketCodeAllocator.AcquireNamedLockAsync(db, $"pur_plan_{order.PlanCode}", ct);
 
         var planLineIds = order.Items
             .Where(i => i.PlanLineId.HasValue)
@@ -439,5 +450,23 @@ public sealed partial class PurchaseOrderService
             EntityCode: code), ct);
 
         return await GetByCodeAsync(code, ct);
+    }
+
+    private static void EnsureUniquePlanLines(IEnumerable<CreatePurchaseOrderLineRequest> lines)
+    {
+        if (lines.GroupBy(line => line.PlanLineId).Any(group => group.Count() > 1))
+            throw new PurchasingConflictException("Mỗi dòng KHMH chỉ được xuất hiện một lần trong PO.");
+    }
+
+    private async Task<bool> LockOrderPlanAsync(string code, CancellationToken ct)
+    {
+        // Read only the immutable plan key before the lock. Load mutable state afterwards.
+        var planCode = await db.PurchaseOrders.AsNoTracking()
+            .Where(order => order.Code == code)
+            .Select(order => order.PlanCode)
+            .FirstOrDefaultAsync(ct);
+        if (planCode is null) return false;
+        await TicketCodeAllocator.AcquireNamedLockAsync(db, $"pur_plan_{planCode}", ct);
+        return true;
     }
 }

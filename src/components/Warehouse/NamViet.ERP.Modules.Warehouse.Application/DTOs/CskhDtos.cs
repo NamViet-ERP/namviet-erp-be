@@ -49,7 +49,8 @@ public record UpdateProjectBottleneckRequest(
     string? DepartmentId,
     string? Pic,
     string? Resolution,
-    string? NoteText);
+    string? NoteText,
+    string? StartedAt = null);
 
 // ── Documents Pipeline (Unified 3-phase & Archive) ───────────────────────────
 
@@ -87,7 +88,9 @@ public record CreateProjectDocumentRequest(
     string? HandoverRecipient = null,
     string? Stage = null,
     string? Status = null,
-    string? StatusLabel = null);
+    string? StatusLabel = null,
+    bool? InternalApproved = null,
+    bool? HandoverSigned = null);
 
 public record UpdateProjectDocumentStatusRequest(
     string Stage,
@@ -125,7 +128,14 @@ public record CreateProjectRequestCenterRequest(
 
 public record UpdateProjectRequestCenterRequest(
     string Status,
-    string? Notes);
+    string? Notes = null,
+    string? Name = null,
+    string? RequestType = null,
+    string? FromParty = null,
+    string? ToDept = null,
+    string? DueDate = null,
+    string? Priority = null,
+    string? Body = null);
 
 // ── Project Meetings & Action Items ──────────────────────────────────────────
 
@@ -161,12 +171,17 @@ public record CreateProjectMeetingRequest(
     string Date,
     string? Attendees,
     string? Agenda,
-    IReadOnlyList<CreateProjectMeetingActionRequest> Actions);
+    IReadOnlyList<CreateProjectMeetingActionRequest> Actions,
+    string? Minutes = null,
+    IReadOnlyList<ProjectMeetingAttachmentDto>? Attachments = null);
 
 public record CreateProjectMeetingActionRequest(
     string Name,
     string DueDate,
-    string? Pic);
+    string? Pic,
+    string? Id = null,
+    bool? Done = null,
+    bool? GeneratedBottleneck = null);
 
 public record UpdateProjectMeetingMinutesRequest(
     string Minutes);

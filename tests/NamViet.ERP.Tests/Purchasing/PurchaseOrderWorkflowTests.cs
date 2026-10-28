@@ -36,6 +36,34 @@ public class PurchaseOrderWorkflowTests : IDisposable
     }
 
     [Fact]
+    public async Task Create_RejectsDuplicatePlanLine_WithoutReservingAnyQuantity()
+    {
+        var plan = await SeedPlanWithLineAsync("NCC Alpha", 10);
+        var duplicate = new CreatePurchaseOrderLineRequest(plan.Lines[0].Id, 6, 1000, null, null);
+
+        await Assert.ThrowsAsync<PurchasingConflictException>(() => _orders.CreateAsync(
+            new CreatePurchaseOrderRequest(plan.Code, 1, null, null, [duplicate, duplicate], Installments: OneInstallment())));
+
+        Assert.Empty(await _db.PurchaseOrders.ToListAsync());
+        Assert.Equal(10m, (await _plans.GetByCodeAsync(plan.Code))!.Lines[0].RemainingOrderableQty);
+    }
+
+    [Fact]
+    public async Task Update_RejectsDuplicatePlanLine_AndPreservesOriginalReservation()
+    {
+        var plan = await SeedPlanWithLineAsync("NCC Alpha", 10);
+        var order = await _orders.CreateAsync(new CreatePurchaseOrderRequest(plan.Code, 1, null, null,
+            [new(plan.Lines[0].Id, 2, 1000, null, null)], Installments: OneInstallment()));
+        var duplicate = new CreatePurchaseOrderLineRequest(plan.Lines[0].Id, 6, 1000, null, null);
+
+        await Assert.ThrowsAsync<PurchasingConflictException>(() => _orders.UpdateAsync(order.Code,
+            new UpdatePurchaseOrderRequest(null, null, [duplicate, duplicate])));
+
+        Assert.Equal(2m, (await _orders.GetByCodeAsync(order.Code))!.Lines.Single().Ordered);
+        Assert.Equal(8m, (await _plans.GetByCodeAsync(plan.Code))!.Lines[0].RemainingOrderableQty);
+    }
+
+    [Fact]
     public async Task Create_RejectsWrongSupplier()
     {
         var plan = await SeedPlanWithLineAsync(supplierName: "NCC Alpha", qty: 10);

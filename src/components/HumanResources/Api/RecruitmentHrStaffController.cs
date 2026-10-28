@@ -19,7 +19,7 @@ public class RecruitmentHrStaffController(UserManager<ApplicationUser> userManag
     {
         var users = await userManager.GetUsersInRoleAsync("HR");
         var items = users
-            .Where(u => u.IsActive && !string.IsNullOrWhiteSpace(u.Name))
+            .Where(u => u.IsActive && u.DeletedAt == null && !string.IsNullOrWhiteSpace(u.Name))
             .OrderBy(u => u.Name)
             .Select(u => new HrStaffPublicDto(u.Name!))
             .ToList();

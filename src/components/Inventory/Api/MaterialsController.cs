@@ -172,7 +172,7 @@ public class MaterialsController(WarehouseDbContext db, IMaterialImportExcelServ
         [FromServices] NamViet.ERP.Api.Services.Storage.IFileStorage storage,
         CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(key)) return NotFound();
+        if (!NamViet.ERP.Api.Services.Storage.StorageKeyPolicy.IsMaterialImage(key)) return NotFound();
         var stored = await storage.OpenReadAsync(key, ct);
         if (stored is null) return NotFound();
         return File(stored.Stream, stored.ResolveContentType(key), enableRangeProcessing: true);

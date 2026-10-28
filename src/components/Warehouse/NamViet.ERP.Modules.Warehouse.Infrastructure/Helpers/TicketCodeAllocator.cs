@@ -32,14 +32,14 @@ public static class TicketCodeAllocator
 
     /// <summary>
     /// Khóa advisory theo loại phiếu trong transaction hiện tại (PostgreSQL).
-    /// Bỏ qua trên provider không phải relational (InMemory tests).
+    /// Bỏ qua trên provider không phải PostgreSQL (InMemory/SQLite tests).
     /// </summary>
     public static async Task AcquireTypeLockAsync(
         WarehouseDbContext db,
         TransactionType type,
         CancellationToken ct = default)
     {
-        if (!db.Database.IsRelational())
+        if (!db.Database.IsNpgsql())
             return;
 
         var lockKey = $"wms_ticket_{(int)type}";
@@ -53,7 +53,7 @@ public static class TicketCodeAllocator
         string lockKey,
         CancellationToken ct = default)
     {
-        if (!db.Database.IsRelational())
+        if (!db.Database.IsNpgsql())
             return;
 
         await db.Database.ExecuteSqlInterpolatedAsync(

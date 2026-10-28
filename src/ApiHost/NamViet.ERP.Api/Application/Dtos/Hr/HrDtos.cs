@@ -111,7 +111,8 @@ public record PublicCandidateApplicationRequest(
     string Source,
     string? CvFileName = null,
     string? CvFileSize = null,
-    string? CvFileUrl = null);
+    string? CvFileUrl = null,
+    string? HrResponsible = null);
 
 public record UpdateCandidateStatusRequest(
     string Status,

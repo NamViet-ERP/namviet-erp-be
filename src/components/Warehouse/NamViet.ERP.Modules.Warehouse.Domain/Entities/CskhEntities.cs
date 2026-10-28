@@ -43,6 +43,12 @@ public class ProjectBottleneck : BaseEntity
     public string Department { get; set; } = string.Empty;
     public string Assignee { get; set; } = string.Empty;
     public DateOnly ReportedDate { get; set; }
+    public DateOnly? ExpectedAt { get; set; }
+    public string Reason { get; set; } = string.Empty;
+    public string? GanttTask { get; set; }
+    public string? Resolution { get; set; }
+    public string Source { get; set; } = "manual";
+    public string HistoryJson { get; set; } = "[]";
     public int DelayedDays { get; set; }
     
     public Project? Project { get; set; }
@@ -60,7 +66,9 @@ public class ProjectRequest : BaseEntity
     public string Status { get; set; } = "pending";
     public string Requester { get; set; } = string.Empty;
     public DateOnly RequestDate { get; set; }
-    public DateOnly ExpectedDate { get; set; }
+    public DateOnly? ExpectedDate { get; set; }
+    public string? ToDept { get; set; }
+    public string? Body { get; set; }
     
     public Project? Project { get; set; }
 }
@@ -78,6 +86,8 @@ public class ProjectMeeting : BaseEntity
     public string Status { get; set; } = "planned";
     public string Type { get; set; } = "weekly";
     public string MinutesHtml { get; set; } = string.Empty;
+    public string Agenda { get; set; } = string.Empty;
+    public string AttachmentsJson { get; set; } = "[]";
 
     public Project? Project { get; set; }
     public ICollection<ProjectMeetingAction> Actions { get; set; } = new List<ProjectMeetingAction>();
@@ -91,6 +101,7 @@ public class ProjectMeetingAction : BaseEntity
     public string Assignee { get; set; } = string.Empty;
     public DateOnly DueDate { get; set; }
     public bool IsDone { get; set; } = false;
+    public bool GeneratedBottleneck { get; set; }
 
     public ProjectMeeting? Meeting { get; set; }
 }

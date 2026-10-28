@@ -7,6 +7,7 @@ using NamViet.ERP.Api.Application.Services.Wms;
 using NamViet.ERP.Api.Infrastructure.Authorization;
 using NamViet.ERP.Modules.Warehouse.Domain.Entities;
 using NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence;
+using NamViet.ERP.Modules.Warehouse.Infrastructure.Helpers;
 using NamViet.ERP.SharedKernel.Authorization;
 using NamViet.ERP.SharedKernel.Interfaces;
 using NamViet.ERP.SharedKernel.Common;
@@ -64,8 +65,8 @@ public class StocktakesController(
             return BadRequest("Vui lòng chọn kho dự án kiểm kê.");
 
         var requestedStatus = string.IsNullOrWhiteSpace(dto.Status) ? "pending" : dto.Status;
-        if (requestedStatus is "approved" or "cancelled")
-            return BadRequest("Phiếu kiểm kê mới không được ở trạng thái đã duyệt hoặc đã hủy. Vui lòng dùng chức năng duyệt phiếu.");
+        if (requestedStatus != "pending")
+            return BadRequest("Phiếu kiểm kê mới phải ở trạng thái chờ duyệt. Vui lòng dùng chức năng duyệt phiếu.");
 
         try
         {
@@ -81,8 +82,6 @@ public class StocktakesController(
             .FirstOrDefaultAsync(p => p.ProjectCode == projectCode && p.DeletedAt == null, ct);
         if (project is null)
             return BadRequest($"Không tìm thấy kho dự án '{projectCode}'.");
-
-        var warehouseId = await EnsureProjectWarehouseAsync(projectCode, project.ProjectName, ct);
 
         if (dto.Items == null || dto.Items.Count == 0)
             return BadRequest("Phiếu kiểm kê phải có ít nhất 1 vật tư.");
@@ -100,17 +99,21 @@ public class StocktakesController(
                 MaterialCode = matCode,
                 Sku = sku,
                 Name = name,
-                SystemQty = i.SystemQty,
                 ActualQty = i.ActualQty,
-                Diff = i.ActualQty - i.SystemQty,
                 Reason = reason,
             };
         }).ToList();
 
         if (items.Any(i => string.IsNullOrWhiteSpace(i.MaterialCode)))
             return BadRequest("Mã vật tư trong phiếu kiểm kê không được để trống.");
+        if (items.Any(i => i.ActualQty < 0))
+            return BadRequest("Số lượng kiểm kê thực tế không được âm.");
+        if (items.Select(i => i.MaterialCode).Distinct(StringComparer.OrdinalIgnoreCase).Count() != items.Count)
+            return BadRequest("Mỗi vật tư chỉ được xuất hiện một lần trong phiếu kiểm kê.");
 
+        var warehouseId = await EnsureProjectWarehouseAsync(projectCode, project.ProjectName, ct);
         await EnsureMaterialsExistAsync(items, ct);
+        await CaptureInventorySnapshotAsync(projectCode, items, ct);
 
         var s = await SequentialCodeHelper.ExecuteWithUniqueRetryAsync(async () =>
         {
@@ -168,6 +171,8 @@ public class StocktakesController(
     public async Task<ActionResult<StocktakeDto>> Update(string id, [FromBody] StocktakeDto dto, CancellationToken ct)
     {
         await EnsureStocktakeSchemaAsync(ct);
+        await using var tx = db.Database.IsRelational() ? await db.Database.BeginTransactionAsync(ct) : null;
+        await TicketCodeAllocator.AcquireNamedLockAsync(db, $"wms_stocktake_{id}", ct);
         var s = await FindAsync(id, ct);
         if (s is null) return NotFound();
         if (s.Status == "approved")
@@ -248,23 +253,27 @@ public class StocktakesController(
                     MaterialCode = matCode,
                     Sku = sku,
                     Name = name,
-                    SystemQty = i.SystemQty,
                     ActualQty = i.ActualQty,
-                    Diff = i.ActualQty - i.SystemQty,
                     Reason = reason,
                 };
             }).ToList();
 
             if (items.Any(i => string.IsNullOrWhiteSpace(i.MaterialCode)))
                 return BadRequest("Mã vật tư trong phiếu kiểm kê không được để trống.");
+            if (items.Any(i => i.ActualQty < 0))
+                return BadRequest("Số lượng kiểm kê thực tế không được âm.");
+            if (items.Select(i => i.MaterialCode).Distinct(StringComparer.OrdinalIgnoreCase).Count() != items.Count)
+                return BadRequest("Mỗi vật tư chỉ được xuất hiện một lần trong phiếu kiểm kê.");
 
             await EnsureMaterialsExistAsync(items, ct);
+            await CaptureInventorySnapshotAsync(s.WarehouseId, items, ct);
 
             db.StocktakeItems.RemoveRange(s.Items);
             s.Items = items;
         }
 
         await db.SaveChangesAsync(ct);
+        if (tx is not null) await tx.CommitAsync(ct);
         return Ok(WmsMapper.ToStocktake(s));
     }
 
@@ -272,7 +281,8 @@ public class StocktakesController(
     [RequirePermission("wms.stocktakes.approve")]
     public async Task<ActionResult<StocktakeDto>> Approve(string id, CancellationToken ct)
     {
-        var s = await FindAsync(id, ct);
+        var s = await db.Stocktakes.AsNoTracking()
+            .FirstOrDefaultAsync(s => s.Id == id && s.DeletedAt == null, ct);
         if (s is null) return NotFound();
         try
         {
@@ -289,6 +299,8 @@ public class StocktakesController(
     [RequirePermission("wms.stocktakes.create")]
     public async Task<IActionResult> Delete(string id, CancellationToken ct)
     {
+        await using var tx = db.Database.IsRelational() ? await db.Database.BeginTransactionAsync(ct) : null;
+        await TicketCodeAllocator.AcquireNamedLockAsync(db, $"wms_stocktake_{id}", ct);
         var s = await FindAsync(id, ct);
         if (s is null) return NotFound();
         if (s.Status == "approved")
@@ -304,7 +316,21 @@ public class StocktakesController(
         s.DeletedAt = DateTime.UtcNow;
         s.IsFrozen = false;
         await db.SaveChangesAsync(ct);
+        if (tx is not null) await tx.CommitAsync(ct);
         return NoContent();
+    }
+
+    private async Task CaptureInventorySnapshotAsync(string projectCode, List<StocktakeItem> items, CancellationToken ct)
+    {
+        var codes = items.Select(i => i.MaterialCode).ToList();
+        var quantities = await db.ProjectInventories.AsNoTracking()
+            .Where(i => i.ProjectCode == projectCode && codes.Contains(i.MaterialCode))
+            .ToDictionaryAsync(i => i.MaterialCode, i => i.ActualImportQty - i.ActualExportQty, ct);
+        foreach (var item in items)
+        {
+            item.SystemQty = quantities.GetValueOrDefault(item.MaterialCode);
+            item.Diff = item.ActualQty - item.SystemQty;
+        }
     }
 
     private async Task<Stocktake?> FindAsync(string id, CancellationToken ct) =>

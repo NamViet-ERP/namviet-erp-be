@@ -7,61 +7,45 @@ namespace NamViet.ERP.Tests.Warehouse;
 [Trait("Category", "Integration")]
 public class MaterialUnitDbTests
 {
-    private const string ConnectionString =
-        "Host=localhost;Port=5434;Database=namviet_erp;Username=erp_admin;Password=change_me_strong";
-
-    private static async Task<bool> CanConnectToPostgresAsync()
+    public sealed class PostgresFactAttribute : FactAttribute
     {
-        try
+        public PostgresFactAttribute()
         {
-            var options = new DbContextOptionsBuilder<WarehouseDbContext>()
-                .UseNpgsql(ConnectionString)
-                .Options;
-            await using var db = new WarehouseDbContext(options);
-            return await db.Database.CanConnectAsync();
-        }
-        catch
-        {
-            return false;
+            if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("NAMVIET_TEST_POSTGRES")))
+                Skip = "Set NAMVIET_TEST_POSTGRES to an isolated migrated test database.";
         }
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task Update_material_unit_toggle_active_persists()
     {
-        if (!await CanConnectToPostgresAsync())
-            return;
-
+        var connectionString = Environment.GetEnvironmentVariable("NAMVIET_TEST_POSTGRES")!;
         var options = new DbContextOptionsBuilder<WarehouseDbContext>()
-            .UseNpgsql(ConnectionString)
+            .UseNpgsql(connectionString)
             .Options;
 
         await using var db = new WarehouseDbContext(options);
-        var unit = await db.MaterialUnits.FirstOrDefaultAsync(u => u.Name == "Bộ");
-        if (unit is null)
+        var unit = new MaterialUnit
         {
-            db.MaterialUnits.Add(new MaterialUnit
-            {
-                Name = "Bộ",
-                SortOrder = 1,
-                IsActive = true,
-                CreatedAt = DateTime.UtcNow,
-            });
-            await db.SaveChangesAsync();
-            unit = await db.MaterialUnits.FirstAsync(u => u.Name == "Bộ");
-        }
-
-        var previous = unit.IsActive;
-        unit.IsActive = !previous;
-        unit.UpdatedAt = DateTime.UtcNow;
+            Name = "test-" + Guid.NewGuid().ToString("N"),
+            SortOrder = 1,
+            IsActive = true,
+            CreatedAt = DateTime.UtcNow,
+        };
+        db.MaterialUnits.Add(unit);
         await db.SaveChangesAsync();
-
-        await using var verify = new WarehouseDbContext(options);
-        var saved = await verify.MaterialUnits.AsNoTracking().FirstAsync(u => u.Id == unit.Id);
-        Assert.Equal(!previous, saved.IsActive);
-
-        saved.IsActive = previous;
-        await verify.MaterialUnits.Where(u => u.Id == unit.Id).ExecuteUpdateAsync(s =>
-            s.SetProperty(u => u.IsActive, previous).SetProperty(u => u.UpdatedAt, DateTime.UtcNow));
+        try
+        {
+            unit.IsActive = false;
+            unit.UpdatedAt = DateTime.UtcNow;
+            await db.SaveChangesAsync();
+            await using var verify = new WarehouseDbContext(options);
+            var saved = await verify.MaterialUnits.AsNoTracking().FirstAsync(u => u.Id == unit.Id);
+            Assert.False(saved.IsActive);
+        }
+        finally
+        {
+            await db.MaterialUnits.Where(u => u.Id == unit.Id).ExecuteDeleteAsync();
+        }
     }
 }

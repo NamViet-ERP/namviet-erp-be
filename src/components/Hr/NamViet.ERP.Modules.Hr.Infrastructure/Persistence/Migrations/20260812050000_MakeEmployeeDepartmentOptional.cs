@@ -1,10 +1,13 @@
 using Microsoft.EntityFrameworkCore.Migrations;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 
 #nullable disable
 
 namespace NamViet.ERP.Modules.Hr.Infrastructure.Persistence.Migrations;
 
 /// <inheritdoc />
+[DbContext(typeof(HrDbContext))]
+[Migration("20260812050000_MakeEmployeeDepartmentOptional")]
 public partial class MakeEmployeeDepartmentOptional : Migration
 {
     /// <inheritdoc />

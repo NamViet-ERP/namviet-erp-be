@@ -67,6 +67,7 @@ public static class IdentityModule
             };
             opt.Events = new JwtBearerEvents
             {
+                OnTokenValidated = ActiveAccountTokenValidator.ValidateAsync,
                 OnMessageReceived = context =>
                 {
                     // Access token chỉ nhận qua Authorization header. Ngoại lệ duy nhất:

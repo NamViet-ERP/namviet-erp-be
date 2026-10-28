@@ -85,7 +85,8 @@ public record UpdateProjectRequest(
     IReadOnlyList<ProjectWarehouseKeeperDto>? WarehouseKeepers = null,
     string? ClientName = null,
     string? ScMembers = null,
-    string? Stage = null);
+    string? Stage = null,
+    DateOnly? StartDate = null);
 
 public record UpdateProjectStageRequest(string? Stage);
 

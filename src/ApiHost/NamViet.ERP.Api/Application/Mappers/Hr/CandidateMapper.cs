@@ -22,7 +22,7 @@ public static class CandidateMapper
         new(
             "", request.FullName, request.Phone, request.Email, request.Gender, request.Address,
             request.BirthDate, request.Education, request.School, request.Major, request.Position,
-            request.Experience, request.Source, "", request.CvFileName ?? "", request.CvFileSize ?? "",
+            request.Experience, request.Source, request.HrResponsible?.Trim() ?? "", request.CvFileName ?? "", request.CvFileSize ?? "",
             "", null, null, null, null, null, null, null, null, null, null, null, null, null, null,
             Status: "New", CvFileUrl: request.CvFileUrl);
 

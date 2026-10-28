@@ -126,39 +126,62 @@ public class ProjectConstructionTasksController(WarehouseDbContext db) : Control
         var project = await db.Projects.FirstOrDefaultAsync(p => p.ProjectCode == code, ct);
         if (project is null) return NotFound();
 
-        var existing = await db.ProjectConstructionTasks
-            .Where(t => t.ProjectCode == code)
-            .ToListAsync(ct);
+        if (request.Tasks is null) return BadRequest("Danh sach cong viec la bat buoc.");
+        var ids = request.Tasks.Select(t => t.Id ?? Guid.NewGuid()).ToList();
+        if (ids.Contains(Guid.Empty) || ids.Distinct().Count() != ids.Count)
+            return BadRequest("Ma cong viec khong hop le hoac bi trung.");
+        var byId = request.Tasks.Select((item, i) => (item, id: ids[i])).ToDictionary(x => x.id, x => x.item);
+        for (var i = 0; i < request.Tasks.Count; i++)
+        {
+            var item = request.Tasks[i];
+            var error = Validate(item.Name, item.PlannedStart, item.PlannedEnd, item.PercentComplete);
+            if (error is not null) return BadRequest(error);
+            if (item.Level < 0) return BadRequest("Cap cong viec khong hop le.");
+            var ancestors = new HashSet<Guid> { ids[i] };
+            var parentId = item.ParentId;
+            while (parentId.HasValue)
+            {
+                if (!ancestors.Add(parentId.Value)) return BadRequest("Cay cong viec khong duoc co chu trinh.");
+                if (!byId.TryGetValue(parentId.Value, out var parent) || !parent.IsGroup)
+                    return BadRequest("Cong viec cha phai la nhom trong cung du an.");
+                parentId = parent.ParentId;
+            }
+        }
+        // Reject keys belonging to another project, including soft-deleted tasks.
+        if (await db.ProjectConstructionTasks.IgnoreQueryFilters()
+            .AnyAsync(t => ids.Contains(t.Id) && t.ProjectCode != code, ct))
+            return BadRequest("Cong viec khong thuoc du an nay.");
 
-        db.ProjectConstructionTasks.RemoveRange(existing);
-
+        var existing = await db.ProjectConstructionTasks.IgnoreQueryFilters()
+            .Where(t => t.ProjectCode == code).ToListAsync(ct);
         var rows = new List<ProjectConstructionTask>();
         for (var i = 0; i < request.Tasks.Count; i++)
         {
             var item = request.Tasks[i];
-            rows.Add(new ProjectConstructionTask
+            var row = existing.SingleOrDefault(t => t.Id == ids[i]);
+            if (row is null)
             {
-                Id = item.Id ?? Guid.NewGuid(),
-                ProjectCode = code,
-                Name = item.Name.Trim(),
-                PlannedStart = item.PlannedStart,
-                PlannedEnd = item.PlannedEnd,
-                PercentComplete = item.PercentComplete,
-                SortOrder = item.SortOrder > 0 ? item.SortOrder : i + 1,
-                WbsCode = item.WbsCode ?? string.Empty,
-                Level = item.Level,
-                ParentId = item.ParentId,
-                IsGroup = item.IsGroup,
-                Department = item.Department,
-                StatusLabel = item.StatusLabel,
-                StatusTone = item.StatusTone,
-                Notes = item.Notes,
-                CreatedAt = DateTime.UtcNow,
-                UpdatedAt = DateTime.UtcNow,
-            });
+                row = new ProjectConstructionTask { Id = ids[i], ProjectCode = code };
+                db.ProjectConstructionTasks.Add(row);
+            }
+            row.Name = item.Name.Trim();
+            row.PlannedStart = item.PlannedStart;
+            row.PlannedEnd = item.PlannedEnd;
+            row.PercentComplete = item.PercentComplete;
+            row.SortOrder = item.SortOrder > 0 ? item.SortOrder : i + 1;
+            row.WbsCode = item.WbsCode ?? string.Empty;
+            row.Level = item.Level;
+            row.ParentId = item.ParentId;
+            row.IsGroup = item.IsGroup;
+            row.Department = item.Department;
+            row.StatusLabel = item.StatusLabel;
+            row.StatusTone = item.StatusTone;
+            row.Notes = item.Notes;
+            row.DeletedAt = null;
+            row.UpdatedAt = DateTime.UtcNow;
+            rows.Add(row);
         }
-
-        db.ProjectConstructionTasks.AddRange(rows);
+        db.ProjectConstructionTasks.RemoveRange(existing.Where(t => !ids.Contains(t.Id)));
         await db.SaveChangesAsync(ct);
 
         var today = TodayVn();
@@ -223,9 +246,12 @@ public class ProjectConstructionTasksController(WarehouseDbContext db) : Control
         return DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, tz));
     }
 
+    private const string BadDateMessage = "Ngay bat dau va ket thuc la bat buoc.";
+
     private static string? Validate(string name, DateOnly start, DateOnly end, int percent)
     {
         if (string.IsNullOrWhiteSpace(name)) return "Tên hạng mục không được trống.";
+        if (start == default || end == default) return BadDateMessage;
         if (end < start) return "Ngày kết thúc kế hoạch phải sau hoặc bằng ngày bắt đầu.";
         if (percent is < 0 or > 100) return "Tiến độ phải từ 0 đến 100.";
         return null;

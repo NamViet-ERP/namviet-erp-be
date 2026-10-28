@@ -108,6 +108,16 @@ public class WarehouseDbContext(DbContextOptions<WarehouseDbContext> options) : 
         base.OnModelCreating(model);
         model.HasDefaultSchema("warehouse");
 
+        // Bind the actual project key, rather than EF's nullable shadow ProjectCode1.
+        model.Entity<ProjectDocument>().HasOne(x => x.Project).WithMany()
+            .HasForeignKey(x => x.ProjectCode).OnDelete(DeleteBehavior.Restrict);
+        model.Entity<ProjectBottleneck>().HasOne(x => x.Project).WithMany()
+            .HasForeignKey(x => x.ProjectCode).OnDelete(DeleteBehavior.Restrict);
+        model.Entity<ProjectRequest>().HasOne(x => x.Project).WithMany()
+            .HasForeignKey(x => x.ProjectCode).OnDelete(DeleteBehavior.Restrict);
+        model.Entity<ProjectMeeting>().HasOne(x => x.Project).WithMany()
+            .HasForeignKey(x => x.ProjectCode).OnDelete(DeleteBehavior.Restrict);
+
         model.Entity<MaterialCategory>(e =>
         {
             e.ToTable("material_categories");

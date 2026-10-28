@@ -4,6 +4,8 @@ using Microsoft.AspNetCore.Mvc;
 using NamViet.ERP.Api.Application.Services.Cskh;
 using NamViet.ERP.Api.Infrastructure.Authorization;
 using NamViet.ERP.Modules.Warehouse.Application.DTOs;
+using NamViet.ERP.Api.Services.Storage;
+using Microsoft.AspNetCore.WebUtilities;
 
 namespace NamViet.ERP.Api.Controllers;
 
@@ -70,6 +72,9 @@ public class ProjectDocumentsController(ICskhCoordinationService cskhService) : 
         System.Threading.CancellationToken ct)
     {
         if (file == null || file.Length == 0) return BadRequest(new { error = "File rỗng." });
+        if (!StorageKeyPolicy.IsSafeSegment(code) || !StorageKeyPolicy.IsSafeSegment(id))
+            return BadRequest("Mã dự án hoặc hồ sơ không hợp lệ.");
+        if (!cskhService.GetDocuments(code).Any(d => d.Id == id)) return NotFound();
 
         var contentType = file.ContentType ?? "application/octet-stream";
         var ext = System.IO.Path.GetExtension(file.FileName);
@@ -91,19 +96,29 @@ public class ProjectDocumentsController(ICskhCoordinationService cskhService) : 
     }
 
     [HttpGet("{id}/download")]
-    [AllowAnonymous]
+    [RequirePermission("wms.projects.view:all")]
     public async Task<IActionResult> DownloadFile(
         string code,
         string id,
-        [FromQuery] string key,
+        [FromQuery] string? key,
         [FromServices] NamViet.ERP.Api.Services.Storage.IFileStorage storage,
         System.Threading.CancellationToken ct)
     {
-        var stored = await storage.OpenReadAsync(key, ct);
-        if (stored == null) return NotFound();
-
         var doc = cskhService.GetDocuments(code).FirstOrDefault(d => d.Id == id);
-        var fileName = doc?.FileName ?? "download";
+        if (doc is null || string.IsNullOrWhiteSpace(doc.DownloadUrl)
+            || !StorageKeyPolicy.IsSafeSegment(code) || !StorageKeyPolicy.IsSafeSegment(id))
+            return NotFound();
+
+        var queryStart = doc.DownloadUrl.IndexOf('?');
+        if (queryStart < 0) return NotFound();
+        var query = QueryHelpers.ParseQuery(doc.DownloadUrl[queryStart..]);
+        var storedKey = query["key"].ToString();
+        if (!StorageKeyPolicy.IsFileInDirectory(storedKey, $"cskh/projects/{code}/docs/{id}")
+            || (key is not null && !string.Equals(key, storedKey, StringComparison.Ordinal))) return NotFound();
+
+        var stored = await storage.OpenReadAsync(storedKey, ct);
+        if (stored == null) return NotFound();
+        var fileName = doc.FileName ?? "download";
 
         return File(stored.Stream, stored.ResolveContentType(fileName), fileName);
     }

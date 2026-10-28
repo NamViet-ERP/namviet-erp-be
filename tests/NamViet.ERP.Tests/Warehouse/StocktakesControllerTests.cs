@@ -77,6 +77,12 @@ public class StocktakesControllerTests : IDisposable
             new Material { MaterialCode = "IN-INT-SU304-2B-1500x4x6000", MaterialName = "Inox 304 - Tấm 1500x4", Unit = "tấm" }
         );
 
+        _db.ProjectInventories.AddRange(
+            new ProjectInventory { ProjectCode = "DA-2026-230", MaterialCode = "IN-INH-SU304-N1-50x50x4x6000", ActualImportQty = 2m },
+            new ProjectInventory { ProjectCode = "DA-2026-230", MaterialCode = "IN-INL-SU304-N1-06x6000", ActualImportQty = 8m },
+            new ProjectInventory { ProjectCode = "DA-2026-230", MaterialCode = "IN-INT-SU304-2B-1500x3x6000", ActualImportQty = 2m },
+            new ProjectInventory { ProjectCode = "DA-2026-230", MaterialCode = "IN-INT-SU304-2B-1500x4x6000", ActualImportQty = 1m });
+
         _db.SaveChanges();
     }
 
@@ -248,6 +254,71 @@ public class StocktakesControllerTests : IDisposable
 
         Assert.Equal(500, created.Items[0].Reason?.Length);
     }
+
+    [Fact]
+    public async Task Create_UsesServerQuantity_AndApprovalLeavesExactlyTheCountedStock()
+    {
+        var result = await _controller.Create(CountRequest(systemQty: 0, actualQty: 1), default);
+        var created = Assert.IsType<StocktakeDto>(Assert.IsType<OkObjectResult>(result.Result).Value);
+        Assert.Equal(2m, created.Items.Single().SystemQty);
+        Assert.Equal(-1m, created.Items.Single().Diff);
+
+        var approval = await _controller.Approve(created.Id, default);
+        Assert.IsType<OkObjectResult>(approval.Result);
+        Assert.Equal(1m, (await _db.ProjectInventories.FirstAsync(i => i.MaterialCode == CountedMaterial)).ActualInventoryQty);
+
+        var repeated = await _controller.Approve(created.Id, default);
+        Assert.IsType<BadRequestObjectResult>(repeated.Result);
+        Assert.Equal(1m, (await _db.ProjectInventories.FirstAsync(i => i.MaterialCode == CountedMaterial)).ActualInventoryQty);
+    }
+
+    [Fact]
+    public async Task Update_IgnoresForgedSystemQuantity_AndSnapshotsCurrentInventory()
+    {
+        var result = await _controller.Create(CountRequest(0, 2), default);
+        var created = Assert.IsType<StocktakeDto>(Assert.IsType<OkObjectResult>(result.Result).Value);
+        var inventory = await _db.ProjectInventories.FirstAsync(i => i.MaterialCode == CountedMaterial);
+        inventory.ApplyActualImport(3);
+        await _db.SaveChangesAsync();
+
+        var updatedResult = await _controller.Update(created.Id, created with { Items = CountRequest(0, 4).Items }, default);
+        var updated = Assert.IsType<StocktakeDto>(Assert.IsType<OkObjectResult>(updatedResult.Result).Value);
+        Assert.Equal(5m, updated.Items.Single().SystemQty);
+        Assert.Equal(-1m, updated.Items.Single().Diff);
+        Assert.IsType<OkObjectResult>((await _controller.Approve(created.Id, default)).Result);
+        Assert.Equal(4m, (await _db.ProjectInventories.FirstAsync(i => i.MaterialCode == CountedMaterial)).ActualInventoryQty);
+    }
+
+    [Fact]
+    public async Task Approve_WhenInventoryMovedSinceCount_RejectsWithoutChangingStockOrStatus()
+    {
+        var result = await _controller.Create(CountRequest(2, 1), default);
+        var created = Assert.IsType<StocktakeDto>(Assert.IsType<OkObjectResult>(result.Result).Value);
+        var inventory = await _db.ProjectInventories.FirstAsync(i => i.MaterialCode == CountedMaterial);
+        inventory.ApplyActualImport(3);
+        await _db.SaveChangesAsync();
+
+        var failure = Assert.IsType<BadRequestObjectResult>((await _controller.Approve(created.Id, default)).Result);
+        Assert.Contains("đã thay đổi", Assert.IsType<string>(failure.Value));
+        Assert.Equal(5m, (await _db.ProjectInventories.FirstAsync(i => i.MaterialCode == CountedMaterial)).ActualInventoryQty);
+        Assert.Equal("pending", (await _db.Stocktakes.FirstAsync(i => i.Id == created.Id)).Status);
+    }
+
+    [Fact]
+    public async Task Create_RejectsDuplicateMaterialsAndNegativeCounts()
+    {
+        var request = CountRequest(2, 1);
+        var duplicate = await _controller.Create(request with { Items = [request.Items[0], request.Items[0]] }, default);
+        Assert.IsType<BadRequestObjectResult>(duplicate.Result);
+        Assert.IsType<BadRequestObjectResult>((await _controller.Create(CountRequest(2, -1), default)).Result);
+        Assert.Empty(await _db.Stocktakes.ToListAsync());
+    }
+
+    private const string CountedMaterial = "IN-INH-SU304-N1-50x50x4x6000";
+
+    private static CreateStocktakeDto CountRequest(decimal systemQty, decimal actualQty) =>
+        new(null, "27/10/2026", null, "pending", "DA-2026-230", "Liên Hạnh", "counting", false, "Count regression",
+            [new(CountedMaterial, CountedMaterial, "Inox 304", systemQty, actualQty, 999m)]);
 
     private class TestCurrentUser : ICurrentUser
     {

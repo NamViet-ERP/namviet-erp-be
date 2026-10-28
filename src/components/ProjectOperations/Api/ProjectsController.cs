@@ -430,6 +430,7 @@ public class ProjectsController(
         p.ProjectName = request.ProjectName;
         p.PmId = request.PmId;
         p.PmName = request.PmName;
+        if (request.StartDate.HasValue) p.StartDate = request.StartDate.Value;
         p.EndDate = request.EndDate;
         p.MaterialBudget = request.MaterialBudget;
         p.Status = request.Status;

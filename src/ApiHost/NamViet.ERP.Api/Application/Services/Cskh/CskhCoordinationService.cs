@@ -1,6 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json;
+using NamViet.ERP.SharedKernel.Common;
+using NamViet.ERP.SharedKernel.Time;
 using NamViet.ERP.Modules.Warehouse.Application.DTOs;
 using NamViet.ERP.Modules.Warehouse.Domain.Entities;
 using NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence;
@@ -39,108 +42,98 @@ public interface ICskhCoordinationService
     bool DeleteMeeting(string projectCode, string id);
 }
 
-public class CskhCoordinationService : ICskhCoordinationService
+public class CskhCoordinationService(WarehouseDbContext dbContext) : ICskhCoordinationService
 {
-    private readonly WarehouseDbContext _dbContext;
+    private readonly WarehouseDbContext _dbContext = dbContext;
 
-    public CskhCoordinationService(WarehouseDbContext dbContext)
+    private static DateOnly ParseDate(string? value) => ParseNullableDate(value)
+        ?? throw new DomainRuleException("Ng?y kh?ng ???c ?? tr?ng.");
+
+    private static DateOnly? ParseNullableDate(string? value)
     {
-        _dbContext = dbContext;
+        if (string.IsNullOrWhiteSpace(value)) return null;
+        if (DateOnly.TryParseExact(value, "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.None, out var date)) return date;
+        throw new DomainRuleException("Ng?y ph?i c? ??nh d?ng yyyy-MM-dd.");
     }
 
-    private DateOnly ParseDate(string? dateStr)
+    private string RequireProject(string projectCode)
     {
-        if (string.IsNullOrEmpty(dateStr)) return DateOnly.FromDateTime(DateTime.Today);
-        if (DateOnly.TryParse(dateStr, out var d)) return d;
-        if (DateTime.TryParse(dateStr, out var dt)) return DateOnly.FromDateTime(dt);
-        return DateOnly.FromDateTime(DateTime.Today);
+        var code = (projectCode ?? string.Empty).Trim();
+        if (!_dbContext.Projects.Any(p => p.ProjectCode == code && p.DeletedAt == null))
+            throw new KeyNotFoundException("Kh?ng t?m th?y d? ?n.");
+        return code;
     }
 
-    private static DateOnly? ParseNullableDate(string? dateStr)
+    // Keep one canonical key: codes containing spaces and hyphens may identify different projects.
+    private (string clean, string alt) NormalizeProjectCode(string projectCode)
     {
-        if (string.IsNullOrWhiteSpace(dateStr)) return null;
-        if (DateOnly.TryParse(dateStr, out var d)) return d;
-        if (DateTime.TryParse(dateStr, out var dt)) return DateOnly.FromDateTime(dt);
-        return null;
+        var code = RequireProject(projectCode);
+        return (code, code);
     }
 
-    private static (string clean, string alt) NormalizeProjectCode(string projectCode)
-    {
-        var clean = (projectCode ?? string.Empty).Trim();
-        var alt = clean.Contains(' ') ? clean.Replace(' ', '-') : clean.Replace('-', ' ');
-        return (clean, alt);
-    }
+    private static string NewCode(string prefix) => $"{prefix}-{VietnamClock.Today:yyyyMMdd}-{Guid.NewGuid():N}";
+    private static List<T> ReadJson<T>(string json) => JsonSerializer.Deserialize<List<T>>(json) ?? [];
 
-    // Bottlenecks
+    private static ProjectBottleneckDto Map(ProjectBottleneck e) => new(
+        e.Id.ToString(), e.Code, e.ProjectCode, e.Title, e.ImpactLevel, e.Status,
+        e.ReportedDate.ToString("yyyy-MM-dd"), e.ExpectedAt?.ToString("yyyy-MM-dd") ?? "",
+        e.Reason, e.GanttTask, e.Department, e.Assignee, e.Resolution, e.Source,
+        ReadJson<ProjectBottleneckHistoryNoteDto>(e.HistoryJson));
+
     public IReadOnlyList<ProjectBottleneckDto> GetBottlenecks(string projectCode)
     {
-        var (clean, alt) = NormalizeProjectCode(projectCode);
-        var entities = _dbContext.ProjectBottlenecks
-            .Where(x => x.ProjectCode == clean || x.ProjectCode == alt)
-            .ToList();
-        return entities.Select(e => new ProjectBottleneckDto(
-            e.Id.ToString(), e.Code, e.ProjectCode, e.Title, e.ImpactLevel, e.Status, 
-            e.ReportedDate.ToString("yyyy-MM-dd"), 
-            e.ReportedDate.AddDays(10).ToString("yyyy-MM-dd"), // mock ExpectedAt
-            "N/A", null, e.Department, e.Assignee, null, "manual", 
-            new List<ProjectBottleneckHistoryNoteDto>()
-        )).ToList();
+        var code = RequireProject(projectCode);
+        return _dbContext.ProjectBottlenecks.Where(x => x.ProjectCode == code).ToList().Select(Map).ToList();
     }
 
     public ProjectBottleneckDto CreateBottleneck(string projectCode, CreateProjectBottleneckRequest request)
     {
         var entity = new ProjectBottleneck
         {
-            ProjectCode = projectCode,
-            Code = $"BN-{DateTime.Now:yyyyMMdd}-{new Random().Next(100, 999)}",
-            Title = request.Name,
-            ImpactLevel = request.Severity,
-            Status = "open",
-            Department = request.DepartmentId ?? "",
-            Assignee = request.Pic ?? "",
-            ReportedDate = ParseDate(request.StartedAt),
-            DelayedDays = 0
+            ProjectCode = RequireProject(projectCode), Code = NewCode("BN"), Title = request.Name,
+            ImpactLevel = request.Severity, Status = "open", Department = request.DepartmentId ?? "",
+            Assignee = request.Pic ?? "", ReportedDate = ParseDate(request.StartedAt),
+            ExpectedAt = ParseDate(request.ExpectedAt), Reason = request.Reason,
+            GanttTask = request.GanttTask, Resolution = request.Resolution, Source = request.Source
         };
         _dbContext.ProjectBottlenecks.Add(entity);
         _dbContext.SaveChanges();
-        return new ProjectBottleneckDto(
-            entity.Id.ToString(), entity.Code, entity.ProjectCode, entity.Title, entity.ImpactLevel, entity.Status, 
-            entity.ReportedDate.ToString("yyyy-MM-dd"), 
-            entity.ReportedDate.AddDays(10).ToString("yyyy-MM-dd"), // mock ExpectedAt
-            request.Reason, request.GanttTask, entity.Department, entity.Assignee, request.Resolution, "manual", 
-            new List<ProjectBottleneckHistoryNoteDto>()
-        );
+        return Map(entity);
     }
 
     public ProjectBottleneckDto? UpdateBottleneck(string projectCode, string id, UpdateProjectBottleneckRequest request)
     {
-        if (!Guid.TryParse(id, out var guidId)) return null;
-        var (clean, alt) = NormalizeProjectCode(projectCode);
-        var entity = _dbContext.ProjectBottlenecks.FirstOrDefault(x => (x.ProjectCode == clean || x.ProjectCode == alt) && x.Id == guidId);
-        if (entity == null) return null;
-        
-        if (request.Name != null) entity.Title = request.Name;
-        if (request.Severity != null) entity.ImpactLevel = request.Severity;
-        if (request.Status != null) entity.Status = request.Status;
-        if (request.DepartmentId != null) entity.Department = request.DepartmentId;
-        if (request.Pic != null) entity.Assignee = request.Pic;
-        
+        var code = RequireProject(projectCode);
+        if (!Guid.TryParse(id, out var guid)) return null;
+        var entity = _dbContext.ProjectBottlenecks.SingleOrDefault(x => x.ProjectCode == code && x.Id == guid);
+        if (entity is null) return null;
+        if (request.Name is not null) entity.Title = request.Name;
+        if (request.Severity is not null) entity.ImpactLevel = request.Severity;
+        if (request.Status is not null) entity.Status = request.Status;
+        if (request.StartedAt is not null) entity.ReportedDate = ParseDate(request.StartedAt);
+        if (request.ExpectedAt is not null) entity.ExpectedAt = ParseDate(request.ExpectedAt);
+        if (request.Reason is not null) entity.Reason = request.Reason;
+        if (request.GanttTask is not null) entity.GanttTask = request.GanttTask;
+        if (request.DepartmentId is not null) entity.Department = request.DepartmentId;
+        if (request.Pic is not null) entity.Assignee = request.Pic;
+        if (request.Resolution is not null) entity.Resolution = request.Resolution;
+        if (!string.IsNullOrWhiteSpace(request.NoteText))
+        {
+            var history = ReadJson<ProjectBottleneckHistoryNoteDto>(entity.HistoryJson);
+            history.Add(new(Guid.NewGuid().ToString(), DateTimeOffset.UtcNow.ToString("O"), request.NoteText));
+            entity.HistoryJson = JsonSerializer.Serialize(history);
+        }
         _dbContext.SaveChanges();
-        return new ProjectBottleneckDto(
-            entity.Id.ToString(), entity.Code, entity.ProjectCode, entity.Title, entity.ImpactLevel, entity.Status, 
-            entity.ReportedDate.ToString("yyyy-MM-dd"), 
-            entity.ReportedDate.AddDays(10).ToString("yyyy-MM-dd"), // mock ExpectedAt
-            request.Reason ?? "", request.GanttTask, entity.Department, entity.Assignee, request.Resolution, "manual", 
-            new List<ProjectBottleneckHistoryNoteDto>()
-        );
+        return Map(entity);
     }
 
     public bool DeleteBottleneck(string projectCode, string id)
     {
-        if (!Guid.TryParse(id, out var guidId)) return false;
-        var (clean, alt) = NormalizeProjectCode(projectCode);
-        var entity = _dbContext.ProjectBottlenecks.FirstOrDefault(x => (x.ProjectCode == clean || x.ProjectCode == alt) && x.Id == guidId);
-        if (entity == null) return false;
+        var code = RequireProject(projectCode);
+        if (!Guid.TryParse(id, out var guid)) return false;
+        var entity = _dbContext.ProjectBottlenecks.SingleOrDefault(x => x.ProjectCode == code && x.Id == guid);
+        if (entity is null) return false;
         _dbContext.ProjectBottlenecks.Remove(entity);
         _dbContext.SaveChanges();
         return true;
@@ -167,7 +160,7 @@ public class CskhCoordinationService : ICskhCoordinationService
             return (0, status, statusLabel);
         }
 
-        var today = DateOnly.FromDateTime(DateTime.Today);
+        var today = VietnamClock.Today;
         if (today > slaDueDate.Value)
         {
             var overdue = today.DayNumber - slaDueDate.Value.DayNumber;
@@ -209,14 +202,14 @@ public class CskhCoordinationService : ICskhCoordinationService
 
         var entity = new ProjectDocument
         {
-            ProjectCode = projectCode,
+            ProjectCode = RequireProject(projectCode),
             Code = string.IsNullOrEmpty(request.Code) ? $"DOC-{DateTime.Now:yyyyMMdd}-{new Random().Next(100, 999)}" : request.Code,
             Name = request.Name,
             DocType = request.DocType,
             Stage = stage,
             Author = request.Author ?? "",
-            InternalApproved = false,
-            HandoverSigned = false,
+            InternalApproved = request.InternalApproved ?? false,
+            HandoverSigned = request.HandoverSigned ?? false,
             HandoverDate = ParseNullableDate(request.HandoverDate),
             HandoverRecipient = request.HandoverRecipient,
             SlaDueDate = slaDueDate,
@@ -278,6 +271,8 @@ public class CskhCoordinationService : ICskhCoordinationService
         entity.HandoverDate = ParseNullableDate(request.HandoverDate);
         entity.HandoverRecipient = request.HandoverRecipient;
         entity.SlaDueDate = ParseNullableDate(request.SlaDueDate);
+        if (request.InternalApproved.HasValue) entity.InternalApproved = request.InternalApproved.Value;
+        if (request.HandoverSigned.HasValue) entity.HandoverSigned = request.HandoverSigned.Value;
         entity.Category = request.Category ?? "";
         entity.FileSize = request.FileSize ?? "";
         entity.FileName = request.FileName ?? "";
@@ -329,203 +324,168 @@ public class CskhCoordinationService : ICskhCoordinationService
         return true;
     }
 
-    // Requests
+    private static ProjectRequestCenterDto Map(ProjectRequest e) => new(
+        e.Id.ToString(), e.Code, e.ProjectCode, e.Title, e.Type, e.Requester, e.ToDept,
+        e.RequestDate.ToString("yyyy-MM-dd"), e.ExpectedDate?.ToString("yyyy-MM-dd"), e.Priority, e.Status, e.Body);
+
     public IReadOnlyList<ProjectRequestCenterDto> GetRequests(string projectCode)
     {
-        var (clean, alt) = NormalizeProjectCode(projectCode);
-        var entities = _dbContext.ProjectRequests
-            .Where(x => x.ProjectCode == clean || x.ProjectCode == alt)
-            .ToList();
-        return entities.Select(e => new ProjectRequestCenterDto(
-            e.Id.ToString(), e.Code, e.ProjectCode, e.Title, e.Type, e.Requester, null, 
-            e.RequestDate.ToString("yyyy-MM-dd"), e.ExpectedDate.ToString("yyyy-MM-dd"), 
-            e.Priority, e.Status, null
-        )).ToList();
+        var code = RequireProject(projectCode);
+        return _dbContext.ProjectRequests.Where(x => x.ProjectCode == code).ToList().Select(Map).ToList();
     }
 
     public ProjectRequestCenterDto CreateRequest(string projectCode, CreateProjectRequestCenterRequest request)
     {
         var entity = new ProjectRequest
         {
-            ProjectCode = projectCode,
-            Code = $"REQ-{DateTime.Now:yyyyMMdd}-{new Random().Next(100, 999)}",
-            Title = request.Name,
-            Type = request.RequestType,
-            Priority = request.Priority,
-            Status = "open",
-            Requester = request.FromParty,
-            RequestDate = DateOnly.FromDateTime(DateTime.Today),
-            ExpectedDate = ParseDate(request.DueDate)
+            ProjectCode = RequireProject(projectCode), Code = NewCode("REQ"), Title = request.Name,
+            Type = request.RequestType, Priority = request.Priority, Status = "open", Requester = request.FromParty,
+            RequestDate = VietnamClock.Today, ExpectedDate = ParseNullableDate(request.DueDate),
+            ToDept = request.ToDept, Body = request.Body
         };
         _dbContext.ProjectRequests.Add(entity);
         _dbContext.SaveChanges();
-        return new ProjectRequestCenterDto(
-            entity.Id.ToString(), entity.Code, entity.ProjectCode, entity.Title, entity.Type, entity.Requester, null, 
-            entity.RequestDate.ToString("yyyy-MM-dd"), entity.ExpectedDate.ToString("yyyy-MM-dd"), 
-            entity.Priority, entity.Status, request.Body
-        );
+        return Map(entity);
     }
 
     public ProjectRequestCenterDto? UpdateRequest(string projectCode, string id, UpdateProjectRequestCenterRequest request)
     {
-        if (!Guid.TryParse(id, out var guidId)) return null;
-        var (clean, alt) = NormalizeProjectCode(projectCode);
-        var entity = _dbContext.ProjectRequests.FirstOrDefault(x => (x.ProjectCode == clean || x.ProjectCode == alt) && x.Id == guidId);
-        if (entity == null) return null;
-        
-        entity.Status = request.Status;
-        
+        var code = RequireProject(projectCode);
+        if (!Guid.TryParse(id, out var guid)) return null;
+        var entity = _dbContext.ProjectRequests.SingleOrDefault(x => x.ProjectCode == code && x.Id == guid);
+        if (entity is null) return null;
+        if (request.Status is not null) entity.Status = request.Status;
+        if (request.Name is not null) entity.Title = request.Name;
+        if (request.RequestType is not null) entity.Type = request.RequestType;
+        if (request.FromParty is not null) entity.Requester = request.FromParty;
+        if (request.ToDept is not null) entity.ToDept = request.ToDept;
+        if (request.DueDate is not null) entity.ExpectedDate = ParseNullableDate(request.DueDate);
+        if (request.Priority is not null) entity.Priority = request.Priority;
+        if (request.Body is not null || request.Notes is not null) entity.Body = request.Body ?? request.Notes;
         _dbContext.SaveChanges();
-        return new ProjectRequestCenterDto(
-            entity.Id.ToString(), entity.Code, entity.ProjectCode, entity.Title, entity.Type, entity.Requester, null, 
-            entity.RequestDate.ToString("yyyy-MM-dd"), entity.ExpectedDate.ToString("yyyy-MM-dd"), 
-            entity.Priority, entity.Status, request.Notes
-        );
+        return Map(entity);
     }
 
     public bool DeleteRequest(string projectCode, string id)
     {
-        if (!Guid.TryParse(id, out var guidId)) return false;
-        var (clean, alt) = NormalizeProjectCode(projectCode);
-        var entity = _dbContext.ProjectRequests.FirstOrDefault(x => (x.ProjectCode == clean || x.ProjectCode == alt) && x.Id == guidId);
-        if (entity == null) return false;
+        var code = RequireProject(projectCode);
+        if (!Guid.TryParse(id, out var guid)) return false;
+        var entity = _dbContext.ProjectRequests.SingleOrDefault(x => x.ProjectCode == code && x.Id == guid);
+        if (entity is null) return false;
         _dbContext.ProjectRequests.Remove(entity);
         _dbContext.SaveChanges();
         return true;
     }
 
-    // Meetings
+    private static ProjectMeetingDto Map(ProjectMeeting e) => new(
+        e.Id.ToString(), e.Code, e.ProjectCode, e.Title, e.MeetingDate.ToString("yyyy-MM-dd"),
+        e.Organizer, e.Agenda, e.MinutesHtml, e.Actions.Count(a => !a.IsDone && a.DueDate < VietnamClock.Today),
+        e.Actions.Select(a => new ProjectMeetingActionDto(a.Id.ToString(), a.Name,
+            a.DueDate.ToString("yyyy-MM-dd"), a.IsDone, a.Assignee, a.GeneratedBottleneck)).ToList(),
+        ReadJson<ProjectMeetingAttachmentDto>(e.AttachmentsJson));
+
+    private ProjectMeeting? FindMeeting(string projectCode, string id)
+    {
+        var code = RequireProject(projectCode);
+        return Guid.TryParse(id, out var guid)
+            ? _dbContext.ProjectMeetings.Include(x => x.Actions).SingleOrDefault(x => x.ProjectCode == code && x.Id == guid)
+            : null;
+    }
+
     public IReadOnlyList<ProjectMeetingDto> GetMeetings(string projectCode)
     {
-        var (clean, alt) = NormalizeProjectCode(projectCode);
-        var entities = _dbContext.ProjectMeetings
-            .Include(x => x.Actions)
-            .Where(x => x.ProjectCode == clean || x.ProjectCode == alt)
-            .ToList();
-        return entities.Select(e => new ProjectMeetingDto(
-            e.Id.ToString(), e.Code, e.ProjectCode, e.Title, e.MeetingDate.ToString("yyyy-MM-dd"), 
-            e.Organizer, null, e.MinutesHtml, 0,
-            e.Actions.Select(a => new ProjectMeetingActionDto(
-                a.Id.ToString(), a.Name, a.DueDate.ToString("yyyy-MM-dd"), a.IsDone, a.Assignee, false
-            )).ToList(),
-            new List<ProjectMeetingAttachmentDto>()
-        )).ToList();
+        var code = RequireProject(projectCode);
+        return _dbContext.ProjectMeetings.Include(x => x.Actions).Where(x => x.ProjectCode == code)
+            .ToList().Select(Map).ToList();
+    }
+
+    private void ApplyMeeting(ProjectMeeting entity, CreateProjectMeetingRequest request)
+    {
+        // Validate the complete action set before changing any tracked rows.
+        var actions = (request.Actions ?? []).Select(a => new
+        {
+            Request = a,
+            Id = a.Id is null ? Guid.NewGuid() : Guid.TryParse(a.Id, out var id) && id != Guid.Empty
+                ? id : throw new DomainRuleException("M? c?ng vi?c kh?ng h?p l?."),
+            DueDate = ParseDate(a.DueDate)
+        }).ToList();
+        if (actions.Any(a => string.IsNullOrWhiteSpace(a.Request.Name)) || actions.Select(a => a.Id).Distinct().Count() != actions.Count)
+            throw new DomainRuleException("C?ng vi?c ph?i c? t?n v? m? kh?ng tr?ng nhau.");
+        var ids = actions.Select(a => a.Id).ToList();
+        if (_dbContext.ProjectMeetingActions.Any(a => ids.Contains(a.Id) && a.MeetingId != entity.Id))
+            throw new DomainRuleException("C?ng vi?c kh?ng thu?c cu?c h?p n?y.");
+        var meetingDate = ParseDate(request.Date);
+
+        entity.Title = request.Name;
+        entity.MeetingDate = meetingDate;
+        entity.Organizer = request.Attendees ?? "";
+        entity.Agenda = request.Agenda ?? "";
+        if (request.Minutes is not null) entity.MinutesHtml = request.Minutes;
+        if (request.Attachments is not null) entity.AttachmentsJson = JsonSerializer.Serialize(request.Attachments);
+        foreach (var removed in entity.Actions.Where(a => !ids.Contains(a.Id)).ToList())
+        {
+            entity.Actions.Remove(removed);
+            _dbContext.ProjectMeetingActions.Remove(removed);
+        }
+        foreach (var input in actions)
+        {
+            var action = entity.Actions.SingleOrDefault(a => a.Id == input.Id);
+            if (action is null)
+            {
+                action = new ProjectMeetingAction { Id = input.Id, MeetingId = entity.Id };
+                entity.Actions.Add(action);
+                _dbContext.ProjectMeetingActions.Add(action);
+            }
+            action.Name = input.Request.Name;
+            action.Assignee = input.Request.Pic ?? "";
+            action.DueDate = input.DueDate;
+            if (input.Request.Done.HasValue) action.IsDone = input.Request.Done.Value;
+            if (input.Request.GeneratedBottleneck.HasValue) action.GeneratedBottleneck = input.Request.GeneratedBottleneck.Value;
+        }
     }
 
     public ProjectMeetingDto CreateMeeting(string projectCode, CreateProjectMeetingRequest request)
     {
-        var entity = new ProjectMeeting
-        {
-            ProjectCode = projectCode,
-            Code = $"MTG-{DateTime.Now:yyyyMMdd}-{new Random().Next(100, 999)}",
-            Title = request.Name,
-            Location = "",
-            Organizer = request.Attendees ?? "",
-            MeetingDate = ParseDate(request.Date),
-            Status = "planned",
-            Type = "weekly",
-            MinutesHtml = request.Agenda ?? ""
-        };
-        
-        foreach (var action in request.Actions)
-        {
-            entity.Actions.Add(new ProjectMeetingAction
-            {
-                Name = action.Name,
-                Assignee = action.Pic ?? "",
-                DueDate = ParseDate(action.DueDate),
-                IsDone = false
-            });
-        }
-        
+        var entity = new ProjectMeeting { ProjectCode = RequireProject(projectCode), Code = NewCode("MTG") };
+        ApplyMeeting(entity, request);
         _dbContext.ProjectMeetings.Add(entity);
         _dbContext.SaveChanges();
-        
-        return new ProjectMeetingDto(
-            entity.Id.ToString(), entity.Code, entity.ProjectCode, entity.Title, entity.MeetingDate.ToString("yyyy-MM-dd"), 
-            entity.Organizer, null, entity.MinutesHtml, 0,
-            entity.Actions.Select(a => new ProjectMeetingActionDto(
-                a.Id.ToString(), a.Name, a.DueDate.ToString("yyyy-MM-dd"), a.IsDone, a.Assignee, false
-            )).ToList(),
-            new List<ProjectMeetingAttachmentDto>()
-        );
+        return Map(entity);
     }
 
     public ProjectMeetingDto? UpdateMeeting(string projectCode, string id, CreateProjectMeetingRequest request)
     {
-        if (!Guid.TryParse(id, out var guidId)) return null;
-        var (clean, alt) = NormalizeProjectCode(projectCode);
-        var entity = _dbContext.ProjectMeetings.Include(x => x.Actions).FirstOrDefault(x => (x.ProjectCode == clean || x.ProjectCode == alt) && x.Id == guidId);
-        if (entity == null) return null;
-
-        entity.Title = request.Name;
-        entity.MeetingDate = ParseDate(request.Date);
-        entity.Organizer = request.Attendees ?? "";
-        entity.MinutesHtml = request.Agenda ?? "";
-
+        var entity = FindMeeting(projectCode, id);
+        if (entity is null) return null;
+        ApplyMeeting(entity, request);
         _dbContext.SaveChanges();
-
-        return new ProjectMeetingDto(
-            entity.Id.ToString(), entity.Code, entity.ProjectCode, entity.Title, entity.MeetingDate.ToString("yyyy-MM-dd"), 
-            entity.Organizer, null, entity.MinutesHtml, 0,
-            entity.Actions.Select(a => new ProjectMeetingActionDto(
-                a.Id.ToString(), a.Name, a.DueDate.ToString("yyyy-MM-dd"), a.IsDone, a.Assignee, false
-            )).ToList(),
-            new List<ProjectMeetingAttachmentDto>()
-        );
+        return Map(entity);
     }
 
     public ProjectMeetingDto? UpdateMeetingMinutes(string projectCode, string id, UpdateProjectMeetingMinutesRequest request)
     {
-        if (!Guid.TryParse(id, out var guidId)) return null;
-        var (clean, alt) = NormalizeProjectCode(projectCode);
-        var entity = _dbContext.ProjectMeetings.Include(x => x.Actions).FirstOrDefault(x => (x.ProjectCode == clean || x.ProjectCode == alt) && x.Id == guidId);
-        if (entity == null) return null;
-        
+        var entity = FindMeeting(projectCode, id);
+        if (entity is null) return null;
         entity.MinutesHtml = request.Minutes;
-        
         _dbContext.SaveChanges();
-        
-        return new ProjectMeetingDto(
-            entity.Id.ToString(), entity.Code, entity.ProjectCode, entity.Title, entity.MeetingDate.ToString("yyyy-MM-dd"), 
-            entity.Organizer, null, entity.MinutesHtml, 0,
-            entity.Actions.Select(a => new ProjectMeetingActionDto(
-                a.Id.ToString(), a.Name, a.DueDate.ToString("yyyy-MM-dd"), a.IsDone, a.Assignee, false
-            )).ToList(),
-            new List<ProjectMeetingAttachmentDto>()
-        );
+        return Map(entity);
     }
 
     public ProjectMeetingDto? ToggleMeetingAction(string projectCode, string id, string actionId, bool done)
     {
-        if (!Guid.TryParse(id, out var guidId)) return null;
-        if (!Guid.TryParse(actionId, out var actionGuid)) return null;
-        var (clean, alt) = NormalizeProjectCode(projectCode);
-        var entity = _dbContext.ProjectMeetings.Include(x => x.Actions).FirstOrDefault(x => (x.ProjectCode == clean || x.ProjectCode == alt) && x.Id == guidId);
-        if (entity == null) return null;
-        
-        var action = entity.Actions.FirstOrDefault(a => a.Id == actionGuid);
-        if (action == null) return null;
-
+        var entity = FindMeeting(projectCode, id);
+        if (entity is null || !Guid.TryParse(actionId, out var guid)) return null;
+        var action = entity.Actions.SingleOrDefault(a => a.Id == guid);
+        if (action is null) return null;
         action.IsDone = done;
         _dbContext.SaveChanges();
-        
-        return new ProjectMeetingDto(
-            entity.Id.ToString(), entity.Code, entity.ProjectCode, entity.Title, entity.MeetingDate.ToString("yyyy-MM-dd"), 
-            entity.Organizer, null, entity.MinutesHtml, 0,
-            entity.Actions.Select(a => new ProjectMeetingActionDto(
-                a.Id.ToString(), a.Name, a.DueDate.ToString("yyyy-MM-dd"), a.IsDone, a.Assignee, false
-            )).ToList(),
-            new List<ProjectMeetingAttachmentDto>()
-        );
+        return Map(entity);
     }
 
     public bool DeleteMeeting(string projectCode, string id)
     {
-        if (!Guid.TryParse(id, out var guidId)) return false;
-        var (clean, alt) = NormalizeProjectCode(projectCode);
-        var entity = _dbContext.ProjectMeetings.FirstOrDefault(x => (x.ProjectCode == clean || x.ProjectCode == alt) && x.Id == guidId);
-        if (entity == null) return false;
+        var entity = FindMeeting(projectCode, id);
+        if (entity is null) return false;
         _dbContext.ProjectMeetings.Remove(entity);
         _dbContext.SaveChanges();
         return true;

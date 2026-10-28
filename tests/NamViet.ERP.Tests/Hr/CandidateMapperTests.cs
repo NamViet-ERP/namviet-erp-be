@@ -57,11 +57,19 @@ public class CandidateMapperTests
     {
         var request = new PublicCandidateApplicationRequest(
             "Ứng viên", "0900000000", "candidate@example.com", "Nam", "Hà Nội",
-            "01/01/2000", "Đại học", "", "", "Kỹ sư", "2", "TopCV");
+            "01/01/2000", "Đại học", "", "", "Kỹ sư", "2", "TopCV", HrResponsible: " HR phụ trách ");
 
         var dto = CandidateMapper.FromPublicApplication(request);
 
         Assert.Null(dto.RecruitmentPlanId);
         Assert.Null(dto.RecruitmentPlanLabel);
+        Assert.Equal("HR phụ trách", dto.HrResponsible);
+        var candidate = new Candidate
+        {
+            FullName = dto.FullName,
+            WorkflowData = System.Text.Json.JsonSerializer.Serialize(dto, CandidateMapper.WorkflowJson)
+        };
+        Assert.Equal("HR phụ trách", CandidateMapper.ToDto(candidate,
+            Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance).HrResponsible);
     }
 }

@@ -176,8 +176,15 @@ public class CandidatesController(
     [EnableRateLimiting(RateLimitPolicies.PublicWrite)]
     public async Task<ActionResult<CandidateDto>> Apply(
         [FromBody] PublicCandidateApplicationRequest request,
+        [FromServices] Microsoft.AspNetCore.Identity.UserManager<NamViet.ERP.Modules.Identity.Domain.Entities.ApplicationUser> userManager,
         CancellationToken ct)
     {
+        var hrName = request.HrResponsible?.Trim();
+        if (string.IsNullOrEmpty(hrName)) return BadRequest("Vui lòng chọn nhân sự phụ trách.");
+        var staff = await userManager.GetUsersInRoleAsync("HR");
+        if (!staff.Any(u => u.IsActive && u.DeletedAt == null && u.Name == hrName))
+            return BadRequest("Nhân sự phụ trách không còn hoạt động. Vui lòng chọn lại.");
+
         if (!string.IsNullOrWhiteSpace(request.CvFileUrl)
             && !request.CvFileUrl.StartsWith("hr/candidates/", StringComparison.Ordinal))
             return BadRequest("Khóa lưu trữ CV không hợp lệ.");

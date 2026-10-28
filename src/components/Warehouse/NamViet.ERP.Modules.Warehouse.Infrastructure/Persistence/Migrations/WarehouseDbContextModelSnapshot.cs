@@ -761,6 +761,16 @@ namespace NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<DateOnly?>("ExpectedAt")
+                        .HasColumnType("date");
+
+                    b.Property<string>("GanttTask")
+                        .HasColumnType("text");
+
+                    b.Property<string>("HistoryJson")
+                        .IsRequired()
+                        .HasColumnType("text");
+
                     b.Property<string>("ImpactLevel")
                         .IsRequired()
                         .HasColumnType("text");
@@ -770,11 +780,19 @@ namespace NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence.Migrations
                         .HasMaxLength(50)
                         .HasColumnType("character varying(50)");
 
-                    b.Property<string>("ProjectCode1")
-                        .HasColumnType("character varying(50)");
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasColumnType("text");
 
                     b.Property<DateOnly>("ReportedDate")
                         .HasColumnType("date");
+
+                    b.Property<string>("Resolution")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasColumnType("text");
 
                     b.Property<string>("Status")
                         .IsRequired()
@@ -789,7 +807,7 @@ namespace NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("ProjectCode1");
+                    b.HasIndex("ProjectCode");
 
                     b.ToTable("ProjectBottlenecks", "warehouse");
                 });
@@ -936,9 +954,6 @@ namespace NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence.Migrations
                         .HasMaxLength(50)
                         .HasColumnType("character varying(50)");
 
-                    b.Property<string>("ProjectCode1")
-                        .HasColumnType("character varying(50)");
-
                     b.Property<DateOnly?>("SlaDueDate")
                         .HasColumnType("date");
 
@@ -959,7 +974,7 @@ namespace NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("ProjectCode1");
+                    b.HasIndex("ProjectCode");
 
                     b.ToTable("ProjectDocuments", "warehouse");
                 });
@@ -1207,6 +1222,14 @@ namespace NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<string>("Agenda")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("AttachmentsJson")
+                        .IsRequired()
+                        .HasColumnType("text");
+
                     b.Property<string>("Organizer")
                         .IsRequired()
                         .HasColumnType("text");
@@ -1214,9 +1237,6 @@ namespace NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence.Migrations
                     b.Property<string>("ProjectCode")
                         .IsRequired()
                         .HasMaxLength(50)
-                        .HasColumnType("character varying(50)");
-
-                    b.Property<string>("ProjectCode1")
                         .HasColumnType("character varying(50)");
 
                     b.Property<string>("Status")
@@ -1236,7 +1256,7 @@ namespace NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("ProjectCode1");
+                    b.HasIndex("ProjectCode");
 
                     b.ToTable("ProjectMeetings", "warehouse");
                 });
@@ -1259,6 +1279,9 @@ namespace NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence.Migrations
 
                     b.Property<DateOnly>("DueDate")
                         .HasColumnType("date");
+
+                    b.Property<bool>("GeneratedBottleneck")
+                        .HasColumnType("boolean");
 
                     b.Property<bool>("IsDone")
                         .HasColumnType("boolean");
@@ -1286,6 +1309,9 @@ namespace NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<string>("Body")
+                        .HasColumnType("text");
+
                     b.Property<string>("Code")
                         .IsRequired()
                         .HasColumnType("text");
@@ -1296,7 +1322,7 @@ namespace NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence.Migrations
                     b.Property<DateTime?>("DeletedAt")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<DateOnly>("ExpectedDate")
+                    b.Property<DateOnly?>("ExpectedDate")
                         .HasColumnType("date");
 
                     b.Property<string>("Priority")
@@ -1306,9 +1332,6 @@ namespace NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence.Migrations
                     b.Property<string>("ProjectCode")
                         .IsRequired()
                         .HasMaxLength(50)
-                        .HasColumnType("character varying(50)");
-
-                    b.Property<string>("ProjectCode1")
                         .HasColumnType("character varying(50)");
 
                     b.Property<DateOnly>("RequestDate")
@@ -1326,6 +1349,9 @@ namespace NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<string>("ToDept")
+                        .HasColumnType("text");
+
                     b.Property<string>("Type")
                         .IsRequired()
                         .HasColumnType("text");
@@ -1335,7 +1361,7 @@ namespace NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("ProjectCode1");
+                    b.HasIndex("ProjectCode");
 
                     b.ToTable("ProjectRequests", "warehouse");
                 });
@@ -4072,7 +4098,9 @@ namespace NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence.Migrations
                 {
                     b.HasOne("NamViet.ERP.Modules.Warehouse.Domain.Entities.Project", "Project")
                         .WithMany()
-                        .HasForeignKey("ProjectCode1");
+                        .HasForeignKey("ProjectCode")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
 
                     b.Navigation("Project");
                 });
@@ -4092,7 +4120,9 @@ namespace NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence.Migrations
                 {
                     b.HasOne("NamViet.ERP.Modules.Warehouse.Domain.Entities.Project", "Project")
                         .WithMany()
-                        .HasForeignKey("ProjectCode1");
+                        .HasForeignKey("ProjectCode")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
 
                     b.Navigation("Project");
                 });
@@ -4167,7 +4197,9 @@ namespace NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence.Migrations
                 {
                     b.HasOne("NamViet.ERP.Modules.Warehouse.Domain.Entities.Project", "Project")
                         .WithMany()
-                        .HasForeignKey("ProjectCode1");
+                        .HasForeignKey("ProjectCode")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
 
                     b.Navigation("Project");
                 });
@@ -4187,7 +4219,9 @@ namespace NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence.Migrations
                 {
                     b.HasOne("NamViet.ERP.Modules.Warehouse.Domain.Entities.Project", "Project")
                         .WithMany()
-                        .HasForeignKey("ProjectCode1");
+                        .HasForeignKey("ProjectCode")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
 
                     b.Navigation("Project");
                 });

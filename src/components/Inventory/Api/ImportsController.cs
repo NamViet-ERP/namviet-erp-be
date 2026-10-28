@@ -8,6 +8,7 @@ using NamViet.ERP.Api.Application.Services.Wms;
 using NamViet.ERP.Api.Infrastructure.Authorization;
 using NamViet.ERP.Api.Services.Storage;
 using NamViet.ERP.SharedKernel.Authorization;
+using NamViet.ERP.SharedKernel.Common;
 
 namespace NamViet.ERP.Api.Controllers.Wms;
 
@@ -232,6 +233,14 @@ public class ImportsController(
         catch (PurchasingConflictException ex)
         {
             return BadRequest(ex.Message);
+        }
+        catch (DomainRuleException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+        catch (StocktakeFreezeConflictException ex)
+        {
+            return Conflict(ex.Message);
         }
         catch (Exception)
         {
