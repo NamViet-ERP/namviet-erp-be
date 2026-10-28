@@ -44,22 +44,54 @@ public static class DatabaseMigrationExtensions
             app.Logger.LogInformation("Starting database migrations across all contexts...");
             await using var scope = app.Services.CreateAsyncScope();
 
-            app.Logger.LogInformation("Applying migrations for IdentityDbContext...");
-            var identityDb = scope.ServiceProvider.GetRequiredService<IdentityDbContext>();
-            await identityDb.Database.MigrateAsync(ct);
-            app.Logger.LogInformation("IdentityDbContext migrations applied successfully.");
+            try
+            {
+                app.Logger.LogInformation("Applying migrations for IdentityDbContext...");
+                var identityDb = scope.ServiceProvider.GetRequiredService<IdentityDbContext>();
+                await identityDb.Database.MigrateAsync(ct);
+                app.Logger.LogInformation("IdentityDbContext migrations applied successfully.");
+            }
+            catch (Exception ex)
+            {
+                app.Logger.LogError(ex, "Failed to apply migrations for IdentityDbContext: {Message}. Inner: {InnerMessage}",
+                    ex.Message, ex.InnerException?.Message);
+                throw;
+            }
 
-            app.Logger.LogInformation("Applying migrations for WarehouseDbContext...");
-            var warehouseDb = scope.ServiceProvider.GetRequiredService<WarehouseDbContext>();
-            await warehouseDb.Database.MigrateAsync(ct);
-            app.Logger.LogInformation("WarehouseDbContext migrations applied successfully.");
+            try
+            {
+                app.Logger.LogInformation("Applying migrations for WarehouseDbContext...");
+                var warehouseDb = scope.ServiceProvider.GetRequiredService<WarehouseDbContext>();
+                await warehouseDb.Database.MigrateAsync(ct);
+                app.Logger.LogInformation("WarehouseDbContext migrations applied successfully.");
+            }
+            catch (Exception ex)
+            {
+                app.Logger.LogError(ex, "Failed to apply migrations for WarehouseDbContext: {Message}. Inner: {InnerMessage}",
+                    ex.Message, ex.InnerException?.Message);
+                throw;
+            }
 
-            app.Logger.LogInformation("Applying migrations for HrDbContext...");
-            var hrDb = scope.ServiceProvider.GetRequiredService<HrDbContext>();
-            await hrDb.Database.MigrateAsync(ct);
-            app.Logger.LogInformation("HrDbContext migrations applied successfully.");
+            try
+            {
+                app.Logger.LogInformation("Applying migrations for HrDbContext...");
+                var hrDb = scope.ServiceProvider.GetRequiredService<HrDbContext>();
+                await hrDb.Database.MigrateAsync(ct);
+                app.Logger.LogInformation("HrDbContext migrations applied successfully.");
+            }
+            catch (Exception ex)
+            {
+                app.Logger.LogError(ex, "Failed to apply migrations for HrDbContext: {Message}. Inner: {InnerMessage}",
+                    ex.Message, ex.InnerException?.Message);
+                throw;
+            }
 
             app.Logger.LogInformation("All database migrations completed successfully.");
+        }
+        catch (Exception ex)
+        {
+            app.Logger.LogError(ex, "Database migration sequence failed: {Message}", ex.Message);
+            throw;
         }
         finally
         {

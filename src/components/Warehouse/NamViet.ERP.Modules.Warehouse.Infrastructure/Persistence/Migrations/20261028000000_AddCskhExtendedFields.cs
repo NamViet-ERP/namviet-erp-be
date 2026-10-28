@@ -14,100 +14,24 @@ public partial class AddCskhExtendedFields : Migration
     /// <inheritdoc />
     protected override void Up(MigrationBuilder migrationBuilder)
     {
-        migrationBuilder.AddColumn<DateOnly>(
-            name: "ExpectedAt",
-            schema: "warehouse",
-            table: "ProjectBottlenecks",
-            type: "date",
-            nullable: true);
-
-        migrationBuilder.AddColumn<string>(
-            name: "Reason",
-            schema: "warehouse",
-            table: "ProjectBottlenecks",
-            type: "text",
-            nullable: false,
-            defaultValue: "");
-
-        migrationBuilder.AddColumn<string>(
-            name: "GanttTask",
-            schema: "warehouse",
-            table: "ProjectBottlenecks",
-            type: "text",
-            nullable: true);
-
-        migrationBuilder.AddColumn<string>(
-            name: "Resolution",
-            schema: "warehouse",
-            table: "ProjectBottlenecks",
-            type: "text",
-            nullable: true);
-
-        migrationBuilder.AddColumn<string>(
-            name: "Source",
-            schema: "warehouse",
-            table: "ProjectBottlenecks",
-            type: "text",
-            nullable: false,
-            defaultValue: "manual");
-
-        migrationBuilder.AddColumn<string>(
-            name: "HistoryJson",
-            schema: "warehouse",
-            table: "ProjectBottlenecks",
-            type: "text",
-            nullable: false,
-            defaultValue: "[]");
-
-        migrationBuilder.AddColumn<string>(
-            name: "ToDept",
-            schema: "warehouse",
-            table: "ProjectRequests",
-            type: "text",
-            nullable: true);
-
-        migrationBuilder.AddColumn<string>(
-            name: "Body",
-            schema: "warehouse",
-            table: "ProjectRequests",
-            type: "text",
-            nullable: true);
-
-        migrationBuilder.AlterColumn<DateOnly>(
-            name: "ExpectedDate",
-            schema: "warehouse",
-            table: "ProjectRequests",
-            type: "date",
-            nullable: true,
-            oldClrType: typeof(DateOnly),
-            oldType: "date");
-
-        migrationBuilder.AddColumn<string>(
-            name: "Agenda",
-            schema: "warehouse",
-            table: "ProjectMeetings",
-            type: "text",
-            nullable: false,
-            defaultValue: "");
-
-        migrationBuilder.AddColumn<string>(
-            name: "AttachmentsJson",
-            schema: "warehouse",
-            table: "ProjectMeetings",
-            type: "text",
-            nullable: false,
-            defaultValue: "[]");
-
-        migrationBuilder.AddColumn<bool>(
-            name: "GeneratedBottleneck",
-            schema: "warehouse",
-            table: "ProjectMeetingActions",
-            type: "boolean",
-            nullable: false,
-            defaultValue: false);
-
-        // Safe cleanup of legacy ProjectCode1 shadow FKs, indexes, and columns
         migrationBuilder.Sql("""
+            ALTER TABLE warehouse."ProjectBottlenecks" ADD COLUMN IF NOT EXISTS "ExpectedAt" date;
+            ALTER TABLE warehouse."ProjectBottlenecks" ADD COLUMN IF NOT EXISTS "Reason" text NOT NULL DEFAULT '';
+            ALTER TABLE warehouse."ProjectBottlenecks" ADD COLUMN IF NOT EXISTS "GanttTask" text;
+            ALTER TABLE warehouse."ProjectBottlenecks" ADD COLUMN IF NOT EXISTS "Resolution" text;
+            ALTER TABLE warehouse."ProjectBottlenecks" ADD COLUMN IF NOT EXISTS "Source" text NOT NULL DEFAULT 'manual';
+            ALTER TABLE warehouse."ProjectBottlenecks" ADD COLUMN IF NOT EXISTS "HistoryJson" text NOT NULL DEFAULT '[]';
+
+            ALTER TABLE warehouse."ProjectRequests" ADD COLUMN IF NOT EXISTS "ToDept" text;
+            ALTER TABLE warehouse."ProjectRequests" ADD COLUMN IF NOT EXISTS "Body" text;
+            ALTER TABLE warehouse."ProjectRequests" ALTER COLUMN "ExpectedDate" DROP NOT NULL;
+
+            ALTER TABLE warehouse."ProjectMeetings" ADD COLUMN IF NOT EXISTS "Agenda" text NOT NULL DEFAULT '';
+            ALTER TABLE warehouse."ProjectMeetings" ADD COLUMN IF NOT EXISTS "AttachmentsJson" text NOT NULL DEFAULT '[]';
+
+            ALTER TABLE warehouse."ProjectMeetingActions" ADD COLUMN IF NOT EXISTS "GeneratedBottleneck" boolean NOT NULL DEFAULT FALSE;
+
+            -- Safe cleanup of legacy ProjectCode1 shadow FKs, indexes, and columns
             DO $$
             BEGIN
                 IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'FK_ProjectBottlenecks_projects_ProjectCode1') THEN
@@ -133,71 +57,32 @@ public partial class AddCskhExtendedFields : Migration
             ALTER TABLE warehouse."ProjectDocuments" DROP COLUMN IF EXISTS "ProjectCode1";
             ALTER TABLE warehouse."ProjectMeetings" DROP COLUMN IF EXISTS "ProjectCode1";
             ALTER TABLE warehouse."ProjectRequests" DROP COLUMN IF EXISTS "ProjectCode1";
+
+            CREATE INDEX IF NOT EXISTS "IX_ProjectBottlenecks_ProjectCode" ON warehouse."ProjectBottlenecks" ("ProjectCode");
+            CREATE INDEX IF NOT EXISTS "IX_ProjectDocuments_ProjectCode" ON warehouse."ProjectDocuments" ("ProjectCode");
+            CREATE INDEX IF NOT EXISTS "IX_ProjectMeetings_ProjectCode" ON warehouse."ProjectMeetings" ("ProjectCode");
+            CREATE INDEX IF NOT EXISTS "IX_ProjectRequests_ProjectCode" ON warehouse."ProjectRequests" ("ProjectCode");
+
+            DO $$
+            BEGIN
+                IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'FK_ProjectBottlenecks_projects_ProjectCode') THEN
+                    ALTER TABLE warehouse."ProjectBottlenecks" ADD CONSTRAINT "FK_ProjectBottlenecks_projects_ProjectCode"
+                        FOREIGN KEY ("ProjectCode") REFERENCES warehouse.projects ("ProjectCode") ON DELETE RESTRICT;
+                END IF;
+                IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'FK_ProjectDocuments_projects_ProjectCode') THEN
+                    ALTER TABLE warehouse."ProjectDocuments" ADD CONSTRAINT "FK_ProjectDocuments_projects_ProjectCode"
+                        FOREIGN KEY ("ProjectCode") REFERENCES warehouse.projects ("ProjectCode") ON DELETE RESTRICT;
+                END IF;
+                IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'FK_ProjectMeetings_projects_ProjectCode') THEN
+                    ALTER TABLE warehouse."ProjectMeetings" ADD CONSTRAINT "FK_ProjectMeetings_projects_ProjectCode"
+                        FOREIGN KEY ("ProjectCode") REFERENCES warehouse.projects ("ProjectCode") ON DELETE RESTRICT;
+                END IF;
+                IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'FK_ProjectRequests_projects_ProjectCode') THEN
+                    ALTER TABLE warehouse."ProjectRequests" ADD CONSTRAINT "FK_ProjectRequests_projects_ProjectCode"
+                        FOREIGN KEY ("ProjectCode") REFERENCES warehouse.projects ("ProjectCode") ON DELETE RESTRICT;
+                END IF;
+            END $$;
         """);
-
-        migrationBuilder.CreateIndex(
-            name: "IX_ProjectBottlenecks_ProjectCode",
-            schema: "warehouse",
-            table: "ProjectBottlenecks",
-            column: "ProjectCode");
-
-        migrationBuilder.CreateIndex(
-            name: "IX_ProjectDocuments_ProjectCode",
-            schema: "warehouse",
-            table: "ProjectDocuments",
-            column: "ProjectCode");
-
-        migrationBuilder.CreateIndex(
-            name: "IX_ProjectMeetings_ProjectCode",
-            schema: "warehouse",
-            table: "ProjectMeetings",
-            column: "ProjectCode");
-
-        migrationBuilder.CreateIndex(
-            name: "IX_ProjectRequests_ProjectCode",
-            schema: "warehouse",
-            table: "ProjectRequests",
-            column: "ProjectCode");
-
-        migrationBuilder.AddForeignKey(
-            name: "FK_ProjectBottlenecks_projects_ProjectCode",
-            schema: "warehouse",
-            table: "ProjectBottlenecks",
-            column: "ProjectCode",
-            principalSchema: "warehouse",
-            principalTable: "projects",
-            principalColumn: "ProjectCode",
-            onDelete: ReferentialAction.Restrict);
-
-        migrationBuilder.AddForeignKey(
-            name: "FK_ProjectDocuments_projects_ProjectCode",
-            schema: "warehouse",
-            table: "ProjectDocuments",
-            column: "ProjectCode",
-            principalSchema: "warehouse",
-            principalTable: "projects",
-            principalColumn: "ProjectCode",
-            onDelete: ReferentialAction.Restrict);
-
-        migrationBuilder.AddForeignKey(
-            name: "FK_ProjectMeetings_projects_ProjectCode",
-            schema: "warehouse",
-            table: "ProjectMeetings",
-            column: "ProjectCode",
-            principalSchema: "warehouse",
-            principalTable: "projects",
-            principalColumn: "ProjectCode",
-            onDelete: ReferentialAction.Restrict);
-
-        migrationBuilder.AddForeignKey(
-            name: "FK_ProjectRequests_projects_ProjectCode",
-            schema: "warehouse",
-            table: "ProjectRequests",
-            column: "ProjectCode",
-            principalSchema: "warehouse",
-            principalTable: "projects",
-            principalColumn: "ProjectCode",
-            onDelete: ReferentialAction.Restrict);
     }
 
     /// <inheritdoc />
