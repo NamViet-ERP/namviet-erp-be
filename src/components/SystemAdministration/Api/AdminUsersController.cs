@@ -90,7 +90,7 @@ public class AdminUsersController(
 
         var identityRole = WmsMapper.ToIdentityRole(request.Role);
         if (!await roleManager.RoleExistsAsync(identityRole))
-            identityRole = "Employee";
+            return BadRequest("Vai trò không hợp lệ.");
 
         var user = new ApplicationUser
         {
@@ -124,7 +124,7 @@ public class AdminUsersController(
 
         var identityRole = WmsMapper.ToIdentityRole(request.Role);
         if (!await roleManager.RoleExistsAsync(identityRole))
-            identityRole = "Employee";
+            return BadRequest("Vai trò không hợp lệ.");
 
         var existingCodes = await userManager.Users
             .Where(u => u.DeletedAt == null)

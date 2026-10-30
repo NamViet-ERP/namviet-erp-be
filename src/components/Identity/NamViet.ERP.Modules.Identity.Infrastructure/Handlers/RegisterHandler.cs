@@ -17,8 +17,8 @@ public class RegisterHandler(
         if (await userManager.FindByEmailAsync(request.Email) is not null)
             throw new DomainRuleException($"Email '{request.Email}' đã được sử dụng.");
 
-        var roleExists = await roleManager.RoleExistsAsync(request.Role);
-        var role = roleExists ? request.Role : "Employee";
+        if (!await roleManager.RoleExistsAsync(request.Role))
+            throw new DomainRuleException("Vai trò không hợp lệ.");
 
         var user = new ApplicationUser
         {
@@ -36,7 +36,7 @@ public class RegisterHandler(
             throw new DomainRuleException($"Tạo tài khoản thất bại: {errors}");
         }
 
-        await userManager.AddToRoleAsync(user, role);
+        await userManager.AddToRoleAsync(user, request.Role);
         var roles = await userManager.GetRolesAsync(user);
 
         return new UserDto(user.Id, user.EmployeeCode, user.Name, user.Email!, request.Department, user.AvatarUrl, [.. roles]);

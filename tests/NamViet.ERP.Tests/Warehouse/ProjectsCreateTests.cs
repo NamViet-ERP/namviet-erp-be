@@ -5,6 +5,7 @@ using NamViet.ERP.Api.Application.Services.Wms;
 using NamViet.ERP.Api.Application.Validators;
 using NamViet.ERP.Api.Controllers;
 using NamViet.ERP.Modules.Warehouse.Application.DTOs;
+using NamViet.ERP.Modules.Warehouse.Domain.Entities;
 using NamViet.ERP.Modules.Warehouse.Domain.Enums;
 using NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence;
 
@@ -98,5 +99,57 @@ public class ProjectsCreateTests : IDisposable
         var result = await _controller.Create(request, CancellationToken.None);
         var conflict = Assert.IsType<ConflictObjectResult>(result);
         Assert.Contains("đã tồn tại", conflict.Value?.ToString() ?? "");
+    }
+
+    [Fact]
+    public async Task Create_returns_conflict_when_project_was_soft_deleted()
+    {
+        _db.Projects.Add(new Project
+        {
+            ProjectCode = "DA-2026-002",
+            ProjectName = "Old Deleted Project",
+            DeletedAt = DateTime.UtcNow
+        });
+        await _db.SaveChangesAsync();
+
+        var request = new CreateProjectRequest(
+            ProjectCode: "DA-2026-002",
+            ProjectName: "New Project",
+            ProjectType: ProjectType.Project,
+            PmId: Guid.NewGuid(),
+            PmName: "Admin",
+            StartDate: new DateOnly(2026, 9, 23),
+            EndDate: null,
+            MaterialBudget: 50_000_000m);
+
+        var result = await _controller.Create(request, CancellationToken.None);
+        var conflict = Assert.IsType<ConflictObjectResult>(result);
+        Assert.Contains("đã tồn tại hoặc từng được sử dụng", conflict.Value?.ToString() ?? "");
+    }
+
+    [Fact]
+    public async Task Create_returns_conflict_when_warehouse_already_exists()
+    {
+        _db.WmsWarehouses.Add(new WmsWarehouse
+        {
+            Id = "DA-2026-002",
+            Code = "DA-2026-002",
+            Name = "Existing Warehouse"
+        });
+        await _db.SaveChangesAsync();
+
+        var request = new CreateProjectRequest(
+            ProjectCode: "DA-2026-002",
+            ProjectName: "New Project",
+            ProjectType: ProjectType.Project,
+            PmId: Guid.NewGuid(),
+            PmName: "Admin",
+            StartDate: new DateOnly(2026, 9, 23),
+            EndDate: null,
+            MaterialBudget: 50_000_000m);
+
+        var result = await _controller.Create(request, CancellationToken.None);
+        var conflict = Assert.IsType<ConflictObjectResult>(result);
+        Assert.Contains("đã tồn tại hoặc từng được sử dụng", conflict.Value?.ToString() ?? "");
     }
 }

@@ -122,4 +122,57 @@ public class PurchasePlanImportServiceTests
         ms.Position = 0;
         return ms;
     }
+
+    [Fact]
+    public void FindKhmhSheet_AcceptsSingleWorksheetRegardlessOfName()
+    {
+        using var wb1 = new XLWorkbook();
+        wb1.AddWorksheet("Sheet1");
+        var sheet1 = PurchasePlanImportService.FindKhmhSheet(wb1);
+        Assert.NotNull(sheet1);
+        Assert.Equal("Sheet1", sheet1.Name);
+
+        using var wb2 = new XLWorkbook();
+        wb2.AddWorksheet("MA VAT TU");
+        var sheet2 = PurchasePlanImportService.FindKhmhSheet(wb2);
+        Assert.NotNull(sheet2);
+        Assert.Equal("MA VAT TU", sheet2.Name);
+    }
+
+    [Fact]
+    public void FindKhmhSheet_AcceptsKeHoachMuaHangAlias()
+    {
+        using var wb1 = new XLWorkbook();
+        wb1.AddWorksheet("TongHop");
+        wb1.AddWorksheet("Kế hoạch mua hàng");
+        var sheet1 = PurchasePlanImportService.FindKhmhSheet(wb1);
+        Assert.NotNull(sheet1);
+        Assert.Equal("Kế hoạch mua hàng", sheet1.Name);
+
+        using var wb2 = new XLWorkbook();
+        wb2.AddWorksheet("TongHop");
+        wb2.AddWorksheet("Ke hoach mua hang");
+        var sheet2 = PurchasePlanImportService.FindKhmhSheet(wb2);
+        Assert.NotNull(sheet2);
+        Assert.Equal("Ke hoach mua hang", sheet2.Name);
+    }
+
+    [Fact]
+    public void Preview_ThrowsDetailedErrorListingSheets_WhenNoValidSheet()
+    {
+        using var wb = new XLWorkbook();
+        wb.AddWorksheet("TongQuan");
+        wb.AddWorksheet("BaoCao");
+        using var ms = new MemoryStream();
+        wb.SaveAs(ms);
+        ms.Position = 0;
+
+        var service = new PurchasePlanImportService();
+        var ex = Assert.Throws<PurchasingConflictException>(() => service.Preview(ms, "DA-TEST"));
+
+        Assert.Contains("Không tìm thấy sheet KHMH trong file Excel", ex.Message);
+        Assert.Contains("'TongQuan'", ex.Message);
+        Assert.Contains("'BaoCao'", ex.Message);
+        Assert.Contains("Tải mẫu", ex.Message);
+    }
 }

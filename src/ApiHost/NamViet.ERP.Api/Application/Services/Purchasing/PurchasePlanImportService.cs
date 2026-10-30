@@ -387,7 +387,8 @@ public sealed class PurchasePlanImportService : IPurchasePlanImportService
 
         using var workbook = new XLWorkbook(excelStream);
         var sheet = FindKhmhSheet(workbook)
-            ?? throw new PurchasingConflictException("Không tìm thấy sheet KHMH / KHMH (n) trong file Excel.");
+            ?? throw new PurchasingConflictException(
+                $"Không tìm thấy sheet KHMH trong file Excel (các sheet hiện có trong file: {string.Join(", ", workbook.Worksheets.Select(w => $"'{w.Name}'"))}). Vui lòng đổi tên sheet cần import thành 'KHMH' hoặc bấm nút 'Tải mẫu'.");
 
         var header = DetectHeader(sheet);
         if (header is null)
@@ -427,15 +428,44 @@ public sealed class PurchasePlanImportService : IPurchasePlanImportService
 
     public static IXLWorksheet? FindKhmhSheet(XLWorkbook workbook)
     {
+        if (!workbook.Worksheets.Any()) return null;
+
         static bool IsKhmh(string name)
         {
             var n = name.Trim();
             return Regex.IsMatch(n, @"^KHMH(\s*\(\d+\))?$", RegexOptions.IgnoreCase);
         }
 
-        return workbook.Worksheets.FirstOrDefault(ws => IsKhmh(ws.Name))
-            ?? workbook.Worksheets.FirstOrDefault(ws =>
-                ws.Name.Contains("KHMH", StringComparison.OrdinalIgnoreCase));
+        // Ưu tiên 1: Tên sheet khớp regex ^KHMH(\s*\(\d+\))?$ hoặc chứa "KHMH" (case-insensitive)
+        var exactMatch = workbook.Worksheets.FirstOrDefault(ws => IsKhmh(ws.Name))
+            ?? workbook.Worksheets.FirstOrDefault(ws => ws.Name.Contains("KHMH", StringComparison.OrdinalIgnoreCase));
+        if (exactMatch != null) return exactMatch;
+
+        // Ưu tiên 2: Tên sheet chứa các từ khóa / alias
+        string[] aliases =
+        [
+            "ke hoach mua hang", "kế hoạch mua hàng",
+            "purchase plan", "plan",
+            "vat tu", "vật tư",
+            "danh muc", "danh mục"
+        ];
+        var aliasMatch = workbook.Worksheets.FirstOrDefault(ws =>
+        {
+            var norm = Normalize(ws.Name);
+            return aliases.Any(a => norm.Contains(Normalize(a), StringComparison.OrdinalIgnoreCase)
+                                 || ws.Name.Contains(a, StringComparison.OrdinalIgnoreCase));
+        });
+        if (aliasMatch != null) return aliasMatch;
+
+        // Ưu tiên 3: Quét các sheet trong workbook, nếu sheet nào có DetectHeader(sheet) != null thì chọn sheet đó
+        var headerMatch = workbook.Worksheets.FirstOrDefault(ws => DetectHeader(ws) != null);
+        if (headerMatch != null) return headerMatch;
+
+        // Ưu tiên 4: Nếu workbook chỉ có duy nhất 1 sheet, tự động chọn luôn sheet đó
+        if (workbook.Worksheets.Count == 1)
+            return workbook.Worksheets.First();
+
+        return null;
     }
 
     public static int? DetectHeader(IXLWorksheet sheet)

@@ -87,4 +87,38 @@ public class ProjectsNextCodeTests : IDisposable
 
         Assert.Equal("DA-2027-001", response.ProjectCode);
     }
+
+    [Fact]
+    public async Task GetNextCode_skips_soft_deleted_projects()
+    {
+        _db.Projects.Add(new Project { ProjectCode = "DA-2026-001", ProjectName = "Dự án 1" });
+        _db.Projects.Add(new Project { ProjectCode = "DA-2026-002", ProjectName = "Dự án 2 đã xóa", DeletedAt = DateTime.UtcNow });
+        await _db.SaveChangesAsync();
+
+        var actionResult = await _controller.GetNextCode(2026);
+        var okResult = Assert.IsType<OkObjectResult>(actionResult.Result);
+        var response = Assert.IsType<NextProjectCodeResponse>(okResult.Value);
+
+        Assert.Equal("DA-2026-003", response.ProjectCode);
+    }
+
+    [Fact]
+    public async Task GetNextCode_skips_existing_warehouses()
+    {
+        _db.Projects.Add(new Project { ProjectCode = "DA-2026-001", ProjectName = "Dự án 1" });
+        _db.WmsWarehouses.Add(new WmsWarehouse
+        {
+            Id = "DA-2026-002",
+            Code = "DA-2026-002",
+            Name = "Kho dự án cũ",
+            DeletedAt = DateTime.UtcNow
+        });
+        await _db.SaveChangesAsync();
+
+        var actionResult = await _controller.GetNextCode(2026);
+        var okResult = Assert.IsType<OkObjectResult>(actionResult.Result);
+        var response = Assert.IsType<NextProjectCodeResponse>(okResult.Value);
+
+        Assert.Equal("DA-2026-003", response.ProjectCode);
+    }
 }

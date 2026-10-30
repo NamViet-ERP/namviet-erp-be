@@ -123,4 +123,27 @@ public class ProjectsDeleteTests : IDisposable
         var inventories = await _db.ProjectInventories.Where(i => i.ProjectCode == code).ToListAsync();
         Assert.Empty(inventories);
     }
+
+    [Fact]
+    public async Task Delete_soft_deletes_associated_warehouse_when_empty()
+    {
+        var code = "DA-EMPTY-WH";
+        var project = new Project { ProjectCode = code, ProjectName = "Empty Project With WH" };
+        _db.Projects.Add(project);
+        var warehouse = new WmsWarehouse
+        {
+            Id = code,
+            Code = code,
+            Name = "Empty Project Warehouse"
+        };
+        _db.WmsWarehouses.Add(warehouse);
+        await _db.SaveChangesAsync();
+
+        var result = await _controller.Delete(code, CancellationToken.None);
+        Assert.IsType<NoContentResult>(result);
+
+        var whInDb = await _db.WmsWarehouses.IgnoreQueryFilters().FirstOrDefaultAsync(w => w.Id == code);
+        Assert.NotNull(whInDb);
+        Assert.NotNull(whInDb.DeletedAt);
+    }
 }

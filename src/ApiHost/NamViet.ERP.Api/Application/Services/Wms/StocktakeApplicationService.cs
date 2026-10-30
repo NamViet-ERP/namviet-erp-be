@@ -62,7 +62,7 @@ public sealed class StocktakeApplicationService(
         foreach (var item in stocktake.Items)
         {
             if (quantities.GetValueOrDefault(item.MaterialCode) != item.SystemQty)
-                throw new DomainRuleException($"Tồn kho vật tư '{item.MaterialCode}' đã thay đổi sau khi lập phiếu. Vui lòng cập nhật và kiểm đếm lại trước khi duyệt.");
+                throw new DomainRuleException($"Tồn kho vật tư '{item.MaterialCode}' đã thay đổi sau khi lập phiếu. Vui lòng hủy phiếu này, kiểm đếm lại và tạo phiếu kiểm kê mới trước khi duyệt.");
         }
 
         foreach (var item in stocktake.Items)

@@ -69,8 +69,22 @@ public class ProjectsController(
 
     private async Task EnsureProjectWarehouseAsync(string projectCode, string projectName, CancellationToken ct)
     {
-        var exists = await db.WmsWarehouses.AnyAsync(w => w.Id == projectCode, ct);
-        if (exists) return;
+        var existingWarehouse = await db.WmsWarehouses
+            .IgnoreQueryFilters()
+            .FirstOrDefaultAsync(w => w.Id == projectCode || w.Code == projectCode, ct);
+
+        if (existingWarehouse != null)
+        {
+            if (existingWarehouse.DeletedAt != null)
+            {
+                existingWarehouse.DeletedAt = null;
+                existingWarehouse.Name = string.IsNullOrWhiteSpace(projectName) ? projectCode : projectName;
+                existingWarehouse.Status = "active";
+                existingWarehouse.UpdatedAt = DateTime.UtcNow;
+                await db.SaveChangesAsync(ct);
+            }
+            return;
+        }
 
         db.WmsWarehouses.Add(new WmsWarehouse
         {
@@ -164,15 +178,36 @@ public class ProjectsController(
     {
         var targetYear = year.GetValueOrDefault(DateTime.UtcNow.Year);
         var prefix = $"DA-{targetYear}-";
-        var existingCodes = await db.Projects
+
+        var existingProjectCodes = await db.Projects
+            .IgnoreQueryFilters()
             .AsNoTracking()
             .Where(p => p.ProjectCode.StartsWith(prefix))
             .Select(p => p.ProjectCode)
             .ToListAsync(ct);
 
-        var used = new HashSet<string>(
-            existingCodes.Select(c => c.Trim().ToUpperInvariant()),
-            StringComparer.OrdinalIgnoreCase);
+        var existingWarehouseCodes = await db.WmsWarehouses
+            .IgnoreQueryFilters()
+            .AsNoTracking()
+            .Where(w => w.Code.StartsWith(prefix) || w.Id.StartsWith(prefix))
+            .Select(w => new { w.Code, w.Id })
+            .ToListAsync(ct);
+
+        var used = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var code in existingProjectCodes)
+        {
+            if (!string.IsNullOrWhiteSpace(code))
+                used.Add(code.Trim().ToUpperInvariant());
+        }
+
+        foreach (var w in existingWarehouseCodes)
+        {
+            if (!string.IsNullOrWhiteSpace(w.Code))
+                used.Add(w.Code.Trim().ToUpperInvariant());
+            if (!string.IsNullOrWhiteSpace(w.Id))
+                used.Add(w.Id.Trim().ToUpperInvariant());
+        }
 
         var n = 1;
         while (used.Contains($"{prefix}{n:D3}"))
@@ -381,8 +416,10 @@ public class ProjectsController(
         if (!validation.IsValid)
             return ValidationBadRequest(validation);
 
-        if (await db.Projects.AnyAsync(p => p.ProjectCode == request.ProjectCode, ct))
-            return Conflict($"Mã dự án '{request.ProjectCode}' đã tồn tại.");
+        var codeExists = await db.Projects.IgnoreQueryFilters().AnyAsync(p => p.ProjectCode == request.ProjectCode, ct)
+            || await db.WmsWarehouses.IgnoreQueryFilters().AnyAsync(w => w.Code == request.ProjectCode || w.Id == request.ProjectCode, ct);
+        if (codeExists)
+            return Conflict($"Mã dự án '{request.ProjectCode}' đã tồn tại hoặc từng được sử dụng trong hệ thống.");
 
         var project = new Project
         {
@@ -511,6 +548,19 @@ public class ProjectsController(
 
         // Thực hiện xóa mềm dự án
         project.DeletedAt = DateTime.UtcNow;
+
+        // Xóa mềm kho dự án tương ứng (nếu có và chưa phát sinh tồn kho/giao dịch)
+        var warehouse = await db.WmsWarehouses.FirstOrDefaultAsync(w => w.Id == code || w.Code == code, ct);
+        if (warehouse != null)
+        {
+            var hasWarehouseStock = await db.WarehouseInventories.AnyAsync(wi => wi.WarehouseId == warehouse.Id && wi.Qty != 0, ct);
+            var hasWarehouseTx = await db.WarehouseTransactions.AnyAsync(t => t.WarehouseId == warehouse.Id || t.FromWarehouseId == warehouse.Id || t.ToWarehouseId == warehouse.Id, ct);
+            if (!hasWarehouseStock && !hasWarehouseTx)
+            {
+                warehouse.DeletedAt = DateTime.UtcNow;
+                warehouse.UpdatedAt = DateTime.UtcNow;
+            }
+        }
 
         // Xóa sạch các dòng tồn kho rỗng của dự án (nếu có)
         var inventories = await db.ProjectInventories

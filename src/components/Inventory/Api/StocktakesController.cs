@@ -200,11 +200,12 @@ public class StocktakesController(
         if (dto.IsFrozen != s.IsFrozen && !CanApproveStocktakes)
             return StatusCode(StatusCodes.Status403Forbidden, "Bạn không có quyền thay đổi trạng thái đóng băng của phiếu kiểm kê.");
 
+        if (!string.IsNullOrWhiteSpace(dto.WarehouseId) && dto.WarehouseId != s.WarehouseId)
+            return BadRequest("Không thể đổi kho của phiếu đã kiểm đếm. Vui lòng hủy phiếu này và tạo phiếu kiểm kê mới cho kho cần kiểm đếm.");
+
         try
         {
             await projectAccess.EnsureCanOperateOnProjectAsync(s.WarehouseId, ct);
-            if (!string.IsNullOrWhiteSpace(dto.WarehouseId) && dto.WarehouseId != s.WarehouseId)
-                await projectAccess.EnsureCanOperateOnProjectAsync(dto.WarehouseId, ct);
         }
         catch (UnauthorizedAccessException ex)
         {
@@ -266,7 +267,24 @@ public class StocktakesController(
                 return BadRequest("Mỗi vật tư chỉ được xuất hiện một lần trong phiếu kiểm kê.");
 
             await EnsureMaterialsExistAsync(items, ct);
-            await CaptureInventorySnapshotAsync(s.WarehouseId, items, ct);
+            // A quantity correction, metadata edit, or freeze toggle is not a recount.
+            // Existing lines keep the inventory baseline recorded with their count.
+            var countedItems = s.Items.ToDictionary(i => i.MaterialCode, StringComparer.OrdinalIgnoreCase);
+            var newItems = new List<StocktakeItem>();
+            foreach (var item in items)
+            {
+                if (countedItems.TryGetValue(item.MaterialCode, out var countedItem))
+                {
+                    item.SystemQty = countedItem.SystemQty;
+                    item.Diff = item.ActualQty - item.SystemQty;
+                }
+                else
+                {
+                    newItems.Add(item);
+                }
+            }
+            if (newItems.Count > 0)
+                await CaptureInventorySnapshotAsync(s.WarehouseId, newItems, ct);
 
             db.StocktakeItems.RemoveRange(s.Items);
             s.Items = items;
