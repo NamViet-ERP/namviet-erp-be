@@ -6,9 +6,11 @@ public class PurchasePlanLine
     public string PlanCode { get; set; } = string.Empty;
     public int LineNo { get; set; }
 
+    public string LineType { get; set; } = PurchasePlanLineTypes.Material;
+
     public string? SystemName { get; set; }
     public string? Category { get; set; }
-    /// <summary>Mã vật tư danh mục kho — bắt buộc khi tạo/import dòng mới.</summary>
+    /// <summary>Mã vật tư danh mục kho — bắt buộc khi tạo/import dòng mới nếu là material.</summary>
     public string? MaterialCode { get; set; }
     public string ProductName { get; set; } = string.Empty;
     public string? Spec { get; set; }
@@ -56,6 +58,16 @@ public class PurchasePlanLine
     public ICollection<PurchaseOrderItem> PurchaseOrderItems { get; set; } = [];
 
     public decimal RemainingOrderableQty => Math.Max(0m, Quantity - OrderedQty);
+}
+
+public static class PurchasePlanLineTypes
+{
+    public const string Material = "material";
+    public const string Service = "service";
+    public const string Expense = "expense";
+
+    public static bool IsValid(string? type) =>
+        type is Material or Service or Expense;
 }
 
 public static class PurchaseLineStatuses

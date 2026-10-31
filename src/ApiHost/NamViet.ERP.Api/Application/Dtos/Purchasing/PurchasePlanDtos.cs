@@ -1,3 +1,5 @@
+using NamViet.ERP.Modules.Warehouse.Domain.Entities;
+
 namespace NamViet.ERP.Api.Application.Dtos.Purchasing;
 
 public record PurchasePlanDto(
@@ -105,7 +107,8 @@ public record PurchasePlanLineDto(
     decimal DefectQty,
     decimal RemainingOrderableQty,
     List<PurchasePlanLineQuoteDto> Quotes,
-    List<PurchasePlanLinePoDto>? Pos = null);
+    List<PurchasePlanLinePoDto>? Pos = null,
+    string LineType = PurchasePlanLineTypes.Material);
 
 public record PurchasePlanLineQuoteDto(
     int Id,
@@ -134,10 +137,11 @@ public record CreatePurchasePlanLineQuoteRequest(
     string? Status = null);
 
 public record CreatePurchasePlanLineRequest(
-    string MaterialCode,
-    string ProductName,
-    string Unit,
-    decimal Quantity,
+    string? MaterialCode = null,
+    string ProductName = "",
+    string Unit = "",
+    decimal Quantity = 0,
+    string? LineType = PurchasePlanLineTypes.Material,
     string? SystemName = null,
     string? Category = null,
     string? Spec = null,
@@ -199,7 +203,7 @@ public record PurchasePlanImportLinePreviewDto(
     int LineNo,
     string? SystemName,
     string? Category,
-    string MaterialCode,
+    string? MaterialCode,
     string ProductName,
     string? Spec,
     string Unit,
@@ -231,7 +235,8 @@ public record PurchasePlanImportLinePreviewDto(
     string? SelectedSupplierName,
     string? SelectionReason,
     List<PurchasePlanImportQuotePreviewDto> Quotes,
-    bool IsValid);
+    bool IsValid,
+    string LineType = PurchasePlanLineTypes.Material);
 
 public record PurchasePlanImportQuotePreviewDto(
     int SortOrder,

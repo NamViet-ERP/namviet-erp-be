@@ -118,7 +118,8 @@ public static class PurchasingMapper
             .Select(q => new PurchasePlanLineQuoteDto(
                 q.Id, q.SortOrder, q.KgPerUnit, q.UnitPrice, q.Amount, q.SupplierName, q.Note, q.Status))
             .ToList(),
-        pos?.ToList());
+        pos?.ToList(),
+        line.LineType ?? PurchasePlanLineTypes.Material);
 
     public static PurchaseOrderDto ToOrderDto(PurchaseOrder order) => new(
         order.Code,

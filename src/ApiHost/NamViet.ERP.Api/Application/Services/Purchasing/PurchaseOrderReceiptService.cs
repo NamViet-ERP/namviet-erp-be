@@ -99,7 +99,22 @@ public sealed class PurchaseOrderReceiptService(
         var consumption = await GetConsumptionByPoItemAsync(order, excludeTicketCode, ct);
         var generalAvailableByCode = await LoadGeneralAvailableByMaterialAsync(ct);
 
+        var activeMaterialCodes = await db.Materials.AsNoTracking()
+            .Where(m => m.IsActive && !string.IsNullOrWhiteSpace(m.MaterialCode))
+            .Select(m => m.MaterialCode.Trim())
+            .ToListAsync(ct);
+        var activeMaterialSet = new HashSet<string>(activeMaterialCodes, StringComparer.OrdinalIgnoreCase);
+
         var lines = order.Items
+            .Where(line =>
+            {
+                var materialCode = (line.MaterialCode ?? line.Sku)?.Trim();
+                if (string.IsNullOrWhiteSpace(materialCode) || !activeMaterialSet.Contains(materialCode))
+                    return false;
+                if (line.PlanLine?.LineType is PurchasePlanLineTypes.Service or PurchasePlanLineTypes.Expense)
+                    return false;
+                return true;
+            })
             .OrderBy(i => i.Id)
             .Select(line =>
             {
@@ -147,7 +162,10 @@ public sealed class PurchaseOrderReceiptService(
                 .ToDictionary(g => g.Key, g => g.Sum(x => x.Qty))
             : null;
 
-        IEnumerable<PurchaseOrderItem> candidateItems = order.Items.OrderBy(i => i.Id);
+        IEnumerable<PurchaseOrderItem> candidateItems = order.Items
+            .Where(i => (i.PlanLine == null || i.PlanLine.LineType == PurchasePlanLineTypes.Material)
+                     && !string.IsNullOrWhiteSpace(i.MaterialCode ?? i.Sku))
+            .OrderBy(i => i.Id);
         if (selectionMap is not null)
         {
             var missing = selectionMap.Keys.Where(id => order.Items.All(i => i.Id != id)).ToList();
@@ -379,6 +397,7 @@ public sealed class PurchaseOrderReceiptService(
         var order = await db.PurchaseOrders
             .AsNoTracking()
             .Include(o => o.Items)
+                .ThenInclude(i => i.PlanLine)
             .Include(o => o.Supplier)
             .FirstOrDefaultAsync(o => o.Code == code, ct)
             ?? throw new PurchasingConflictException($"Không tìm thấy PO '{code}'.");

@@ -213,15 +213,24 @@ public sealed class PurchasePlanService(
 
             if (request.Lines is { Count: > 0 })
             {
-                var materialsByCode = await LoadMaterialsByCodesAsync(
-                    request.Lines.Select(l => l.MaterialCode), ct);
+                var materialCodes = request.Lines
+                    .Where(l => (l.LineType ?? PurchasePlanLineTypes.Material) == PurchasePlanLineTypes.Material)
+                    .Select(l => l.MaterialCode);
+                var materialsByCode = await LoadMaterialsByCodesAsync(materialCodes, ct);
 
                 var lineNo = 0;
                 foreach (var src in request.Lines)
                 {
                     lineNo++;
-                    var material = RequireMaterial(src.MaterialCode, materialsByCode, lineNo);
-                    plan.Lines.Add(MapCreateLine(src, code, lineNo, material));
+                    var lineType = PurchasePlanLineTypes.IsValid(src.LineType)
+                        ? src.LineType!
+                        : PurchasePlanLineTypes.Material;
+                    Material? material = null;
+                    if (lineType == PurchasePlanLineTypes.Material)
+                    {
+                        material = RequireMaterial(src.MaterialCode, materialsByCode, lineNo);
+                    }
+                    plan.Lines.Add(MapCreateLine(src, code, lineNo, material, lineType));
                 }
 
                 RecalcTotals(plan);
@@ -273,15 +282,24 @@ public sealed class PurchasePlanService(
             db.PurchasePlanLines.RemoveRange(plan.Lines);
             plan.Lines.Clear();
 
-            var materialsByCode = await LoadMaterialsByCodesAsync(
-                request.Lines.Select(l => l.MaterialCode), ct);
+            var materialCodes = request.Lines
+                .Where(l => (l.LineType ?? PurchasePlanLineTypes.Material) == PurchasePlanLineTypes.Material)
+                .Select(l => l.MaterialCode);
+            var materialsByCode = await LoadMaterialsByCodesAsync(materialCodes, ct);
 
             var lineNo = 0;
             foreach (var src in request.Lines)
             {
                 lineNo++;
-                var material = RequireMaterial(src.MaterialCode, materialsByCode, lineNo);
-                plan.Lines.Add(MapCreateLine(src, code, lineNo, material));
+                var lineType = PurchasePlanLineTypes.IsValid(src.LineType)
+                    ? src.LineType!
+                    : PurchasePlanLineTypes.Material;
+                Material? material = null;
+                if (lineType == PurchasePlanLineTypes.Material)
+                {
+                    material = RequireMaterial(src.MaterialCode, materialsByCode, lineNo);
+                }
+                plan.Lines.Add(MapCreateLine(src, code, lineNo, material, lineType));
             }
 
             RecalcTotals(plan);
@@ -365,8 +383,10 @@ public sealed class PurchasePlanService(
         if (validLines.Count == 0)
             throw new PurchasingConflictException("Không có dòng hợp lệ để import.");
 
-        var materialsByCode = await LoadMaterialsByCodesAsync(
-            validLines.Select(l => l.MaterialCode), ct);
+        var materialCodes = validLines
+            .Where(l => (l.LineType ?? PurchasePlanLineTypes.Material) == PurchasePlanLineTypes.Material)
+            .Select(l => l.MaterialCode);
+        var materialsByCode = await LoadMaterialsByCodesAsync(materialCodes, ct);
 
         await using var tx = await db.Database.BeginTransactionAsync(ct);
 
@@ -389,8 +409,15 @@ public sealed class PurchasePlanService(
         foreach (var src in validLines.OrderBy(l => l.LineNo))
         {
             lineNo++;
-            var material = RequireMaterial(src.MaterialCode, materialsByCode, lineNo);
-            var line = MapImportLine(src, code, lineNo, material);
+            var lineType = PurchasePlanLineTypes.IsValid(src.LineType)
+                ? src.LineType!
+                : PurchasePlanLineTypes.Material;
+            Material? material = null;
+            if (lineType == PurchasePlanLineTypes.Material)
+            {
+                material = RequireMaterial(src.MaterialCode, materialsByCode, lineNo);
+            }
+            var line = MapImportLine(src, code, lineNo, material, lineType);
             plan.Lines.Add(line);
         }
 
@@ -582,6 +609,7 @@ public sealed class PurchasePlanService(
         {
             PlanCode = planCode,
             LineNo = src.LineNo,
+            LineType = src.LineType ?? PurchasePlanLineTypes.Material,
             SystemName = src.SystemName,
             Category = src.Category,
             MaterialCode = src.MaterialCode,
@@ -840,26 +868,32 @@ public sealed class PurchasePlanService(
     }
 
     private static PurchasePlanLine MapCreateLine(
-        CreatePurchasePlanLineRequest src, string planCode, int lineNo, Material material)
+        CreatePurchasePlanLineRequest src, string planCode, int lineNo, Material? material, string lineType)
     {
-        var materialCode = src.MaterialCode.Trim();
+        var materialCode = string.IsNullOrWhiteSpace(src.MaterialCode) ? null : src.MaterialCode.Trim();
 
         var productName = src.ProductName?.Trim();
-        if (string.IsNullOrWhiteSpace(productName))
+        if (string.IsNullOrWhiteSpace(productName) && material != null)
             productName = material.MaterialName;
 
         var unit = src.Unit?.Trim();
-        if (string.IsNullOrWhiteSpace(unit))
+        if (string.IsNullOrWhiteSpace(unit) && material != null)
             unit = material.Unit;
 
         if (string.IsNullOrWhiteSpace(productName))
-            throw new PurchasingConflictException("ProductName là bắt buộc.");
+            throw new PurchasingConflictException($"Dòng {lineNo}: ProductName là bắt buộc.");
 
         if (string.IsNullOrWhiteSpace(unit))
-            throw new PurchasingConflictException("Unit là bắt buộc.");
+            unit = lineType == PurchasePlanLineTypes.Expense ? "Gói" : "Hệ";
 
-        if (src.Quantity <= 0)
-            throw new PurchasingConflictException("Quantity phải > 0.");
+        var qty = src.Quantity;
+        if (qty <= 0)
+        {
+            if (lineType != PurchasePlanLineTypes.Material)
+                qty = 1m;
+            else
+                throw new PurchasingConflictException($"Dòng {lineNo}: Quantity phải > 0.");
+        }
 
         if (src.BudgetUnitPrice is decimal budgetPrice)
         {
@@ -874,13 +908,14 @@ public sealed class PurchasePlanService(
         {
             PlanCode = planCode,
             LineNo = lineNo,
+            LineType = lineType,
             SystemName = string.IsNullOrWhiteSpace(src.SystemName) ? null : src.SystemName.Trim(),
             Category = string.IsNullOrWhiteSpace(src.Category) ? null : src.Category.Trim(),
             MaterialCode = materialCode,
             ProductName = productName,
             Spec = string.IsNullOrWhiteSpace(src.Spec) ? null : src.Spec.Trim(),
             Unit = unit,
-            Quantity = src.Quantity,
+            Quantity = qty,
             KgPerUnit = src.KgPerUnit,
             LineNote = string.IsNullOrWhiteSpace(src.LineNote) ? null : src.LineNote.Trim(),
             PurchaseStatus = string.IsNullOrWhiteSpace(src.PurchaseStatus)
@@ -889,11 +924,11 @@ public sealed class PurchasePlanService(
             StatusNote = string.IsNullOrWhiteSpace(src.StatusNote) ? null : src.StatusNote.Trim(),
             BudgetUnitPrice = src.BudgetUnitPrice,
             BudgetAmount = src.BudgetAmount ?? (src.BudgetUnitPrice is decimal bup
-                ? Math.Round(bup * src.Quantity, 2) : null),
+                ? Math.Round(bup * qty, 2) : null),
             ProposalKgPerUnit = src.ProposalKgPerUnit,
             ProposalUnitPrice = src.ProposalUnitPrice,
             ProposalAmount = src.ProposalAmount ?? (src.ProposalUnitPrice is decimal pup
-                ? Math.Round(pup * src.Quantity, 2) : null),
+                ? Math.Round(pup * qty, 2) : null),
             ProposalSupplierName = string.IsNullOrWhiteSpace(src.ProposalSupplierName)
                 ? null : src.ProposalSupplierName.Trim(),
             ProposalNote = string.IsNullOrWhiteSpace(src.ProposalNote) ? null : src.ProposalNote.Trim(),
@@ -906,13 +941,13 @@ public sealed class PurchasePlanService(
             PurchaseKgPerUnit = src.PurchaseKgPerUnit,
             PurchaseUnitPrice = src.PurchaseUnitPrice,
             PurchaseAmount = src.PurchaseAmount ?? (src.PurchaseUnitPrice is decimal prup
-                ? Math.Round(prup * src.Quantity, 2) : null),
+                ? Math.Round(prup * qty, 2) : null),
             PurchaseSupplierName = string.IsNullOrWhiteSpace(src.PurchaseSupplierName)
                 ? null : src.PurchaseSupplierName.Trim(),
             PurchaseNote = string.IsNullOrWhiteSpace(src.PurchaseNote) ? null : src.PurchaseNote.Trim(),
             SelectedUnitPrice = src.SelectedUnitPrice,
             SelectedAmount = src.SelectedAmount ?? (src.SelectedUnitPrice is decimal sup
-                ? Math.Round(sup * src.Quantity, 2) : null),
+                ? Math.Round(sup * qty, 2) : null),
             SelectedSupplierName = string.IsNullOrWhiteSpace(src.SelectedSupplierName)
                 ? null : src.SelectedSupplierName.Trim(),
             SelectionReason = string.IsNullOrWhiteSpace(src.SelectionReason)
@@ -935,7 +970,7 @@ public sealed class PurchasePlanService(
                 KgPerUnit = q.KgPerUnit,
                 UnitPrice = q.UnitPrice,
                 Amount = q.Amount ?? (q.UnitPrice is decimal up
-                    ? Math.Round(up * src.Quantity, 2) : null),
+                    ? Math.Round(up * qty, 2) : null),
                 SupplierName = string.IsNullOrWhiteSpace(q.SupplierName) ? null : q.SupplierName.Trim(),
                 Note = string.IsNullOrWhiteSpace(q.Note) ? null : q.Note.Trim(),
                 Status = string.IsNullOrWhiteSpace(q.Status) ? null : q.Status.Trim(),
@@ -946,29 +981,37 @@ public sealed class PurchasePlanService(
     }
 
     private static PurchasePlanLine MapImportLine(
-        PurchasePlanImportLinePreviewDto src, string planCode, int lineNo, Material material)
+        PurchasePlanImportLinePreviewDto src, string planCode, int lineNo, Material? material, string lineType)
     {
-        var materialCode = src.MaterialCode.Trim();
+        var materialCode = string.IsNullOrWhiteSpace(src.MaterialCode) ? null : src.MaterialCode.Trim();
 
         var productName = src.ProductName?.Trim();
-        if (string.IsNullOrWhiteSpace(productName))
+        if (string.IsNullOrWhiteSpace(productName) && material != null)
             productName = material.MaterialName;
 
         var unit = src.Unit?.Trim();
+        if (string.IsNullOrWhiteSpace(unit) && material != null)
+            unit = material.Unit;
+
         if (string.IsNullOrWhiteSpace(unit))
-            unit = material.Unit ?? string.Empty;
+            unit = lineType == PurchasePlanLineTypes.Expense ? "Gói" : "Hệ";
+
+        var qty = src.Quantity;
+        if (qty <= 0 && lineType != PurchasePlanLineTypes.Material)
+            qty = 1m;
 
         var line = new PurchasePlanLine
         {
             PlanCode = planCode,
             LineNo = lineNo,
+            LineType = lineType,
             SystemName = src.SystemName,
             Category = src.Category,
             MaterialCode = materialCode,
-            ProductName = productName,
+            ProductName = productName ?? string.Empty,
             Spec = src.Spec,
             Unit = unit ?? string.Empty,
-            Quantity = src.Quantity,
+            Quantity = qty,
             KgPerUnit = src.KgPerUnit,
             LineNote = src.LineNote,
             PurchaseStatus = string.IsNullOrWhiteSpace(src.PurchaseStatus)
@@ -977,11 +1020,11 @@ public sealed class PurchasePlanService(
             StatusNote = src.StatusNote,
             BudgetUnitPrice = src.BudgetUnitPrice,
             BudgetAmount = src.BudgetAmount ?? (src.BudgetUnitPrice is decimal bup
-                ? Math.Round(bup * src.Quantity, 2) : null),
+                ? Math.Round(bup * qty, 2) : null),
             ProposalKgPerUnit = src.ProposalKgPerUnit,
             ProposalUnitPrice = src.ProposalUnitPrice,
             ProposalAmount = src.ProposalAmount ?? (src.ProposalUnitPrice is decimal pup
-                ? Math.Round(pup * src.Quantity, 2) : null),
+                ? Math.Round(pup * qty, 2) : null),
             ProposalSupplierName = src.ProposalSupplierName,
             ProposalNote = src.ProposalNote,
             ProposalStatus = src.ProposalStatus,
@@ -993,12 +1036,12 @@ public sealed class PurchasePlanService(
             PurchaseKgPerUnit = src.PurchaseKgPerUnit,
             PurchaseUnitPrice = src.PurchaseUnitPrice,
             PurchaseAmount = src.PurchaseAmount ?? (src.PurchaseUnitPrice is decimal prup
-                ? Math.Round(prup * src.Quantity, 2) : null),
+                ? Math.Round(prup * qty, 2) : null),
             PurchaseSupplierName = src.PurchaseSupplierName,
             PurchaseNote = src.PurchaseNote,
             SelectedUnitPrice = src.SelectedUnitPrice,
             SelectedAmount = src.SelectedAmount ?? (src.SelectedUnitPrice is decimal sup
-                ? Math.Round(sup * src.Quantity, 2) : null),
+                ? Math.Round(sup * qty, 2) : null),
             SelectedSupplierName = src.SelectedSupplierName,
             SelectionReason = src.SelectionReason,
         };
@@ -1012,7 +1055,7 @@ public sealed class PurchasePlanService(
                 SortOrder = sort,
                 KgPerUnit = q.KgPerUnit,
                 UnitPrice = q.UnitPrice,
-                Amount = q.Amount ?? (q.UnitPrice is decimal up ? Math.Round(up * src.Quantity, 2) : null),
+                Amount = q.Amount ?? (q.UnitPrice is decimal up ? Math.Round(up * qty, 2) : null),
                 SupplierName = q.SupplierName,
                 Note = q.Note,
                 Status = q.Status,

@@ -587,6 +587,7 @@ public class WarehouseDbContext(DbContextOptions<WarehouseDbContext> options) : 
             e.ToTable("purchase_plan_lines");
             e.HasKey(l => l.Id);
             e.Property(l => l.PlanCode).HasMaxLength(50).IsRequired();
+            e.Property(l => l.LineType).HasMaxLength(50).HasDefaultValue(PurchasePlanLineTypes.Material);
             e.Property(l => l.SystemName).HasMaxLength(200);
             e.Property(l => l.Category).HasMaxLength(200);
             e.Property(l => l.MaterialCode).HasMaxLength(100);
