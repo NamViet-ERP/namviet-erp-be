@@ -16,8 +16,13 @@ public interface IPurchasePlanImportService
 
 public sealed class PurchasePlanImportService : IPurchasePlanImportService
 {
+    public static readonly Regex RomanNumeralRegex = new(
+        @"^[IVXLCDMivxlcdm]+[\.\,\:\s\-]*$",
+        RegexOptions.Compiled);
+
     private static readonly (string Field, string[] Aliases)[] ColumnAliases =
     [
+        ("LineNo", ["stt", "số thứ tự", "so thu tu", "no.", "no", "item no", "line no", "lineno"]),
         ("SystemName", ["hệ", "he", "system", "systemname"]),
         ("Category", ["danh mục", "danh muc", "nhóm", "nhom", "loại", "loai", "category", "itemtype"]),
         ("MaterialCode", ["mã vật tư", "ma vat tu", "materialcode", "material code", "mã vt", "ma vt", "sku"]),
@@ -483,8 +488,7 @@ public sealed class PurchasePlanImportService : IPurchasePlanImportService
             {
                 var norm = Normalize(cell.GetString());
                 if (string.IsNullOrEmpty(norm)) continue;
-                if (ColumnAliases.Any(a => a.Aliases.Any(alias =>
-                        norm.Contains(Normalize(alias), StringComparison.Ordinal))))
+                if (ColumnAliases.Any(a => a.Aliases.Any(alias => MatchAlias(norm, alias))))
                     hits++;
             }
 
@@ -493,6 +497,17 @@ public sealed class PurchasePlanImportService : IPurchasePlanImportService
         }
 
         return null;
+    }
+
+    private static bool MatchAlias(string norm, string alias)
+    {
+        var normAlias = Normalize(alias);
+        if (normAlias.Length <= 2)
+        {
+            var parts = norm.Split([' ', '/', '-', '_', ',', '.', ':', ';'], StringSplitOptions.RemoveEmptyEntries);
+            return parts.Contains(normAlias);
+        }
+        return norm.Contains(normAlias, StringComparison.Ordinal);
     }
 
     private static (Dictionary<string, int> FieldMap, List<QuoteGroupColumns> QuoteGroups, List<PurchasePlanImportColumnMapDto> Mapped)
@@ -611,7 +626,7 @@ public sealed class PurchasePlanImportService : IPurchasePlanImportService
     {
         foreach (var (group, header, field) in TemplateColumns)
         {
-            if (field.StartsWith("Quote", StringComparison.Ordinal) || field == "LineNo")
+            if (field.StartsWith("Quote", StringComparison.Ordinal))
                 continue;
             if (Normalize(header) != headerNorm) continue;
             if (Normalize(group) != groupNorm) continue;
@@ -668,12 +683,13 @@ public sealed class PurchasePlanImportService : IPurchasePlanImportService
         foreach (var (field, aliases) in ColumnAliases)
         {
             if (IsAmbiguousShortHeader(headerNorm)) continue;
-            if (!aliases.Any(a => headerNorm.Contains(Normalize(a), StringComparison.Ordinal))) continue;
+            if (!aliases.Any(a => MatchAlias(headerNorm, a))) continue;
             return field;
         }
 
         if (string.IsNullOrEmpty(groupNorm) || groupNorm.Contains("thong tin"))
         {
+            if (MatchAny(headerNorm, ["stt", "so thu tu", "số thứ tự", "no", "item no", "line no"])) return "LineNo";
             if (MatchAny(headerNorm, ["hệ", "he", "system"])) return "SystemName";
             if (MatchAny(headerNorm, ["danh mục", "danh muc", "category"])) return "Category";
             if (MatchAny(headerNorm, ["mã vật tư", "ma vat tu", "materialcode", "material code", "mã vt", "ma vt", "sku"])) return "MaterialCode";
@@ -781,7 +797,10 @@ public sealed class PurchasePlanImportService : IPurchasePlanImportService
         "quản lý", "quan ly",
         "lương", "luong",
         "phát sinh", "phat sinh",
-        "công tác", "cong tac"
+        "công tác", "cong tac",
+        "chi phí", "chi phi",
+        "bảo hành", "bao hanh",
+        "thuế", "thue tncn", "thue vat", "thue gtgt", "tien thue"
     ];
 
     public static readonly string[] ServiceKeywords =
@@ -794,7 +813,12 @@ public sealed class PurchasePlanImportService : IPurchasePlanImportService
         "lắp đặt", "lap dat",
         "chế tạo", "che tao",
         "thầu phụ", "thau phu",
-        "subcontract"
+        "subcontract",
+        "dịch vụ", "dich vu",
+        "bảo dưỡng", "bao duong",
+        "bảo trì", "bao tri",
+        "sửa chữa", "sua chua",
+        "thuê ngoài", "thue ngoai"
     ];
 
     public static readonly string[] ServiceUnits =
@@ -804,6 +828,69 @@ public sealed class PurchasePlanImportService : IPurchasePlanImportService
         "chuyến", "chuyen",
         "lần", "lan"
     ];
+
+    public static bool IsServiceOrExpenseLine(
+        string? productName,
+        string? category,
+        string? systemName,
+        string? unit)
+    {
+        var textCombined = $"{productName} {category} {systemName}".ToLowerInvariant();
+        var normCombined = Normalize(textCombined);
+        var normUnit = Normalize(unit ?? string.Empty).Trim();
+
+        foreach (var kw in ExpenseKeywords)
+        {
+            if (kw == "thuế")
+            {
+                if (textCombined.Contains("thuế", StringComparison.OrdinalIgnoreCase))
+                    return true;
+                continue;
+            }
+
+            if (kw == "lương" || kw == "luong")
+            {
+                if (textCombined.Contains("lương", StringComparison.OrdinalIgnoreCase))
+                    return true;
+
+                if (normCombined.Contains("luong", StringComparison.OrdinalIgnoreCase)
+                    && !normCombined.Contains("luu luong", StringComparison.OrdinalIgnoreCase)
+                    && !normCombined.Contains("trong luong", StringComparison.OrdinalIgnoreCase)
+                    && !normCombined.Contains("khoi luong", StringComparison.OrdinalIgnoreCase)
+                    && !normCombined.Contains("so luong", StringComparison.OrdinalIgnoreCase)
+                    && !normCombined.Contains("chat luong", StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+                continue;
+            }
+
+            if (textCombined.Contains(kw, StringComparison.OrdinalIgnoreCase) ||
+                normCombined.Contains(Normalize(kw), StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        foreach (var kw in ServiceKeywords)
+        {
+            if (textCombined.Contains(kw, StringComparison.OrdinalIgnoreCase) ||
+                normCombined.Contains(Normalize(kw), StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        foreach (var u in ServiceUnits)
+        {
+            if (string.Equals(normUnit, Normalize(u), StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
 
     public static string ClassifyLineType(
         string? materialCode,
@@ -823,6 +910,30 @@ public sealed class PurchasePlanImportService : IPurchasePlanImportService
 
         foreach (var kw in ExpenseKeywords)
         {
+            if (kw == "thuế")
+            {
+                if (textCombined.Contains("thuế", StringComparison.OrdinalIgnoreCase))
+                    return PurchasePlanLineTypes.Expense;
+                continue;
+            }
+
+            if (kw == "lương" || kw == "luong")
+            {
+                if (textCombined.Contains("lương", StringComparison.OrdinalIgnoreCase))
+                    return PurchasePlanLineTypes.Expense;
+
+                if (normCombined.Contains("luong", StringComparison.OrdinalIgnoreCase)
+                    && !normCombined.Contains("luu luong", StringComparison.OrdinalIgnoreCase)
+                    && !normCombined.Contains("trong luong", StringComparison.OrdinalIgnoreCase)
+                    && !normCombined.Contains("khoi luong", StringComparison.OrdinalIgnoreCase)
+                    && !normCombined.Contains("so luong", StringComparison.OrdinalIgnoreCase)
+                    && !normCombined.Contains("chat luong", StringComparison.OrdinalIgnoreCase))
+                {
+                    return PurchasePlanLineTypes.Expense;
+                }
+                continue;
+            }
+
             if (textCombined.Contains(kw, StringComparison.OrdinalIgnoreCase) ||
                 normCombined.Contains(Normalize(kw), StringComparison.OrdinalIgnoreCase))
             {
@@ -847,11 +958,6 @@ public sealed class PurchasePlanImportService : IPurchasePlanImportService
             }
         }
 
-        if (!string.IsNullOrWhiteSpace(productName) && (hasPriceOrMoney || (qty != null && qty > 0)))
-        {
-            return PurchasePlanLineTypes.Service;
-        }
-
         return PurchasePlanLineTypes.Material;
     }
 
@@ -872,7 +978,20 @@ public sealed class PurchasePlanImportService : IPurchasePlanImportService
         if (string.IsNullOrWhiteSpace(prodName))
             return true;
 
+        var stt = Get("LineNo");
+        if (string.IsNullOrWhiteSpace(stt))
+            stt = CellText(sheet.Cell(row, 1));
+
+        if (!string.IsNullOrWhiteSpace(stt) && RomanNumeralRegex.IsMatch(stt.Trim()))
+            return true;
+
+        var spec = Get("Spec");
+        var unit = Get("Unit");
         var qty = ParseDecimal(Get("Quantity"));
+
+        var hasNoSpec = string.IsNullOrWhiteSpace(spec);
+        var hasNoUnit = string.IsNullOrWhiteSpace(unit);
+        var hasNoQty = qty is null or <= 0;
 
         var hasMoney = ParseDecimal(Get("BudgetUnitPrice")) != null
             || ParseDecimal(Get("BudgetAmount")) != null
@@ -883,16 +1002,35 @@ public sealed class PurchasePlanImportService : IPurchasePlanImportService
             || ParseDecimal(Get("SelectedUnitPrice")) != null
             || ParseDecimal(Get("SelectedAmount")) != null;
 
-        if (hasMoney)
-            return false;
-
-        foreach (var g in quoteGroups)
+        if (!hasMoney)
         {
-            if (g.UnitPriceCol is int uc && ParseDecimal(CellText(sheet.Cell(row, uc))) != null) return false;
-            if (g.AmountCol is int ac && ParseDecimal(CellText(sheet.Cell(row, ac))) != null) return false;
+            foreach (var g in quoteGroups)
+            {
+                if (g.UnitPriceCol is int uc && ParseDecimal(CellText(sheet.Cell(row, uc))) != null) { hasMoney = true; break; }
+                if (g.AmountCol is int ac && ParseDecimal(CellText(sheet.Cell(row, ac))) != null) { hasMoney = true; break; }
+            }
         }
 
-        return qty is null or <= 0;
+        // Dòng Subtotal / Header không có STT La Mã nhưng:
+        // Không có MaterialCode VÀ không có Spec VÀ (không có Unit HOẶC không có Quantity / Quantity <= 0)
+        if (hasNoSpec && (hasNoUnit || hasNoQty))
+        {
+            var category = Get("Category");
+            var systemName = Get("SystemName");
+            var isRecognizedServiceOrExpense = IsServiceOrExpenseLine(prodName, category, systemName, unit);
+
+            // Dịch vụ / chi phí thực tế (ví dụ: Bể dập bụi, Vận chuyển, Kiểm định, Tiếp khách):
+            // Có ĐVT dịch vụ chuẩn HOẶC từ khóa dịch vụ/chi phí, VÀ có tiền, VÀ không thiếu cả Unit lẫn Qty
+            if (isRecognizedServiceOrExpense && hasMoney && (!hasNoUnit || !hasNoQty))
+                return false;
+
+            return true;
+        }
+
+        if (!hasMoney && hasNoQty)
+            return true;
+
+        return false;
     }
 
     private static PurchasePlanImportLinePreviewDto ParseRow(

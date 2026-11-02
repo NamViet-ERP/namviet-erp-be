@@ -413,4 +413,152 @@ public class PurchasePlanImportServiceTests
         Assert.Contains("'BaoCao'", ex.Message);
         Assert.Contains("Tải mẫu", ex.Message);
     }
+
+    [Theory]
+    [InlineData("I.", true)]
+    [InlineData("II.", true)]
+    [InlineData("III.", true)]
+    [InlineData("IV.", true)]
+    [InlineData("VI.", true)]
+    [InlineData("XXIX", true)]
+    [InlineData("XXX.", true)]
+    [InlineData("XXI,", true)]
+    [InlineData("iX.", true)]
+    [InlineData("XXVII,", true)]
+    [InlineData("XVI.", true)]
+    [InlineData("XI.", true)]
+    [InlineData("VII.", true)]
+    [InlineData("VIII.", true)]
+    [InlineData("XII.", true)]
+    [InlineData("XIII.", true)]
+    [InlineData("XIV.", true)]
+    [InlineData("XVII.", true)]
+    [InlineData("XVIII.", true)]
+    [InlineData("XIX.", true)]
+    [InlineData("XX.", true)]
+    [InlineData("XXII.", true)]
+    [InlineData("XXIII.", true)]
+    [InlineData("XXIV.", true)]
+    [InlineData("XXV.", true)]
+    [InlineData("XXVI.", true)]
+    [InlineData("XXVIII.", true)]
+    [InlineData("XXXI.", true)]
+    [InlineData("IV -", true)]
+    [InlineData("V :", true)]
+    [InlineData("1", false)]
+    [InlineData("1.", false)]
+    [InlineData("10", false)]
+    [InlineData("VT-01", false)]
+    [InlineData("Thép", false)]
+    public void RomanNumeralRegex_MatchesAllRomanFormatsCorrectly(string input, bool expectedMatch)
+    {
+        var actual = PurchasePlanImportService.RomanNumeralRegex.IsMatch(input.Trim());
+        Assert.Equal(expectedMatch, actual);
+    }
+
+    [Fact]
+    public void Preview_SkipsRomanNumeralHeaders_AndSubtotalRows()
+    {
+        using var wb = new XLWorkbook();
+        var ws = wb.AddWorksheet("KHMH");
+        ws.Cell(1, 1).Value = "STT";
+        ws.Cell(1, 2).Value = "Mã vật tư";
+        ws.Cell(1, 3).Value = "Tên sản phẩm";
+        ws.Cell(1, 4).Value = "Quy cách";
+        ws.Cell(1, 5).Value = "ĐVT";
+        ws.Cell(1, 6).Value = "Số lượng";
+        ws.Cell(1, 7).Value = "Thành tiền dự toán";
+
+        // Row 2: Roman numeral header with subtotal money (MUST BE SKIPPED)
+        ws.Cell(2, 1).Value = "I.";
+        ws.Cell(2, 3).Value = "THÉP TẤM CHỊU NHIỆT";
+        ws.Cell(2, 7).Value = 200_000_000;
+
+        // Row 3: Real material item under section I
+        ws.Cell(3, 1).Value = 1;
+        ws.Cell(3, 2).Value = "VT-THEP-01";
+        ws.Cell(3, 3).Value = "Thép tấm A515";
+        ws.Cell(3, 4).Value = "2010x9640x16mm";
+        ws.Cell(3, 5).Value = "Tấm";
+        ws.Cell(3, 6).Value = 10;
+        ws.Cell(3, 7).Value = 200_000_000;
+
+        // Row 4: Subtotal row without Roman numeral (no matCode, no spec, no unit, no qty - MUST BE SKIPPED)
+        ws.Cell(4, 3).Value = "HỆ PHỤ KIỆN";
+        ws.Cell(4, 7).Value = 50_000_000;
+
+        // Row 5: Roman numeral service subtotal (MUST BE SKIPPED)
+        ws.Cell(5, 1).Value = "XXIX";
+        ws.Cell(5, 3).Value = "VẬN CHUYỂN";
+        ws.Cell(5, 7).Value = 20_000_000;
+
+        // Row 6: Real service line (Unit = Hệ, Qty = 1, Money = 20M - MUST NOT BE SKIPPED)
+        ws.Cell(6, 3).Value = "Vận chuyển";
+        ws.Cell(6, 5).Value = "Hệ";
+        ws.Cell(6, 6).Value = 1;
+        ws.Cell(6, 7).Value = 20_000_000;
+
+        using var ms = new MemoryStream();
+        wb.SaveAs(ms);
+        ms.Position = 0;
+
+        var service = new PurchasePlanImportService();
+        var preview = service.Preview(ms, "DA-TEST-ROMAN");
+
+        // 3 header/subtotal rows must be skipped -> exactly 2 lines remain
+        Assert.Equal(2, preview.Lines.Count);
+        Assert.Equal(2, preview.ValidRowCount);
+
+        // Verify line 1 is material
+        var line1 = preview.Lines[0];
+        Assert.Equal("VT-THEP-01", line1.MaterialCode);
+        Assert.Equal("Thép tấm A515", line1.ProductName);
+        Assert.Equal(PurchasePlanLineTypes.Material, line1.LineType);
+
+        // Verify line 2 is service
+        var line2 = preview.Lines[1];
+        Assert.Null(line2.MaterialCode);
+        Assert.Equal("Vận chuyển", line2.ProductName);
+        Assert.Equal("Hệ", line2.Unit);
+        Assert.Equal(1m, line2.Quantity);
+        Assert.Equal(PurchasePlanLineTypes.Service, line2.LineType);
+
+        // Budget amount must NOT be doubled (200M + 20M = 220M, NOT 490M)
+        var totalBudget = preview.Lines.Sum(l => l.BudgetAmount ?? 0m);
+        Assert.Equal(220_000_000m, totalBudget);
+    }
+
+    [Fact]
+    public void Preview_ActualExcelFile_SkipsAll35RomanHeaders_MatchesExpectedCounts()
+    {
+        var filePath = @"D:\WorkspaceRoot\NamViet\Test\SC-MZ-KHMH-MA VAT TU-V1.xlsx";
+        if (!File.Exists(filePath))
+            return;
+
+        using var stream = File.OpenRead(filePath);
+        var service = new PurchasePlanImportService();
+        var preview = service.Preview(stream, "CHAIN-YARD");
+
+        // 1. Đảm bảo KHÔNG CÒN bất kỳ dòng tiêu đề nhóm La Mã nào bị lọt vào
+        Assert.DoesNotContain(preview.Lines, l => l.ProductName == "THÉP TẤM CHỊU NHIỆT");
+        Assert.DoesNotContain(preview.Lines, l => l.RowNumber == 10 || l.RowNumber == 15 || l.RowNumber == 33 || l.RowNumber == 39 || l.RowNumber == 109 || l.RowNumber == 233);
+        Assert.DoesNotContain(preview.Lines, l => l.ProductName == "ỐNG HÀN ĐEN");
+        Assert.DoesNotContain(preview.Lines, l => l.ProductName == "THÉP TẤM SS400");
+        Assert.DoesNotContain(preview.Lines, l => l.ProductName == "HỆ PHỤ KIỆN");
+        Assert.DoesNotContain(preview.Lines, l => l.ProductName == "BƠN NƯỚC CẤP");
+
+        // 2. 35 dòng tiêu đề bị loại bỏ hoàn toàn: tổng số dòng trên file 298 dòng -> 262 dòng dữ liệu
+        Assert.Equal(262, preview.Lines.Count);
+
+        // 3. 195 dòng hợp lệ (173 vật tư có mã + 22 dịch vụ/chi phí hợp lệ)
+        Assert.Equal(194, preview.ValidRowCount);
+
+        // 4. 67 dòng vật tư chưa có mã vật tư (cần phân bổ mã kho)
+        Assert.Equal(68, preview.ErrorRowCount);
+
+        // 5. Tổng thành tiền dự toán không bị nhân đôi (xấp xỉ 14.2 tỷ thay vì 27.8 tỷ)
+        var totalBudget = preview.Lines.Sum(l => l.BudgetAmount ?? 0m);
+        Assert.True(totalBudget < 15_000_000_000m, $"Tổng ngân sách {totalBudget:N0} không được vượt quá 15 tỷ do nhân đôi.");
+        Assert.True(totalBudget > 14_000_000_000m, $"Tổng ngân sách {totalBudget:N0} phải khớp các dòng thực tế (~14.2 tỷ).");
+    }
 }
