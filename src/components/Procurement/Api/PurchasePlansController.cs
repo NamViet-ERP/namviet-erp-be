@@ -1,8 +1,10 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using NamViet.ERP.Api.Application.Dtos.Purchasing;
 using NamViet.ERP.Api.Application.Services.Purchasing;
 using NamViet.ERP.Api.Infrastructure.Authorization;
+using NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence;
 
 namespace NamViet.ERP.Api.Controllers.Purchasing;
 
@@ -12,7 +14,8 @@ namespace NamViet.ERP.Api.Controllers.Purchasing;
 public class PurchasePlansController(
     IPurchasePlanService plans,
     IPurchasePlanImportService importService,
-    ISupplierMaterialRiskService supplierMaterialRisks) : ControllerBase
+    ISupplierMaterialRiskService supplierMaterialRisks,
+    WarehouseDbContext db) : ControllerBase
 {
     [HttpGet]
     [RequirePermission("purchasing.plans.view")]
@@ -153,7 +156,14 @@ public class PurchasePlansController(
         using var ms = new MemoryStream();
         await stream.CopyToAsync(ms, ct);
         ms.Position = 0;
-        return Ok(importService.Preview(ms, projectCode));
+
+        var activeCodes = (await db.Materials.AsNoTracking()
+            .Where(m => m.DeletedAt == null && m.IsActive)
+            .Select(m => m.MaterialCode)
+            .ToListAsync(ct))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        return Ok(importService.Preview(ms, projectCode, activeCodes));
     }
 
     [HttpPost("import/confirm")]

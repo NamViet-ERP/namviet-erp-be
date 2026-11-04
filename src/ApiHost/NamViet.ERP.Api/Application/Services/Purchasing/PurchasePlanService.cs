@@ -218,6 +218,10 @@ public sealed class PurchasePlanService(
                     .Select(l => l.MaterialCode);
                 var materialsByCode = await LoadMaterialsByCodesAsync(materialCodes, ct);
 
+                ValidateMissingMaterials(
+                    request.Lines.Select((l, i) => (l.MaterialCode, l.LineType, i + 1)),
+                    materialsByCode);
+
                 var lineNo = 0;
                 foreach (var src in request.Lines)
                 {
@@ -286,6 +290,10 @@ public sealed class PurchasePlanService(
                 .Where(l => (l.LineType ?? PurchasePlanLineTypes.Material) == PurchasePlanLineTypes.Material)
                 .Select(l => l.MaterialCode);
             var materialsByCode = await LoadMaterialsByCodesAsync(materialCodes, ct);
+
+            ValidateMissingMaterials(
+                request.Lines.Select((l, i) => (l.MaterialCode, l.LineType, i + 1)),
+                materialsByCode);
 
             var lineNo = 0;
             foreach (var src in request.Lines)
@@ -387,6 +395,10 @@ public sealed class PurchasePlanService(
             .Where(l => (l.LineType ?? PurchasePlanLineTypes.Material) == PurchasePlanLineTypes.Material)
             .Select(l => l.MaterialCode);
         var materialsByCode = await LoadMaterialsByCodesAsync(materialCodes, ct);
+
+        ValidateMissingMaterials(
+            validLines.Select((l, i) => (l.MaterialCode, l.LineType, l.LineNo > 0 ? l.LineNo : i + 1)),
+            materialsByCode);
 
         await using var tx = await db.Database.BeginTransactionAsync(ct);
 
@@ -849,6 +861,33 @@ public sealed class PurchasePlanService(
                         && wanted.Contains(m.MaterialCode.Trim(), StringComparer.OrdinalIgnoreCase))
             .GroupBy(m => m.MaterialCode.Trim(), StringComparer.OrdinalIgnoreCase)
             .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static void ValidateMissingMaterials(
+        IEnumerable<(string? Code, string? LineType, int Index)> lines,
+        IReadOnlyDictionary<string, Material> materialsByCode)
+    {
+        var missingLines = new List<string>();
+        foreach (var (rawCode, rawLineType, index) in lines)
+        {
+            var lineType = PurchasePlanLineTypes.IsValid(rawLineType)
+                ? rawLineType!
+                : PurchasePlanLineTypes.Material;
+            if (lineType == PurchasePlanLineTypes.Material)
+            {
+                var code = rawCode?.Trim();
+                if (string.IsNullOrWhiteSpace(code) || !materialsByCode.ContainsKey(code))
+                {
+                    missingLines.Add($"Dòng {index} ('{code ?? "trống"}')");
+                }
+            }
+        }
+        if (missingLines.Count > 0)
+        {
+            var sample = string.Join(", ", missingLines.Take(10));
+            var more = missingLines.Count > 10 ? $" và {missingLines.Count - 10} dòng khác" : "";
+            throw new PurchasingConflictException($"Không thể tạo KHMH vì {missingLines.Count} dòng vật tư chưa có trong danh mục hệ thống: {sample}{more}. Vui lòng tạo danh mục vật tư trước.");
+        }
     }
 
     private static Material RequireMaterial(

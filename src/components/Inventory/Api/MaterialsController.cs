@@ -30,6 +30,7 @@ public class MaterialsController(WarehouseDbContext db, IMaterialImportExcelServ
         [FromQuery] string? kieu = null,
         [FromQuery] int? categoryId = null,
         [FromQuery] bool includeInactive = false,
+        [FromQuery] bool all = false,
         CancellationToken ct = default)
     {
         (page, pageSize) = Paging.Normalize(page, pageSize);
@@ -63,6 +64,16 @@ public class MaterialsController(WarehouseDbContext db, IMaterialImportExcelServ
         {
             var subtree = MaterialCategoryHelper.CollectSelfAndDescendantIds(categoryId.Value, allCategories!);
             query = query.Where(m => subtree.Contains(m.CategoryId));
+        }
+
+        if (all)
+        {
+            var allMaterials = await query.OrderBy(m => m.MaterialCode).ToListAsync(ct);
+            var catLookup = allCategories is not null
+                ? allCategories.ToDictionary(c => c.Id)
+                : await LoadCategoryLookupAsync(allMaterials.Select(m => m.CategoryId), ct);
+            var allDtos = allMaterials.Select(m => ToDto(m, catLookup)).ToList();
+            return Ok(PagedResult<MaterialDto>.Create(allDtos, allDtos.Count, 1, Math.Max(1, allDtos.Count)));
         }
 
         var total = await query.CountAsync(ct);
@@ -407,6 +418,42 @@ public class MaterialsController(WarehouseDbContext db, IMaterialImportExcelServ
         m.DeletedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
         return NoContent();
+    }
+
+    [HttpPost("actions/cleanup-false-specs")]
+    [RequirePermission("wms.materials.update")]
+    public async Task<IActionResult> CleanupFalseEquipmentSpecs(CancellationToken ct)
+    {
+        var materials = await db.Materials
+            .Where(m => m.GeneralTechnicalSpec != null &&
+                        (m.GeneralTechnicalSpec.Contains("kW") || m.GeneralTechnicalSpec.Contains("Pa") || m.GeneralTechnicalSpec.Contains("m³/h")) &&
+                        (m.MaterialCode.StartsWith("BÔ-") || m.MaterialCode.StartsWith("BH-") || m.MaterialCode.StartsWith("TH-") ||
+                         m.MaterialCode.StartsWith("IN-") || m.MaterialCode.StartsWith("ONG-") || m.MaterialCode.StartsWith("PK-") ||
+                         m.MaterialCode.StartsWith("LB-") || m.MaterialCode.StartsWith("VT-")))
+            .ToListAsync(ct);
+
+        var cleanedCount = 0;
+        foreach (var m in materials)
+        {
+            var genSpec = m.GeneralTechnicalSpec ?? string.Empty;
+            if (genSpec.Contains("Động cơ", StringComparison.OrdinalIgnoreCase) ||
+                genSpec.Contains("Quạt", StringComparison.OrdinalIgnoreCase) ||
+                genSpec.Contains("Bơm", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            m.GeneralTechnicalSpec = null;
+            m.UpdatedAt = DateTime.UtcNow;
+            cleanedCount++;
+        }
+
+        if (cleanedCount > 0)
+        {
+            await db.SaveChangesAsync(ct);
+        }
+
+        return Ok(new { cleanedCount, message = $"Đã làm sạch thông số thiết bị sai lệch cho {cleanedCount} vật tư." });
     }
 
     private async Task<IReadOnlyDictionary<int, MaterialCategory>> LoadCategoryLookupAsync(

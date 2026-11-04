@@ -235,11 +235,21 @@ public sealed class MaterialImportExcelService(WarehouseDbContext db) : IMateria
                 }
             }
 
-            // Tự động kết hợp thông số hình học cho Thép / Kim khí
+            var isEquipment = IsEquipmentCategoryOrItem(danhMuc, nhomVatTu, loaiVatTu, name, code);
+
+            // Tự động kết hợp thông số hình học cho Thép / Kim khí / Bảo ôn / Ống
             var techSpec = GetCell(row, colMap.TechnicalSpec).Trim();
             var phiRong = colMap.PhiRong >= 0 ? GetCell(row, colMap.PhiRong).Trim() : string.Empty;
             var doDay = colMap.DoDay >= 0 ? GetCell(row, colMap.DoDay).Trim() : string.Empty;
             var chieuDai = colMap.ChieuDai >= 0 ? GetCell(row, colMap.ChieuDai).Trim() : string.Empty;
+
+            // Nếu là thiết bị và các cột hình học trùng với cột công suất/lưu lượng/cột áp -> không gán nhầm kích thước
+            if (isEquipment)
+            {
+                if (colMap.PhiRong == colMap.CongSuat) phiRong = string.Empty;
+                if (colMap.DoDay == colMap.LuuLuong) doDay = string.Empty;
+                if (colMap.ChieuDai == colMap.CotAp) chieuDai = string.Empty;
+            }
 
             if (!string.IsNullOrEmpty(doDay) || !string.IsNullOrEmpty(chieuDai))
             {
@@ -258,39 +268,59 @@ public sealed class MaterialImportExcelService(WarehouseDbContext db) : IMateria
                 techSpec = phiRong;
             }
 
-            // Tự động kết hợp thông số công suất / lưu lượng cho Bơm / Quạt / Động cơ
+            // Tự động kết hợp thông số công suất / lưu lượng cho Bơm / Quạt / Động cơ / Thiết bị
             var genSpec = GetCell(row, colMap.GeneralTechnicalSpec).Trim();
-            var congSuat = colMap.CongSuat >= 0 ? GetCell(row, colMap.CongSuat).Trim() : string.Empty;
-            var luuLuong = colMap.LuuLuong >= 0 ? GetCell(row, colMap.LuuLuong).Trim() : string.Empty;
-            var cotAp = colMap.CotAp >= 0 ? GetCell(row, colMap.CotAp).Trim() : string.Empty;
-            var dienAp = colMap.DienAp >= 0 ? GetCell(row, colMap.DienAp).Trim() : string.Empty;
             var moTa = colMap.MoTa >= 0 ? GetCell(row, colMap.MoTa).Trim() : string.Empty;
 
-            var eqSpecs = new List<string>();
-            if (!string.IsNullOrEmpty(congSuat)) eqSpecs.Add(congSuat.EndsWith("kw", StringComparison.OrdinalIgnoreCase) ? congSuat : $"{congSuat}kW");
-            if (!string.IsNullOrEmpty(luuLuong)) eqSpecs.Add(luuLuong.Contains("m3", StringComparison.OrdinalIgnoreCase) ? luuLuong : $"{luuLuong} m³/h");
-            if (!string.IsNullOrEmpty(cotAp)) eqSpecs.Add(cotAp.Contains("pa", StringComparison.OrdinalIgnoreCase) || cotAp.Contains("h2o", StringComparison.OrdinalIgnoreCase) ? cotAp : $"{cotAp} Pa");
-            if (!string.IsNullOrEmpty(dienAp)) eqSpecs.Add($"Điện áp: {dienAp}");
-
-            if (eqSpecs.Count > 0)
+            if (isEquipment)
             {
-                var combinedEq = string.Join(" | ", eqSpecs);
-                if (!string.IsNullOrEmpty(genSpec) && !genSpec.Equals(combinedEq, StringComparison.OrdinalIgnoreCase))
+                var congSuat = colMap.CongSuat >= 0 ? GetCell(row, colMap.CongSuat).Trim() : string.Empty;
+                var luuLuong = colMap.LuuLuong >= 0 ? GetCell(row, colMap.LuuLuong).Trim() : string.Empty;
+                var cotAp = colMap.CotAp >= 0 ? GetCell(row, colMap.CotAp).Trim() : string.Empty;
+                var dienAp = colMap.DienAp >= 0 ? GetCell(row, colMap.DienAp).Trim() : string.Empty;
+
+                if (LooksLikeDimension(congSuat)) congSuat = string.Empty;
+                if (LooksLikeDimension(luuLuong)) luuLuong = string.Empty;
+                if (LooksLikeDimension(cotAp)) cotAp = string.Empty;
+
+                var eqSpecs = new List<string>();
+                if (!string.IsNullOrEmpty(congSuat)) eqSpecs.Add(congSuat.EndsWith("kw", StringComparison.OrdinalIgnoreCase) ? congSuat : $"{congSuat}kW");
+                if (!string.IsNullOrEmpty(luuLuong)) eqSpecs.Add(luuLuong.Contains("m3", StringComparison.OrdinalIgnoreCase) ? luuLuong : $"{luuLuong} m³/h");
+                if (!string.IsNullOrEmpty(cotAp)) eqSpecs.Add(cotAp.Contains("pa", StringComparison.OrdinalIgnoreCase) || cotAp.Contains("h2o", StringComparison.OrdinalIgnoreCase) ? cotAp : $"{cotAp} Pa");
+                if (!string.IsNullOrEmpty(dienAp)) eqSpecs.Add($"Điện áp: {dienAp}");
+
+                if (eqSpecs.Count > 0)
                 {
-                    genSpec = $"{combinedEq}\n{genSpec}";
+                    var combinedEq = string.Join(" | ", eqSpecs);
+                    if (!string.IsNullOrEmpty(genSpec) && !genSpec.Equals(combinedEq, StringComparison.OrdinalIgnoreCase))
+                    {
+                        genSpec = $"{combinedEq}\n{genSpec}";
+                    }
+                    else
+                    {
+                        genSpec = combinedEq;
+                    }
+                    if (!string.IsNullOrEmpty(moTa) && !moTa.Equals(name, StringComparison.OrdinalIgnoreCase) && !genSpec.Contains(moTa))
+                    {
+                        genSpec += $"\n{moTa}";
+                    }
                 }
-                else
+                else if (string.IsNullOrEmpty(genSpec) && !string.IsNullOrEmpty(moTa) && !moTa.Equals(name, StringComparison.OrdinalIgnoreCase))
                 {
-                    genSpec = combinedEq;
-                }
-                if (!string.IsNullOrEmpty(moTa) && !moTa.Equals(name, StringComparison.OrdinalIgnoreCase) && !genSpec.Contains(moTa))
-                {
-                    genSpec += $"\n{moTa}";
+                    genSpec = moTa;
                 }
             }
-            else if (string.IsNullOrEmpty(genSpec) && !string.IsNullOrEmpty(moTa) && !moTa.Equals(name, StringComparison.OrdinalIgnoreCase))
+            else
             {
-                genSpec = moTa;
+                // Vật tư không phải thiết bị: Tuyệt đối KHÔNG gán kW, m³/h, Pa
+                if (string.IsNullOrEmpty(genSpec) && !string.IsNullOrEmpty(moTa) && !moTa.Equals(name, StringComparison.OrdinalIgnoreCase))
+                {
+                    genSpec = moTa;
+                }
+                if (!string.IsNullOrEmpty(genSpec) && (genSpec.Contains("kW", StringComparison.OrdinalIgnoreCase) || genSpec.Contains("Pa", StringComparison.OrdinalIgnoreCase) || genSpec.Contains("m³/h", StringComparison.OrdinalIgnoreCase)))
+                {
+                    genSpec = string.Empty;
+                }
             }
 
             // Suy luận Đơn vị tính nếu file không có cột ĐVT
@@ -659,6 +689,13 @@ public sealed class MaterialImportExcelService(WarehouseDbContext db) : IMateria
                     row.PhanLoai,
                     row.Kieu);
 
+                var isEq = IsEquipmentCategoryOrItem(row.DanhMuc, row.NhomVatTu, row.LoaiVatTu, row.MaterialName, code);
+                var rowGenSpec = string.IsNullOrWhiteSpace(row.GeneralTechnicalSpec) ? null : row.GeneralTechnicalSpec.Trim();
+                if (!isEq && rowGenSpec != null && (rowGenSpec.Contains("kW", StringComparison.OrdinalIgnoreCase) || rowGenSpec.Contains("Pa", StringComparison.OrdinalIgnoreCase) || rowGenSpec.Contains("m³/h", StringComparison.OrdinalIgnoreCase)))
+                {
+                    rowGenSpec = null;
+                }
+
                 if (existingMaterials.TryGetValue(code, out var existing))
                 {
                     if (request.OverwriteExisting)
@@ -668,7 +705,7 @@ public sealed class MaterialImportExcelService(WarehouseDbContext db) : IMateria
                         existing.Unit = row.Unit.Trim();
                         existing.Origin = string.IsNullOrWhiteSpace(row.Origin) ? null : row.Origin.Trim();
                         existing.TechnicalSpec = string.IsNullOrWhiteSpace(row.TechnicalSpec) ? null : row.TechnicalSpec.Trim();
-                        existing.GeneralTechnicalSpec = string.IsNullOrWhiteSpace(row.GeneralTechnicalSpec) ? null : row.GeneralTechnicalSpec.Trim();
+                        existing.GeneralTechnicalSpec = rowGenSpec;
                         existing.QualityStandard = string.IsNullOrWhiteSpace(row.QualityStandard) ? null : row.QualityStandard.Trim();
                         existing.CeilingPrice = row.CeilingPrice is > 0 ? row.CeilingPrice : null;
                         existing.AbcClass = NormalizeAbc(row.AbcClass);
@@ -695,7 +732,7 @@ public sealed class MaterialImportExcelService(WarehouseDbContext db) : IMateria
                         Unit = row.Unit.Trim(),
                         Origin = string.IsNullOrWhiteSpace(row.Origin) ? null : row.Origin.Trim(),
                         TechnicalSpec = string.IsNullOrWhiteSpace(row.TechnicalSpec) ? null : row.TechnicalSpec.Trim(),
-                        GeneralTechnicalSpec = string.IsNullOrWhiteSpace(row.GeneralTechnicalSpec) ? null : row.GeneralTechnicalSpec.Trim(),
+                        GeneralTechnicalSpec = rowGenSpec,
                         QualityStandard = string.IsNullOrWhiteSpace(row.QualityStandard) ? null : row.QualityStandard.Trim(),
                         CeilingPrice = row.CeilingPrice is > 0 ? row.CeilingPrice : null,
                         AbcClass = NormalizeAbc(row.AbcClass),
@@ -1045,6 +1082,29 @@ public sealed class MaterialImportExcelService(WarehouseDbContext db) : IMateria
             return true;
 
         return false;
+    }
+
+    private static bool IsEquipmentCategoryOrItem(
+        string? danhMuc, string? nhomVatTu, string? loaiVatTu, string? name, string? code)
+    {
+        var combined = $"{danhMuc} {nhomVatTu} {loaiVatTu} {name} {code}".ToLowerInvariant();
+        return combined.Contains("động cơ") || combined.Contains("dong co") ||
+               combined.Contains("quạt") || combined.Contains("quat") ||
+               combined.Contains("bơm") || combined.Contains("bom") ||
+               combined.Contains("máy") || combined.Contains("may") ||
+               combined.Contains("thiết bị") || combined.Contains("thiet bi") ||
+               combined.Contains("biến tần") || combined.Contains("bien tan") ||
+               combined.Contains("đc-") || combined.Contains("dc-");
+    }
+
+    private static bool LooksLikeDimension(string s)
+    {
+        if (string.IsNullOrWhiteSpace(s)) return false;
+        var t = s.Trim();
+        return t.Contains('Ø') ||
+               t.Contains("tube", StringComparison.OrdinalIgnoreCase) ||
+               t.Contains("mm", StringComparison.OrdinalIgnoreCase) ||
+               t.Contains('x') || t.Contains('X');
     }
 
     private static string? NormalizeAbc(string? value)

@@ -169,4 +169,47 @@ public class MaterialsControllerSpecialCodeTests : IDisposable
         var fetched = await _controller.GetByCodeQuery(SpecialCode, CancellationToken.None);
         Assert.IsType<NotFoundResult>(fetched.Result);
     }
+
+    [Fact]
+    public async Task CleanupFalseEquipmentSpecs_RemovesFalseEquipmentSpecsFromNonEquipment()
+    {
+        // 1. Add non-equipment material with false specs
+        var falseSpecMaterial = new Material
+        {
+            MaterialCode = "BÔ-CUN-TEST-CLEANUP",
+            MaterialName = "Cuộn bảo ôn test",
+            CategoryId = 2,
+            Unit = "Ống",
+            GeneralTechnicalSpec = "600kW | 25 m³/h | 3600 Pa",
+            IsActive = true
+        };
+
+        // 2. Add real equipment material
+        var equipmentMaterial = new Material
+        {
+            MaterialCode = "ĐC-MOT-TEST",
+            MaterialName = "Động cơ điện 160kW",
+            CategoryId = 2,
+            Unit = "Bộ",
+            GeneralTechnicalSpec = "160kW | 71500 m³/h | Động cơ điện",
+            IsActive = true
+        };
+
+        _db.Materials.AddRange(falseSpecMaterial, equipmentMaterial);
+        await _db.SaveChangesAsync();
+
+        // 3. Trigger cleanup
+        var cleanupRes = await _controller.CleanupFalseEquipmentSpecs(CancellationToken.None);
+        var okRes = Assert.IsType<OkObjectResult>(cleanupRes);
+
+        // 4. Verify false spec was removed from BÔ-...
+        var cleanedBaoOn = await _db.Materials.FindAsync("BÔ-CUN-TEST-CLEANUP");
+        Assert.NotNull(cleanedBaoOn);
+        Assert.Null(cleanedBaoOn.GeneralTechnicalSpec);
+
+        // 5. Verify real equipment spec was preserved
+        var preservedEquip = await _db.Materials.FindAsync("ĐC-MOT-TEST");
+        Assert.NotNull(preservedEquip);
+        Assert.Equal("160kW | 71500 m³/h | Động cơ điện", preservedEquip.GeneralTechnicalSpec);
+    }
 }

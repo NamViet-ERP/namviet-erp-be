@@ -4,17 +4,19 @@ using System.Text.RegularExpressions;
 using ClosedXML.Excel;
 using NamViet.ERP.Api.Application.Dtos.Purchasing;
 using NamViet.ERP.Modules.Warehouse.Application.Catalog;
+using Microsoft.EntityFrameworkCore;
 using NamViet.ERP.Modules.Warehouse.Domain.Entities;
+using NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence;
 
 namespace NamViet.ERP.Api.Application.Services.Purchasing;
 
 public interface IPurchasePlanImportService
 {
-    PurchasePlanImportPreviewDto Preview(Stream excelStream, string projectCode);
+    PurchasePlanImportPreviewDto Preview(Stream excelStream, string projectCode, IReadOnlySet<string>? activeMaterialCodes = null);
     byte[] BuildImportTemplate();
 }
 
-public sealed class PurchasePlanImportService : IPurchasePlanImportService
+public sealed class PurchasePlanImportService(WarehouseDbContext? db = null) : IPurchasePlanImportService
 {
     public static readonly Regex RomanNumeralRegex = new(
         @"^[IVXLCDMivxlcdm]+[\.\,\:\s\-]*$",
@@ -386,10 +388,18 @@ public sealed class PurchasePlanImportService : IPurchasePlanImportService
         range.Style.Border.InsideBorderColor = XLColor.FromHtml("#2E75B6");
     }
 
-    public PurchasePlanImportPreviewDto Preview(Stream excelStream, string projectCode)
+    public PurchasePlanImportPreviewDto Preview(Stream excelStream, string projectCode, IReadOnlySet<string>? activeMaterialCodes = null)
     {
         if (string.IsNullOrWhiteSpace(projectCode))
             throw new PurchasingConflictException("ProjectCode là bắt buộc khi import KHMH.");
+
+        if (activeMaterialCodes == null && db != null)
+        {
+            activeMaterialCodes = db.Materials.AsNoTracking()
+                .Where(m => m.DeletedAt == null && m.IsActive)
+                .Select(m => m.MaterialCode)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        }
 
         using var workbook = new XLWorkbook(excelStream);
         var sheet = FindKhmhSheet(workbook)
@@ -419,7 +429,7 @@ public sealed class PurchasePlanImportService : IPurchasePlanImportService
                 continue;
 
             lineNo++;
-            var preview = ParseRow(sheet, row, lineNo, fieldMap, quoteGroups, errors);
+            var preview = ParseRow(sheet, row, lineNo, fieldMap, quoteGroups, errors, activeMaterialCodes);
             lines.Add(preview);
         }
 
@@ -1039,7 +1049,8 @@ public sealed class PurchasePlanImportService : IPurchasePlanImportService
         int lineNo,
         Dictionary<string, int> fieldMap,
         List<QuoteGroupColumns> quoteGroups,
-        List<PurchasePlanImportErrorDto> errors)
+        List<PurchasePlanImportErrorDto> errors,
+        IReadOnlySet<string>? activeMaterialCodes = null)
     {
         string? Get(string field) =>
             fieldMap.TryGetValue(field, out var col) ? CellText(sheet.Cell(row, col)) : null;
@@ -1102,6 +1113,14 @@ public sealed class PurchasePlanImportService : IPurchasePlanImportService
             if (string.IsNullOrWhiteSpace(materialCode))
             {
                 errors.Add(new PurchasePlanImportErrorDto(row, "MaterialCode", "Thiếu mã vật tư."));
+                isValid = false;
+            }
+            else if (activeMaterialCodes != null && !activeMaterialCodes.Contains(materialCode.Trim()))
+            {
+                errors.Add(new PurchasePlanImportErrorDto(
+                    row,
+                    "MaterialCode",
+                    $"Dòng Excel {row}: Mã vật tư '{materialCode}' chưa có trong danh mục hệ thống."));
                 isValid = false;
             }
 

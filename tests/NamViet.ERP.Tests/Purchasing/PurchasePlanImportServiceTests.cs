@@ -561,4 +561,20 @@ public class PurchasePlanImportServiceTests
         Assert.True(totalBudget < 15_000_000_000m, $"Tổng ngân sách {totalBudget:N0} không được vượt quá 15 tỷ do nhân đôi.");
         Assert.True(totalBudget > 14_000_000_000m, $"Tổng ngân sách {totalBudget:N0} phải khớp các dòng thực tế (~14.2 tỷ).");
     }
+
+    [Fact]
+    public void Preview_WithActiveMaterialCodes_MarksMissingCatalogMaterialsAsInvalid()
+    {
+        using var ms = BuildSampleWorkbook();
+        var service = new PurchasePlanImportService();
+        var activeCodes = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "VT-KHAC-01" };
+
+        var preview = service.Preview(ms, "DA-TEST", activeCodes);
+
+        Assert.Equal(1, preview.ErrorRowCount);
+        Assert.Equal(0, preview.ValidRowCount);
+        Assert.Contains(preview.Errors, e => e.Message.Contains("chưa có trong danh mục hệ thống") && e.Message.Contains("VT-ONG"));
+        var line = Assert.Single(preview.Lines);
+        Assert.False(line.IsValid);
+    }
 }

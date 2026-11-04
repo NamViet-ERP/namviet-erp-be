@@ -378,6 +378,100 @@ public class MaterialImportExcelServiceTests : IDisposable
         Assert.NotEmpty(validRowsWithOrigin);
     }
 
+    [Fact]
+    public async Task ParseImportFileAsync_InsulationAndSteel_DoNotGenerateFalseEquipmentSpecs()
+    {
+        using var wb = new XLWorkbook();
+        var ws = wb.Worksheets.Add("DATA");
+
+        // Headers
+        ws.Cell(1, 1).Value = "STT";
+        ws.Cell(1, 2).Value = "Danh mục";
+        ws.Cell(1, 3).Value = "Hạng mục";
+        ws.Cell(1, 4).Value = "Quy cách";
+        ws.Cell(1, 5).Value = "Độ dày";
+        ws.Cell(1, 6).Value = "Chiều dài";
+        ws.Cell(1, 7).Value = "Xuất xứ";
+        ws.Cell(1, 10).Value = "Mô tả";
+        ws.Cell(1, 11).Value = "MÃ HÀNG HÓA";
+        ws.Cell(1, 12).Value = "TÊN HÀNG HÓA";
+
+        // Subheaders
+        ws.Cell(3, 4).Value = "phi/chiều rộng";
+        ws.Cell(3, 5).Value = "độ dày";
+        ws.Cell(3, 6).Value = "chiều dài";
+
+        ws.Cell(4, 4).Value = "Công suất kw";
+        ws.Cell(4, 5).Value = "Lưu lượng m3/h";
+        ws.Cell(4, 6).Value = "cột áp Pa";
+
+        // Row 5: Motor (Equipment)
+        ws.Cell(5, 1).Value = "1";
+        ws.Cell(5, 2).Value = "Động cơ";
+        ws.Cell(5, 3).Value = "Hệ quạt";
+        ws.Cell(5, 4).Value = "160kw";
+        ws.Cell(5, 5).Value = "71500 m3/h";
+        ws.Cell(5, 6).Value = "5600Pa";
+        ws.Cell(5, 11).Value = "ĐC-QAT-H-SS400-160kw";
+        ws.Cell(5, 12).Value = "Quạt hút SS400 160kw";
+
+        // Row 6: Rockwool Insulation (Non-equipment)
+        ws.Cell(6, 1).Value = "2";
+        ws.Cell(6, 2).Value = "Bảo ôn";
+        ws.Cell(6, 3).Value = "Cuộn bảo ôn";
+        ws.Cell(6, 4).Value = "600";
+        ws.Cell(6, 5).Value = "25";
+        ws.Cell(6, 6).Value = "3600";
+        ws.Cell(6, 11).Value = "BÔ-CUN-96 kg/m3-Rockwool-600x25x3600";
+        ws.Cell(6, 12).Value = "Cuộn bảo ôn Rockwool 96kg/m3";
+
+        // Row 7: Steel Pipe (Non-equipment)
+        ws.Cell(7, 1).Value = "3";
+        ws.Cell(7, 2).Value = "Nguyên vật liệu";
+        ws.Cell(7, 3).Value = "Thép ống đúc";
+        ws.Cell(7, 4).Value = "Ø355";
+        ws.Cell(7, 5).Value = "9";
+        ws.Cell(7, 6).Value = "6000";
+        ws.Cell(7, 11).Value = "TH-DUC-SA106-Ø355";
+        ws.Cell(7, 12).Value = "Ống thép đúc SA106 Ø355";
+
+        // Row 8: Economizer / Boiler (Non-equipment)
+        ws.Cell(8, 1).Value = "4";
+        ws.Cell(8, 2).Value = "Bộ hâm";
+        ws.Cell(8, 3).Value = "Bộ hâm nước";
+        ws.Cell(8, 4).Value = "120 tube";
+        ws.Cell(8, 6).Value = "3000";
+        ws.Cell(8, 11).Value = "BH-BHN-HT20-120 tubex3000";
+        ws.Cell(8, 12).Value = "Bộ hâm nước HT20 120 ống dài 3000";
+
+        using var ms = new MemoryStream();
+        wb.SaveAs(ms);
+        ms.Position = 0;
+
+        var result = await _service.ParseImportFileAsync(ms, "TEST-SPECS.xlsx");
+
+        // Equipment should have kW and Pa in GeneralTechnicalSpec
+        var fanRow = result.Rows.First(r => r.MaterialCode == "ĐC-QAT-H-SS400-160kw");
+        Assert.NotNull(fanRow.GeneralTechnicalSpec);
+        Assert.Contains("160kw", fanRow.GeneralTechnicalSpec);
+        Assert.Contains("71500", fanRow.GeneralTechnicalSpec);
+        Assert.Contains("5600Pa", fanRow.GeneralTechnicalSpec);
+
+        // Insulation should NOT have kW, m3/h or Pa
+        var baoOnRow = result.Rows.First(r => r.MaterialCode == "BÔ-CUN-96 kg/m3-Rockwool-600x25x3600");
+        Assert.True(string.IsNullOrEmpty(baoOnRow.GeneralTechnicalSpec));
+        Assert.Equal("600x25x3600mm", baoOnRow.TechnicalSpec);
+
+        // Steel should NOT have kW, m3/h or Pa
+        var steelRow = result.Rows.First(r => r.MaterialCode == "TH-DUC-SA106-Ø355");
+        Assert.True(string.IsNullOrEmpty(steelRow.GeneralTechnicalSpec));
+        Assert.Equal("Ø355x9x6000mm", steelRow.TechnicalSpec);
+
+        // Economizer should NOT have kW or Pa
+        var boHamRow = result.Rows.First(r => r.MaterialCode == "BH-BHN-HT20-120 tubex3000");
+        Assert.True(string.IsNullOrEmpty(boHamRow.GeneralTechnicalSpec));
+    }
+
     private static byte[] BuildWorkbookBytes(string[] headers, params string[][] rows)
     {
         using var wb = new XLWorkbook();
