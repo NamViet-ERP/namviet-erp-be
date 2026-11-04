@@ -78,12 +78,27 @@ public class MaterialsController(WarehouseDbContext db, IMaterialImportExcelServ
         return Ok(PagedResult<MaterialDto>.Create(items, total, page, pageSize));
     }
 
-    [HttpGet("{code}")]
+    [HttpGet("by-code")]
+    [RequirePermission("wms.materials.view:all")]
+    public async Task<ActionResult<MaterialDto>> GetByCodeQuery([FromQuery] string code, CancellationToken ct)
+    {
+        return await GetMaterialInternal(code, ct);
+    }
+
+    [HttpGet("{*code}")]
     [RequirePermission("wms.materials.view:all")]
     public async Task<ActionResult<MaterialDto>> GetById(string code, CancellationToken ct)
     {
+        return await GetMaterialInternal(code, ct);
+    }
+
+    private async Task<ActionResult<MaterialDto>> GetMaterialInternal(string? code, CancellationToken ct)
+    {
+        var (c1, c2) = ResolveSearchCodes(code);
+        if (string.IsNullOrEmpty(c1)) return NotFound();
+
         var m = await db.Materials.AsNoTracking()
-            .FirstOrDefaultAsync(x => x.MaterialCode == code && x.DeletedAt == null, ct);
+            .FirstOrDefaultAsync(x => (x.MaterialCode == c1 || (c2 != null && x.MaterialCode == c2)) && x.DeletedAt == null, ct);
         if (m is null) return NotFound();
 
         var categoryById = await LoadCategoryLookupAsync([m.CategoryId], ct);
@@ -242,11 +257,30 @@ public class MaterialsController(WarehouseDbContext db, IMaterialImportExcelServ
         }
     }
 
-    [HttpPut("{code}")]
+    [HttpPut("by-code")]
     [RequirePermission("wms.materials.update")]
-    public async Task<IActionResult> Update(string code, [FromBody] UpsertMaterialRequest request, CancellationToken ct)
+    public async Task<IActionResult> UpdateByCodeQuery(
+        [FromQuery] string code, [FromBody] UpsertMaterialRequest request, CancellationToken ct)
     {
-        var m = await db.Materials.FirstOrDefaultAsync(x => x.MaterialCode == code, ct);
+        return await UpdateInternal(code, request, ct);
+    }
+
+    [HttpPut("{*code}")]
+    [RequirePermission("wms.materials.update")]
+    public async Task<IActionResult> Update(
+        string code, [FromBody] UpsertMaterialRequest request, CancellationToken ct)
+    {
+        return await UpdateInternal(code, request, ct);
+    }
+
+    private async Task<IActionResult> UpdateInternal(
+        string? code, UpsertMaterialRequest request, CancellationToken ct)
+    {
+        var (c1, c2) = ResolveSearchCodes(code);
+        if (string.IsNullOrEmpty(c1)) return NotFound();
+
+        var m = await db.Materials.FirstOrDefaultAsync(
+            x => (x.MaterialCode == c1 || (c2 != null && x.MaterialCode == c2)) && x.DeletedAt == null, ct);
         if (m is null) return NotFound();
         if (!await db.MaterialCategories.AnyAsync(c => c.Id == request.CategoryId, ct))
             return BadRequest("Danh mục vật tư không tồn tại.");
@@ -278,11 +312,27 @@ public class MaterialsController(WarehouseDbContext db, IMaterialImportExcelServ
         return NoContent();
     }
 
+    [HttpPost("actions/discontinue")]
+    [RequirePermission("wms.materials.update")]
+    public async Task<IActionResult> DiscontinueByQuery([FromQuery] string code, CancellationToken ct)
+    {
+        return await DiscontinueInternal(code, ct);
+    }
+
     [HttpPost("{code}/discontinue")]
     [RequirePermission("wms.materials.update")]
     public async Task<IActionResult> Discontinue(string code, CancellationToken ct)
     {
-        var m = await db.Materials.FirstOrDefaultAsync(x => x.MaterialCode == code, ct);
+        return await DiscontinueInternal(code, ct);
+    }
+
+    private async Task<IActionResult> DiscontinueInternal(string? code, CancellationToken ct)
+    {
+        var (c1, c2) = ResolveSearchCodes(code);
+        if (string.IsNullOrEmpty(c1)) return NotFound();
+
+        var m = await db.Materials.FirstOrDefaultAsync(
+            x => (x.MaterialCode == c1 || (c2 != null && x.MaterialCode == c2)) && x.DeletedAt == null, ct);
         if (m is null) return NotFound();
         if (!m.IsActive) return NoContent();
 
@@ -292,11 +342,27 @@ public class MaterialsController(WarehouseDbContext db, IMaterialImportExcelServ
         return NoContent();
     }
 
+    [HttpPost("actions/reactivate")]
+    [RequirePermission("wms.materials.update")]
+    public async Task<IActionResult> ReactivateByQuery([FromQuery] string code, CancellationToken ct)
+    {
+        return await ReactivateInternal(code, ct);
+    }
+
     [HttpPost("{code}/reactivate")]
     [RequirePermission("wms.materials.update")]
     public async Task<IActionResult> Reactivate(string code, CancellationToken ct)
     {
-        var m = await db.Materials.FirstOrDefaultAsync(x => x.MaterialCode == code, ct);
+        return await ReactivateInternal(code, ct);
+    }
+
+    private async Task<IActionResult> ReactivateInternal(string? code, CancellationToken ct)
+    {
+        var (c1, c2) = ResolveSearchCodes(code);
+        if (string.IsNullOrEmpty(c1)) return NotFound();
+
+        var m = await db.Materials.FirstOrDefaultAsync(
+            x => (x.MaterialCode == c1 || (c2 != null && x.MaterialCode == c2)) && x.DeletedAt == null, ct);
         if (m is null) return NotFound();
         if (m.IsActive) return NoContent();
 
@@ -306,14 +372,30 @@ public class MaterialsController(WarehouseDbContext db, IMaterialImportExcelServ
         return NoContent();
     }
 
-    [HttpDelete("{code}")]
+    [HttpDelete("by-code")]
+    [RequirePermission("wms.materials.delete")]
+    public async Task<IActionResult> DeleteByCodeQuery([FromQuery] string code, CancellationToken ct)
+    {
+        return await DeleteInternal(code, ct);
+    }
+
+    [HttpDelete("{*code}")]
     [RequirePermission("wms.materials.delete")]
     public async Task<IActionResult> Delete(string code, CancellationToken ct)
     {
-        var m = await db.Materials.FirstOrDefaultAsync(x => x.MaterialCode == code, ct);
+        return await DeleteInternal(code, ct);
+    }
+
+    private async Task<IActionResult> DeleteInternal(string? code, CancellationToken ct)
+    {
+        var (c1, c2) = ResolveSearchCodes(code);
+        if (string.IsNullOrEmpty(c1)) return NotFound();
+
+        var m = await db.Materials.FirstOrDefaultAsync(
+            x => (x.MaterialCode == c1 || (c2 != null && x.MaterialCode == c2)) && x.DeletedAt == null, ct);
         if (m is null) return NotFound();
 
-        if (await MaterialUsageHelper.IsInUseAsync(db, code, ct))
+        if (await MaterialUsageHelper.IsInUseAsync(db, m.MaterialCode, ct))
         {
             return Conflict(new
             {
@@ -352,6 +434,26 @@ public class MaterialsController(WarehouseDbContext db, IMaterialImportExcelServ
         }
 
         return lookup;
+    }
+
+    private static (string Primary, string? Secondary) ResolveSearchCodes(string? code)
+    {
+        if (string.IsNullOrWhiteSpace(code)) return (string.Empty, null);
+        var trimmed = code.Trim();
+        if (trimmed.Contains('%'))
+        {
+            try
+            {
+                var unescaped = Uri.UnescapeDataString(trimmed);
+                if (!string.Equals(unescaped, trimmed, StringComparison.Ordinal))
+                    return (trimmed, unescaped);
+            }
+            catch
+            {
+                // Ignore invalid hex in URI sequence
+            }
+        }
+        return (trimmed, null);
     }
 
     private static string? NormalizeAbc(string? value)
