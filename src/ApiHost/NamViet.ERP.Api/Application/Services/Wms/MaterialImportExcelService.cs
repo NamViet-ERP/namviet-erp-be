@@ -156,7 +156,7 @@ public sealed class MaterialImportExcelService(WarehouseDbContext db) : IMateria
             throw new DomainRuleException("Không tìm thấy cột \"Mã vật tư\" (hoặc \"Mã\", \"Material Code\", \"SKU\", \"Mã hàng hóa\") trong file.");
 
         var dataRows = rows.Skip(headerIndex + 1)
-            .Where(r => !IsEmptyRow(r) && !IsSubHeaderOrFormulaRow(r, colMap.MaterialCode))
+            .Where(r => !IsEmptyRow(r.Cells) && !IsSubHeaderOrFormulaRow(r.Cells, colMap.MaterialCode, colMap.Unit, colMap.CeilingPrice))
             .Take(MaxDataRows)
             .ToList();
 
@@ -183,7 +183,7 @@ public sealed class MaterialImportExcelService(WarehouseDbContext db) : IMateria
 
         var parsedRows = new List<MaterialImportRowDto>();
         var globalErrors = new List<MaterialImportErrorDto>();
-        var seenCodesInFile = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var seenCodesInFile = new Dictionary<string, List<int>>(StringComparer.OrdinalIgnoreCase);
 
         var validCount = 0;
         var existingCount = 0;
@@ -191,8 +191,9 @@ public sealed class MaterialImportExcelService(WarehouseDbContext db) : IMateria
 
         for (var i = 0; i < dataRows.Count; i++)
         {
-            var excelRow = headerIndex + 2 + i;
-            var row = dataRows[i];
+            var rawRow = dataRows[i];
+            var excelRow = rawRow.RowNumber;
+            var row = rawRow.Cells;
 
             var code = GetCell(row, colMap.MaterialCode).Trim();
             var name = GetCell(row, colMap.MaterialName).Trim();
@@ -333,10 +334,16 @@ public sealed class MaterialImportExcelService(WarehouseDbContext db) : IMateria
                     globalErrors.Add(new MaterialImportErrorDto(excelRow, "materialCode", "Mã vật tư vượt quá 100 ký tự."));
                 }
 
-                if (!seenCodesInFile.Add(code))
+                if (seenCodesInFile.TryGetValue(code, out var existingRows))
                 {
-                    rowErrors.Add($"Trùng mã \"{code}\" với dòng khác trong chính file tải lên.");
-                    globalErrors.Add(new MaterialImportErrorDto(excelRow, "materialCode", $"Trùng mã \"{code}\" trong file."));
+                    var rowsList = string.Join(", ", existingRows);
+                    rowErrors.Add($"Trùng mã \"{code}\" với dòng {rowsList} trong chính file tải lên.");
+                    globalErrors.Add(new MaterialImportErrorDto(excelRow, "materialCode", $"Trùng mã \"{code}\" với dòng {rowsList} trong file."));
+                    existingRows.Add(excelRow);
+                }
+                else
+                {
+                    seenCodesInFile[code] = [excelRow];
                 }
             }
 
@@ -760,7 +767,7 @@ public sealed class MaterialImportExcelService(WarehouseDbContext db) : IMateria
         return false;
     }
 
-    private static bool IsSubHeaderOrFormulaRow(string[] row, int codeIndex)
+    private static bool IsSubHeaderOrFormulaRow(string[] row, int codeIndex, int unitIndex = -1, int priceIndex = -1)
     {
         var code = codeIndex >= 0 && codeIndex < row.Length ? row[codeIndex].Trim().ToUpperInvariant() : string.Empty;
         if (!string.IsNullOrEmpty(code))
@@ -778,10 +785,10 @@ public sealed class MaterialImportExcelService(WarehouseDbContext db) : IMateria
             }
         }
 
-        // Nếu mã rỗng, kiểm tra xem dòng này có phải là dòng tiêu đề phụ (sub-header) hoặc chú thích F-code không
-        var rowText = string.Join(" ", row.Select(NormalizeHeader));
+        // Nếu mã rỗng, kiểm tra xem dòng này có phải là dòng tiêu đề phụ (sub-header), chú thích F-code hoặc Tiêu đề phân nhóm (Section Header) không
         if (string.IsNullOrEmpty(code))
         {
+            var rowText = string.Join(" ", row.Select(NormalizeHeader));
             if (rowText.Contains("nhanhieu")
                 || rowText.Contains("nuocsanxuat")
                 || rowText.Contains("nhomnuoc")
@@ -796,16 +803,50 @@ public sealed class MaterialImportExcelService(WarehouseDbContext db) : IMateria
             {
                 return true;
             }
+
+            var nonEmptyCells = row.Where(c => !string.IsNullOrWhiteSpace(c)).Select(c => c.Trim()).ToList();
+            if (nonEmptyCells.Count <= 1)
+            {
+                return true;
+            }
+
+            var unit = unitIndex >= 0 && unitIndex < row.Length ? row[unitIndex].Trim() : string.Empty;
+            var price = priceIndex >= 0 && priceIndex < row.Length ? row[priceIndex].Trim() : string.Empty;
+
+            // STT hoặc ô đầu tiên trong 2 ô đầu là số La Mã (I., II., III., IV., V., VI., ...)
+            if (nonEmptyCells.Take(2).Any(c =>
+                System.Text.RegularExpressions.Regex.IsMatch(c, @"^(?i:I|II|III|IV|V|VI|VII|VIII|IX|X|XI|XII|XIII|XIV|XV)[\.\s\:\-]*$")
+                || (string.IsNullOrEmpty(unit) && string.IsNullOrEmpty(price) && System.Text.RegularExpressions.Regex.IsMatch(c, @"^(?i:I|II|III|IV|V|VI|VII|VIII|IX|X|XI|XII|XIII|XIV|XV)[\.\s\:\-]+\S+"))))
+            {
+                return true;
+            }
+
+            // Bắt đầu bằng từ khóa tiêu đề phân nhóm
+            if (nonEmptyCells.Take(2).Any(c =>
+            {
+                var upper = c.ToUpperInvariant();
+                return upper.StartsWith("PHẦN ") || upper.StartsWith("PHAN ")
+                    || upper.StartsWith("MỤC ") || upper.StartsWith("MUC ")
+                    || upper.StartsWith("HỆ THỐNG ") || upper.StartsWith("HE THONG ")
+                    || upper.StartsWith("NHÓM ") || upper.StartsWith("NHOM ")
+                    || upper.StartsWith("CHƯƠNG ") || upper.StartsWith("CHUONG ")
+                    || upper.StartsWith("TIỂU MỤC ") || upper.StartsWith("TIEU MUC ");
+            }))
+            {
+                return true;
+            }
         }
 
         return false;
     }
 
-    private static int FindHeaderRowIndex(List<string[]> rows)
+    private sealed record RawExcelRow(int RowNumber, string[] Cells);
+
+    private static int FindHeaderRowIndex(List<RawExcelRow> rows)
     {
         for (var i = 0; i < Math.Min(10, rows.Count); i++)
         {
-            var row = rows[i];
+            var row = rows[i].Cells;
             var normalized = row.Select(NormalizeHeader).ToArray();
             var hasCode = FindColumn(normalized, "mavattu", "mavat tu", "ma", "sku", "materialcode", "mahanghoa", "mahang") >= 0;
             var hasName = FindColumn(normalized, "tenvattu", "tenvat tu", "ten", "materialname", "tenhanghoa", "tenhang", "diengiai", "tengoi") >= 0;
@@ -844,12 +885,12 @@ public sealed class MaterialImportExcelService(WarehouseDbContext db) : IMateria
         int MoTa,
         int Diengiai);
 
-    private static MaterialColumnMap MapColumns(List<string[]> rows, int headerIndex)
+    private static MaterialColumnMap MapColumns(List<RawExcelRow> rows, int headerIndex)
     {
-        var maxCols = rows[headerIndex].Length;
+        var maxCols = rows[headerIndex].Cells.Length;
         for (var r = headerIndex; r < Math.Min(headerIndex + 4, rows.Count); r++)
         {
-            if (rows[r].Length > maxCols) maxCols = rows[r].Length;
+            if (rows[r].Cells.Length > maxCols) maxCols = rows[r].Cells.Length;
         }
 
         var combinedHeaders = new string[maxCols];
@@ -858,9 +899,9 @@ public sealed class MaterialImportExcelService(WarehouseDbContext db) : IMateria
             var tokens = new List<string>();
             for (var r = headerIndex; r < Math.Min(headerIndex + 4, rows.Count); r++)
             {
-                if (c < rows[r].Length && !string.IsNullOrWhiteSpace(rows[r][c]))
+                if (c < rows[r].Cells.Length && !string.IsNullOrWhiteSpace(rows[r].Cells[c]))
                 {
-                    tokens.Add(NormalizeHeader(rows[r][c]));
+                    tokens.Add(NormalizeHeader(rows[r].Cells[c]));
                 }
             }
             combinedHeaders[c] = string.Join(" ", tokens);
@@ -924,7 +965,7 @@ public sealed class MaterialImportExcelService(WarehouseDbContext db) : IMateria
         return sb.ToString().Normalize(NormalizationForm.FormC);
     }
 
-    private static List<string[]> ReadExcelRows(Stream stream)
+    private static List<RawExcelRow> ReadExcelRows(Stream stream)
     {
         using var workbook = new XLWorkbook(stream);
         var sheet = workbook.Worksheets.FirstOrDefault(w => w.Name.Trim().Equals("FINAL", StringComparison.OrdinalIgnoreCase))
@@ -936,26 +977,27 @@ public sealed class MaterialImportExcelService(WarehouseDbContext db) : IMateria
         var used = sheet.RangeUsed();
         if (used is null) return [];
 
-        var result = new List<string[]>();
+        var result = new List<RawExcelRow>();
         foreach (var row in used.Rows())
         {
             var cells = new string[row.CellCount()];
             for (var c = 0; c < row.CellCount(); c++)
                 cells[c] = row.Cell(c + 1).GetFormattedString().Trim();
-            result.Add(cells);
+            result.Add(new RawExcelRow(row.RowNumber(), cells));
         }
         return result;
     }
 
-    private static List<string[]> ReadCsvRows(Stream stream)
+    private static List<RawExcelRow> ReadCsvRows(Stream stream)
     {
         using var reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
-        var result = new List<string[]>();
+        var result = new List<RawExcelRow>();
+        var lineNum = 1;
         while (!reader.EndOfStream)
         {
             var line = reader.ReadLine();
             if (line is null) break;
-            result.Add(SplitCsvLine(line));
+            result.Add(new RawExcelRow(lineNum++, SplitCsvLine(line)));
         }
         return result;
     }

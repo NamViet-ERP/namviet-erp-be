@@ -307,6 +307,100 @@ public class PurchaseOrderWorkflowTests : IDisposable
         Assert.Equal(PurchaseOrderInstallmentStatuses.Open, refreshed!.Installments[1].Status);
     }
 
+    [Fact]
+    public async Task Create_Succeeds_ForServiceAndExpenseLines_WithoutMaterialInCatalog()
+    {
+        // 1. Arrange: Plan with 1 Service line and 1 Expense line (neither exists in Materials catalog)
+        var created = await _plans.CreateAsync(new CreatePurchasePlanRequest("DA-TEST", "kế hoạch dịch vụ"), CancellationToken.None);
+        var plan = await _db.PurchasePlans.Include(p => p.Lines).FirstAsync(p => p.Code == created.Code);
+        plan.Lines.Add(new PurchasePlanLine
+        {
+            PlanCode = plan.Code,
+            LineNo = 1,
+            LineType = PurchasePlanLineTypes.Service,
+            MaterialCode = null,
+            Category = "NHAN_CONG",
+            ProductName = "Nhân công thi công lắp đặt",
+            Unit = "Gói",
+            Quantity = 1,
+            ProposalSupplierName = "NCC Alpha",
+            SelectedSupplierName = "NCC Alpha",
+            PurchaseStatus = PurchaseLineStatuses.NotPurchased,
+            BudgetUnitPrice = 15000000,
+            BudgetAmount = 15000000,
+            SelectedUnitPrice = 14500000,
+            SelectedAmount = 14500000,
+        });
+        plan.Lines.Add(new PurchasePlanLine
+        {
+            PlanCode = plan.Code,
+            LineNo = 2,
+            LineType = PurchasePlanLineTypes.Expense,
+            MaterialCode = null,
+            Category = "VAN_CHUYEN",
+            ProductName = "Cẩu tháp và vận chuyển",
+            Unit = "Chuyến",
+            Quantity = 2,
+            ProposalSupplierName = "NCC Alpha",
+            SelectedSupplierName = "NCC Alpha",
+            PurchaseStatus = PurchaseLineStatuses.NotPurchased,
+            BudgetUnitPrice = 5000000,
+            BudgetAmount = 10000000,
+            SelectedUnitPrice = 4800000,
+            SelectedAmount = 9600000,
+        });
+        _plans.RecalcTotals(plan);
+        await _db.SaveChangesAsync();
+        await _plans.SubmitAsync(plan.Code, CancellationToken.None);
+        await _plans.ApproveL1Async(plan.Code, CancellationToken.None);
+        await _plans.ApproveL2Async(plan.Code, CancellationToken.None);
+
+        var planLines = (await _plans.GetByCodeAsync(plan.Code))!.Lines;
+        var servicePlanLine = planLines.First(l => l.LineType == PurchasePlanLineTypes.Service);
+        var expensePlanLine = planLines.First(l => l.LineType == PurchasePlanLineTypes.Expense);
+
+        // 2. Act: Create PO containing both Service and Expense lines
+        var order = await _orders.CreateAsync(new CreatePurchaseOrderRequest(
+            PlanCode: plan.Code,
+            SupplierId: 1, // NCC Alpha
+            OrderDate: null,
+            Note: "PO Dịch vụ & Chi phí",
+            Lines:
+            [
+                new CreatePurchaseOrderLineRequest(servicePlanLine.Id, 1, 14500000, null, "Dịch vụ đợt 1"),
+                new CreatePurchaseOrderLineRequest(expensePlanLine.Id, 2, 4800000, null, "Vận chuyển 2 chuyến"),
+            ],
+            Installments: OneInstallment()), CancellationToken.None);
+
+        // 3. Assert
+        Assert.NotNull(order);
+        Assert.Equal(2, order.Lines.Count);
+        Assert.Equal(14500000m + (2 * 4800000m), order.TotalAmount);
+
+        var servicePoLine = order.Lines.First(l => l.PlanLineId == servicePlanLine.Id);
+        Assert.Null(servicePoLine.MaterialCode);
+        Assert.Equal("NHAN_CONG", servicePoLine.Sku);
+        Assert.Equal("Nhân công thi công lắp đặt", servicePoLine.Name);
+        Assert.Equal("Gói", servicePoLine.Unit);
+        Assert.Equal(1, servicePoLine.Ordered);
+        Assert.Equal(14500000m, servicePoLine.PoPrice);
+
+        var expensePoLine = order.Lines.First(l => l.PlanLineId == expensePlanLine.Id);
+        Assert.Null(expensePoLine.MaterialCode);
+        Assert.Equal("VAN_CHUYEN", expensePoLine.Sku);
+        Assert.Equal("Cẩu tháp và vận chuyển", expensePoLine.Name);
+        Assert.Equal(2, expensePoLine.Ordered);
+        Assert.Equal(4800000m, expensePoLine.PoPrice);
+
+        // 4. Test Place Order (Đặt hàng NCC) - ensure backfill logic does NOT corrupt service lines
+        await _orders.ApproveAsync(order.Code);
+        var placed = await _orders.PlaceAsync(order.Code);
+        Assert.Equal(PurchaseOrderPlacementStatuses.Placed, placed!.OrderPlacementStatus);
+
+        var reloaded = await _orders.GetByCodeAsync(order.Code);
+        Assert.Null(reloaded!.Lines.First(l => l.PlanLineId == servicePlanLine.Id).MaterialCode);
+    }
+
     private static List<PurchaseOrderInstallmentRequest> OneInstallment() =>
         [new(1, 100, ["OTHER"])];
 

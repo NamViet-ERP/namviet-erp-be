@@ -34,6 +34,7 @@ public class Supplier : BaseEntity
     public ICollection<SupplierContact> Contacts { get; set; } = [];
     public ICollection<SupplierEvaluation> Evaluations { get; set; } = [];
     public ICollection<SupplierDeliveryEvaluation> DeliveryEvaluations { get; set; } = [];
+    public ICollection<SupplierTierEvaluation> TierEvaluations { get; set; } = [];
 
     public static string GenerateCode(int sequence) => $"NCC-{sequence:D4}";
 

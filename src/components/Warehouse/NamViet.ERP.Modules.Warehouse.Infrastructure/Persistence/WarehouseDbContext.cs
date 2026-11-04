@@ -50,6 +50,7 @@ public class WarehouseDbContext(DbContextOptions<WarehouseDbContext> options) : 
     public DbSet<SupplierContact> SupplierContacts => Set<SupplierContact>();
     public DbSet<SupplierEvaluation> SupplierEvaluations => Set<SupplierEvaluation>();
     public DbSet<SupplierDeliveryEvaluation> SupplierDeliveryEvaluations => Set<SupplierDeliveryEvaluation>();
+    public DbSet<SupplierTierEvaluation> SupplierTierEvaluations => Set<SupplierTierEvaluation>();
     public DbSet<Project> Projects => Set<Project>();
     public DbSet<ProjectWarehouseKeeper> ProjectWarehouseKeepers => Set<ProjectWarehouseKeeper>();
     public DbSet<ProjectConstructionTask> ProjectConstructionTasks => Set<ProjectConstructionTask>();
@@ -75,6 +76,7 @@ public class WarehouseDbContext(DbContextOptions<WarehouseDbContext> options) : 
     public DbSet<ProjectBom> ProjectBoms => Set<ProjectBom>();
     public DbSet<PurchasePlan> PurchasePlans => Set<PurchasePlan>();
     public DbSet<PurchasePlanLine> PurchasePlanLines => Set<PurchasePlanLine>();
+    public DbSet<ServiceExpenseCategory> ServiceExpenseCategories => Set<ServiceExpenseCategory>();
     public DbSet<PurchasePlanLineQuote> PurchasePlanLineQuotes => Set<PurchasePlanLineQuote>();
     public DbSet<PurchaseOrder> PurchaseOrders => Set<PurchaseOrder>();
     public DbSet<PurchaseOrderItem> PurchaseOrderItems => Set<PurchaseOrderItem>();
@@ -326,6 +328,27 @@ public class WarehouseDbContext(DbContextOptions<WarehouseDbContext> options) : 
             e.HasOne(v => v.Supplier).WithMany(s => s.DeliveryEvaluations)
              .HasForeignKey(v => v.SupplierId).OnDelete(DeleteBehavior.Cascade);
             e.HasQueryFilter(v => v.DeletedAt == null);
+        });
+
+        model.Entity<SupplierTierEvaluation>(e =>
+        {
+            e.ToTable("supplier_tier_evaluations");
+            e.HasKey(v => v.Id);
+            e.Property(v => v.OldGrade).HasMaxLength(10);
+            e.Property(v => v.NewGrade).HasMaxLength(10).IsRequired();
+            e.Property(v => v.TotalScore).HasColumnType("numeric(5,2)");
+            e.Property(v => v.PriceScore).HasColumnType("numeric(5,2)");
+            e.Property(v => v.ProfileScore).HasColumnType("numeric(5,2)");
+            e.Property(v => v.PaymentScore).HasColumnType("numeric(5,2)");
+            e.Property(v => v.ServiceScore).HasColumnType("numeric(5,2)");
+            e.Property(v => v.EvaluationDetailsJson).HasColumnType("text");
+            e.Property(v => v.Reason).HasMaxLength(2000);
+            e.Property(v => v.EvaluatedById).HasMaxLength(100);
+            e.Property(v => v.EvaluatedByName).HasMaxLength(200);
+            e.HasIndex(v => v.SupplierId);
+            e.HasIndex(v => v.CreatedAt);
+            e.HasOne(v => v.Supplier).WithMany(s => s.TierEvaluations)
+             .HasForeignKey(v => v.SupplierId).OnDelete(DeleteBehavior.Cascade);
         });
 
         model.Entity<Project>(e =>
@@ -1099,6 +1122,18 @@ public class WarehouseDbContext(DbContextOptions<WarehouseDbContext> options) : 
             e.HasKey(s => s.Id);
             e.HasIndex(s => s.Key).IsUnique();
             e.Property(s => s.Key).HasMaxLength(100);
+        });
+
+        model.Entity<ServiceExpenseCategory>(e =>
+        {
+            e.ToTable("service_expense_categories");
+            e.HasKey(c => c.Id);
+            e.Property(c => c.Code).HasMaxLength(50).IsRequired();
+            e.Property(c => c.Name).HasMaxLength(255).IsRequired();
+            e.Property(c => c.Description).HasMaxLength(500);
+            e.Property(c => c.IsActive).HasDefaultValue(true);
+            e.Property(c => c.SortOrder).HasDefaultValue(0);
+            e.HasIndex(c => c.Code).IsUnique();
         });
     }
 }

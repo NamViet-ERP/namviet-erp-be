@@ -33,6 +33,163 @@ public class SuppliersController(
         int id, [FromBody] SetSupplierGroupsRequest request, CancellationToken ct) =>
         Ok(await groups.SetGroupsOfSupplierAsync(id, request, ct));
 
+    [HttpGet("sourcing-kpi")]
+    [RequirePermission("wms.suppliers.view:all")]
+    public async Task<ActionResult<SourcingKpiSummaryDto>> GetSourcingKpi(CancellationToken ct)
+    {
+        var now = DateTime.UtcNow;
+        var startOfMonth = new DateTime(now.Year, now.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+
+        var suppliers = await db.Suppliers.AsNoTracking().ToListAsync(ct);
+        var totalSuppliers = suppliers.Count;
+        var totalNewThisMonth = suppliers.Count(s => s.CreatedAt >= startOfMonth);
+
+        var gradeACount = suppliers.Count(s => s.Rating == SupplierGrades.A);
+        var gradeBCount = suppliers.Count(s => s.Rating == SupplierGrades.B);
+        var gradeCCount = suppliers.Count(s => s.Rating == SupplierGrades.C);
+        var gradeDCount = suppliers.Count(s => s.Rating == SupplierGrades.D);
+        var otherCount = totalSuppliers - (gradeACount + gradeBCount + gradeCCount + gradeDCount);
+
+        var promotionsThisMonth = await db.SupplierTierEvaluations
+            .AsNoTracking()
+            .Where(e => e.CreatedAt >= startOfMonth && e.OldGrade != e.NewGrade)
+            .CountAsync(ct);
+
+        var promotionRate = totalNewThisMonth > 0
+            ? Math.Round((decimal)promotionsThisMonth / totalNewThisMonth * 100m, 1)
+            : 0m;
+
+        return Ok(new SourcingKpiSummaryDto(
+            totalSuppliers,
+            totalNewThisMonth,
+            promotionsThisMonth,
+            gradeACount,
+            gradeBCount,
+            gradeCCount,
+            gradeDCount,
+            otherCount,
+            promotionRate
+        ));
+    }
+
+    [HttpPost("{id:int}/tier-evaluation")]
+    [RequirePermission("wms.suppliers.update")]
+    public async Task<ActionResult<SupplierTierEvaluationDto>> SubmitTierEvaluation(
+        int id, [FromBody] SubmitTierEvaluationRequest request, CancellationToken ct)
+    {
+        var supplier = await db.Suppliers.FirstOrDefaultAsync(s => s.Id == id, ct);
+        if (supplier == null)
+            return NotFound(new { message = $"Không tìm thấy nhà cung cấp id={id}." });
+
+        var price = Math.Clamp(request.PriceScore, 0m, 50m);
+        var profile = Math.Clamp(request.ProfileScore, 0m, 20m);
+        var payment = Math.Clamp(request.PaymentScore, 0m, 20m);
+        var service = Math.Clamp(request.ServiceScore, 0m, 10m);
+        var total = price + profile + payment + service;
+
+        var oldGrade = supplier.Rating;
+        string newGrade;
+
+        if (total >= 80m)
+        {
+            if (!string.IsNullOrWhiteSpace(request.TargetGrade))
+            {
+                newGrade = request.TargetGrade.Trim().ToUpperInvariant();
+            }
+            else
+            {
+                newGrade = oldGrade switch
+                {
+                    SupplierGrades.D => SupplierGrades.C,
+                    SupplierGrades.C => SupplierGrades.B,
+                    SupplierGrades.B => SupplierGrades.A,
+                    _ => SupplierGrades.C
+                };
+            }
+            supplier.Rating = newGrade;
+            supplier.UpdatedAt = DateTime.UtcNow;
+        }
+        else
+        {
+            if (!string.IsNullOrWhiteSpace(request.TargetGrade) && request.TargetGrade.Trim().ToUpperInvariant() != oldGrade)
+            {
+                return BadRequest(new { message = $"Tổng điểm đánh giá là {total}/100, chưa đạt mức tối thiểu 80 điểm để thăng hạng lên {request.TargetGrade}." });
+            }
+            newGrade = oldGrade;
+        }
+
+        var eval = new SupplierTierEvaluation
+        {
+            SupplierId = supplier.Id,
+            OldGrade = oldGrade,
+            NewGrade = newGrade,
+            TotalScore = total,
+            PriceScore = price,
+            ProfileScore = profile,
+            PaymentScore = payment,
+            ServiceScore = service,
+            EvaluationDetailsJson = request.DetailsJson,
+            Reason = request.Reason?.Trim(),
+            EvaluatedById = currentUser.Id.ToString(),
+            EvaluatedByName = !string.IsNullOrWhiteSpace(currentUser.Name) ? currentUser.Name : currentUser.Email,
+            CreatedAt = DateTime.UtcNow
+        };
+
+        db.SupplierTierEvaluations.Add(eval);
+        await db.SaveChangesAsync(ct);
+
+        return Ok(new SupplierTierEvaluationDto(
+            eval.Id,
+            eval.SupplierId,
+            eval.OldGrade,
+            eval.NewGrade,
+            eval.TotalScore,
+            eval.PriceScore,
+            eval.ProfileScore,
+            eval.PaymentScore,
+            eval.ServiceScore,
+            eval.EvaluationDetailsJson,
+            eval.Reason,
+            eval.EvaluatedById,
+            eval.EvaluatedByName,
+            eval.CreatedAt
+        ));
+    }
+
+    [HttpGet("{id:int}/grade-history")]
+    [RequirePermission("wms.suppliers.view:all")]
+    public async Task<ActionResult<IReadOnlyList<SupplierTierEvaluationDto>>> GetGradeHistory(
+        int id, CancellationToken ct)
+    {
+        var exists = await db.Suppliers.AnyAsync(s => s.Id == id, ct);
+        if (!exists)
+            return NotFound(new { message = $"Không tìm thấy nhà cung cấp id={id}." });
+
+        var items = await db.SupplierTierEvaluations
+            .AsNoTracking()
+            .Where(e => e.SupplierId == id)
+            .OrderByDescending(e => e.CreatedAt)
+            .Select(e => new SupplierTierEvaluationDto(
+                e.Id,
+                e.SupplierId,
+                e.OldGrade,
+                e.NewGrade,
+                e.TotalScore,
+                e.PriceScore,
+                e.ProfileScore,
+                e.PaymentScore,
+                e.ServiceScore,
+                e.EvaluationDetailsJson,
+                e.Reason,
+                e.EvaluatedById,
+                e.EvaluatedByName,
+                e.CreatedAt
+            ))
+            .ToListAsync(ct);
+
+        return Ok(items);
+    }
+
     [HttpGet]
     [RequirePermission("wms.suppliers.view:all")]
     public async Task<ActionResult<PagedResult<SupplierDto>>> GetAll(

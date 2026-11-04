@@ -114,25 +114,49 @@ public sealed partial class PurchaseOrderService
         foreach (var reqLine in request.Lines)
         {
             var planLine = planLines[reqLine.PlanLineId];
-            var material = ResolveMaterialFromPlanLine(planLine, byName, byCode);
-            order.Items.Add(new PurchaseOrderItem
+            if (planLine.LineType is PurchasePlanLineTypes.Service or PurchasePlanLineTypes.Expense)
             {
-                PoCode = code,
-                PlanLineId = planLine.Id,
-                MaterialCode = material.MaterialCode,
-                Sku = material.MaterialCode,
-                Name = planLine.ProductName,
-                Spec = planLine.Spec,
-                Unit = planLine.Unit,
-                Ordered = reqLine.Qty,
-                Received = 0,
-                PoPrice = reqLine.UnitPrice,
-                EstPrice = planLine.BudgetUnitPrice ?? planLine.ProposalUnitPrice ?? 0,
-                ExpectedDeliveryDate = reqLine.ExpectedDeliveryDate,
-                Note = string.IsNullOrWhiteSpace(reqLine.Note) ? null : reqLine.Note.Trim(),
-                WarrantyMonths = Math.Clamp(reqLine.WarrantyMonths, 0, 120),
-                WarrantyAnchorType = NormalizeWarrantyAnchor(reqLine.WarrantyAnchorType),
-            });
+                order.Items.Add(new PurchaseOrderItem
+                {
+                    PoCode = code,
+                    PlanLineId = planLine.Id,
+                    MaterialCode = null,
+                    Sku = !string.IsNullOrWhiteSpace(planLine.MaterialCode) ? planLine.MaterialCode : (planLine.Category ?? "SERVICE"),
+                    Name = planLine.ProductName,
+                    Spec = planLine.Spec,
+                    Unit = planLine.Unit,
+                    Ordered = reqLine.Qty,
+                    Received = 0,
+                    PoPrice = reqLine.UnitPrice,
+                    EstPrice = planLine.BudgetUnitPrice ?? planLine.ProposalUnitPrice ?? 0,
+                    ExpectedDeliveryDate = reqLine.ExpectedDeliveryDate,
+                    Note = string.IsNullOrWhiteSpace(reqLine.Note) ? null : reqLine.Note.Trim(),
+                    WarrantyMonths = Math.Clamp(reqLine.WarrantyMonths, 0, 120),
+                    WarrantyAnchorType = NormalizeWarrantyAnchor(reqLine.WarrantyAnchorType),
+                });
+            }
+            else
+            {
+                var material = ResolveMaterialFromPlanLine(planLine, byName, byCode);
+                order.Items.Add(new PurchaseOrderItem
+                {
+                    PoCode = code,
+                    PlanLineId = planLine.Id,
+                    MaterialCode = material.MaterialCode,
+                    Sku = material.MaterialCode,
+                    Name = planLine.ProductName,
+                    Spec = planLine.Spec,
+                    Unit = planLine.Unit,
+                    Ordered = reqLine.Qty,
+                    Received = 0,
+                    PoPrice = reqLine.UnitPrice,
+                    EstPrice = planLine.BudgetUnitPrice ?? planLine.ProposalUnitPrice ?? 0,
+                    ExpectedDeliveryDate = reqLine.ExpectedDeliveryDate,
+                    Note = string.IsNullOrWhiteSpace(reqLine.Note) ? null : reqLine.Note.Trim(),
+                    WarrantyMonths = Math.Clamp(reqLine.WarrantyMonths, 0, 120),
+                    WarrantyAnchorType = NormalizeWarrantyAnchor(reqLine.WarrantyAnchorType),
+                });
+            }
         }
 
         foreach (var spec in installmentSpecs)
@@ -250,25 +274,49 @@ public sealed partial class PurchaseOrderService
         foreach (var reqLine in request.Lines)
         {
             var planLine = planLines[reqLine.PlanLineId];
-            var material = ResolveMaterialFromPlanLine(planLine, byName, byCode);
-            order.Items.Add(new PurchaseOrderItem
+            if (planLine.LineType is PurchasePlanLineTypes.Service or PurchasePlanLineTypes.Expense)
             {
-                PoCode = order.Code,
-                PlanLineId = planLine.Id,
-                MaterialCode = material.MaterialCode,
-                Sku = material.MaterialCode,
-                Name = planLine.ProductName,
-                Spec = planLine.Spec,
-                Unit = planLine.Unit,
-                Ordered = reqLine.Qty,
-                Received = 0,
-                PoPrice = reqLine.UnitPrice,
-                EstPrice = planLine.BudgetUnitPrice ?? planLine.ProposalUnitPrice ?? 0,
-                ExpectedDeliveryDate = reqLine.ExpectedDeliveryDate,
-                Note = string.IsNullOrWhiteSpace(reqLine.Note) ? null : reqLine.Note.Trim(),
-                WarrantyMonths = Math.Clamp(reqLine.WarrantyMonths, 0, 120),
-                WarrantyAnchorType = NormalizeWarrantyAnchor(reqLine.WarrantyAnchorType),
-            });
+                order.Items.Add(new PurchaseOrderItem
+                {
+                    PoCode = order.Code,
+                    PlanLineId = planLine.Id,
+                    MaterialCode = null,
+                    Sku = !string.IsNullOrWhiteSpace(planLine.MaterialCode) ? planLine.MaterialCode : (planLine.Category ?? "SERVICE"),
+                    Name = planLine.ProductName,
+                    Spec = planLine.Spec,
+                    Unit = planLine.Unit,
+                    Ordered = reqLine.Qty,
+                    Received = 0,
+                    PoPrice = reqLine.UnitPrice,
+                    EstPrice = planLine.BudgetUnitPrice ?? planLine.ProposalUnitPrice ?? 0,
+                    ExpectedDeliveryDate = reqLine.ExpectedDeliveryDate,
+                    Note = string.IsNullOrWhiteSpace(reqLine.Note) ? null : reqLine.Note.Trim(),
+                    WarrantyMonths = Math.Clamp(reqLine.WarrantyMonths, 0, 120),
+                    WarrantyAnchorType = NormalizeWarrantyAnchor(reqLine.WarrantyAnchorType),
+                });
+            }
+            else
+            {
+                var material = ResolveMaterialFromPlanLine(planLine, byName, byCode);
+                order.Items.Add(new PurchaseOrderItem
+                {
+                    PoCode = order.Code,
+                    PlanLineId = planLine.Id,
+                    MaterialCode = material.MaterialCode,
+                    Sku = material.MaterialCode,
+                    Name = planLine.ProductName,
+                    Spec = planLine.Spec,
+                    Unit = planLine.Unit,
+                    Ordered = reqLine.Qty,
+                    Received = 0,
+                    PoPrice = reqLine.UnitPrice,
+                    EstPrice = planLine.BudgetUnitPrice ?? planLine.ProposalUnitPrice ?? 0,
+                    ExpectedDeliveryDate = reqLine.ExpectedDeliveryDate,
+                    Note = string.IsNullOrWhiteSpace(reqLine.Note) ? null : reqLine.Note.Trim(),
+                    WarrantyMonths = Math.Clamp(reqLine.WarrantyMonths, 0, 120),
+                    WarrantyAnchorType = NormalizeWarrantyAnchor(reqLine.WarrantyAnchorType),
+                });
+            }
         }
 
         if (replaceInstallments)
@@ -420,6 +468,9 @@ public sealed partial class PurchaseOrderService
         foreach (var item in order.Items)
         {
             if (!string.IsNullOrWhiteSpace(item.MaterialCode))
+                continue;
+            if (item.PlanLineId.HasValue && planLines.TryGetValue(item.PlanLineId.Value, out var pl)
+                && pl.LineType is PurchasePlanLineTypes.Service or PurchasePlanLineTypes.Expense)
                 continue;
             var material = ResolveMaterial(item.Name, byName, byCode);
             if (material is null)

@@ -103,6 +103,80 @@ public class MaterialImportExcelServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task ParseImportFileAsync_duplicate_code_in_file_specifies_exact_conflicting_rows()
+    {
+        var bytes = BuildWorkbookBytes(
+            ["Mã vật tư", "Tên vật tư", "Đơn vị tính"],
+            ["IN-DUP-01", "Inox 304 Dòng 2", "Tấm"],
+            ["IN-UNIQUE-01", "Inox 304 Dòng 3", "Cây"],
+            ["IN-DUP-01", "Inox 304 Dòng 4 trùng", "Tấm"],
+            ["IN-DUP-01", "Inox 304 Dòng 5 lại trùng", "Tấm"]);
+
+        await using var stream = new MemoryStream(bytes);
+        var result = await _service.ParseImportFileAsync(stream, "test_duplicates.xlsx");
+
+        Assert.Equal(4, result.TotalRows);
+
+        var firstRow = result.Rows.First(r => r.RowNumber == 2);
+        Assert.True(firstRow.IsValid);
+        Assert.Empty(firstRow.Errors);
+
+        var secondRow = result.Rows.First(r => r.RowNumber == 3);
+        Assert.True(secondRow.IsValid);
+        Assert.Empty(secondRow.Errors);
+
+        var duplicateRow4 = result.Rows.First(r => r.RowNumber == 4);
+        Assert.False(duplicateRow4.IsValid);
+        Assert.Contains(duplicateRow4.Errors, e => e.Contains("với dòng 2"));
+
+        var duplicateRow5 = result.Rows.First(r => r.RowNumber == 5);
+        Assert.False(duplicateRow5.IsValid);
+        Assert.Contains(duplicateRow5.Errors, e => e.Contains("với dòng 2, 4"));
+    }
+
+    [Fact]
+    public async Task ParseImportFileAsync_skips_section_headers_and_preserves_exact_physical_row_numbers()
+    {
+        // Row 1: Header
+        // Row 2: Section Header I. ĐỘNG CƠ
+        // Row 3: Data material 1
+        // Row 4: Section Header II. LỌC BỤI
+        // Row 5: Data material 2
+        // Row 6: Section header without code
+        // Row 7: Data material 3 (missing code -> true error row)
+        var bytes = BuildWorkbookBytes(
+            ["Mã vật tư", "Tên vật tư", "Đơn vị tính", "Danh mục"],
+            ["", "I. ĐỘNG CƠ", "", ""],
+            ["DC-01", "Động cơ giảm tốc 1.5kW", "Bộ", "Động cơ"],
+            ["", "II. LỌC BỤI", "", ""],
+            ["LB-01", "Túi lọc bụi PE500", "Cái", "Lọc bụi"],
+            ["", "NGUYÊN VẬT LIỆU", "", ""],
+            ["", "Vật tư thiếu mã", "Cái", "Nguyên vật liệu"]);
+
+        await using var stream = new MemoryStream(bytes);
+        var result = await _service.ParseImportFileAsync(stream, "test_section_headers.xlsx");
+
+        // Section headers (Row 2, 4, 6) must be skipped. Only rows 3, 5, 7 should be parsed.
+        Assert.Equal(3, result.TotalRows);
+        Assert.Equal(2, result.ValidRowCount);
+        Assert.Equal(1, result.ErrorRowCount);
+
+        // Exact physical row numbers must match Excel rows!
+        var dcRow = result.Rows.First(r => r.MaterialCode == "DC-01");
+        Assert.Equal(3, dcRow.RowNumber);
+        Assert.True(dcRow.IsValid);
+
+        var lbRow = result.Rows.First(r => r.MaterialCode == "LB-01");
+        Assert.Equal(5, lbRow.RowNumber);
+        Assert.True(lbRow.IsValid);
+
+        var errRow = result.Rows.First(r => r.MaterialName == "Vật tư thiếu mã");
+        Assert.Equal(7, errRow.RowNumber);
+        Assert.False(errRow.IsValid);
+        Assert.Contains(errRow.Errors, e => e.Contains("Mã vật tư không được để trống"));
+    }
+
+    [Fact]
     public async Task ImportBatchAsync_inserts_and_auto_creates_category_branch()
     {
         var request = new MaterialImportBatchRequest(
