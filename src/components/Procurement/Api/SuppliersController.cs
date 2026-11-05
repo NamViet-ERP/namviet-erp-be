@@ -205,7 +205,7 @@ public class SuppliersController(
         (page, pageSize) = Paging.Normalize(page, pageSize);
         var query = db.Suppliers.AsQueryable();
         if (!string.IsNullOrWhiteSpace(search))
-            query = query.Where(s => s.SupplierName.Contains(search) || s.SupplierCode.Contains(search));
+            query = query.Where(s => s.SupplierName.Contains(search) || s.SupplierCode.Contains(search) || (s.TaxCode != null && s.TaxCode.Contains(search)));
         if (!string.IsNullOrWhiteSpace(rating))
             query = query.Where(s => s.Rating == rating);
         if (isBlacklisted is bool bl)
@@ -227,6 +227,7 @@ public class SuppliersController(
                 s.Id,
                 s.SupplierCode,
                 s.SupplierName,
+                s.TaxCode,
                 s.ContactPhone,
                 s.MaxDebtDays,
                 s.CreditLimit,
@@ -310,7 +311,8 @@ public class SuppliersController(
             s.BlacklistedByName,
             revenueMap.GetValueOrDefault(s.Id, 0m),
             industryGroupMap.GetValueOrDefault(s.Id, Array.Empty<string>()),
-            latestEvaluationMap.GetValueOrDefault(s.Id))).ToList();
+            latestEvaluationMap.GetValueOrDefault(s.Id),
+            s.TaxCode)).ToList();
         return Ok(PagedResult<SupplierDto>.Create(items, total, page, pageSize));
     }
 
@@ -392,7 +394,8 @@ public class SuppliersController(
             s.BlacklistedByName,
             Math.Round(purchasedRevenue, 2),
             groupsOfSupplier,
-            latestEvaluation));
+            latestEvaluation,
+            s.TaxCode));
     }
 
     [HttpPost]
@@ -413,6 +416,7 @@ public class SuppliersController(
         {
             SupplierCode = await NextSupplierCodeAsync(ct),
             SupplierName = name,
+            TaxCode = string.IsNullOrWhiteSpace(req.TaxCode) ? null : req.TaxCode.Trim(),
             ContactPhone = phone,
             MaxDebtDays = req.MaxDebtDays,
             CreditLimit = NormalizeCreditLimit(req.CreditLimit),
@@ -445,6 +449,7 @@ public class SuppliersController(
         }
 
         s.SupplierName = name;
+        s.TaxCode = string.IsNullOrWhiteSpace(req.TaxCode) ? null : req.TaxCode.Trim();
         s.ContactPhone = phone;
         s.MaxDebtDays = req.MaxDebtDays;
         s.CreditLimit = NormalizeCreditLimit(req.CreditLimit);
@@ -572,6 +577,10 @@ public class SuppliersController(
         var terms = req.PaymentTerms?.Trim() ?? string.Empty;
         if (terms.Length > SupplierFieldLimits.PaymentTermsMax)
             errors["paymentTerms"] = [$"Điều khoản thanh toán tối đa {SupplierFieldLimits.PaymentTermsMax} ký tự."];
+
+        var tax = req.TaxCode?.Trim() ?? string.Empty;
+        if (tax.Length > 50)
+            errors["taxCode"] = ["Mã số thuế tối đa 50 ký tự."];
 
         try
         {

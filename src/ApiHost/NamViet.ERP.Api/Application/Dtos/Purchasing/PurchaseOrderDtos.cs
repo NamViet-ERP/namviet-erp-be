@@ -49,7 +49,8 @@ public record PurchaseOrderDetailDto(
     DateTime? PlacedAt,
     string? CreatedByName,
     List<PurchaseOrderLineDto> Lines,
-    List<PurchaseOrderInstallmentDto> Installments);
+    List<PurchaseOrderInstallmentDto> Installments,
+    string? SupplierTaxCode = null);
 
 public record PurchaseOrderLineDto(
     int Id,

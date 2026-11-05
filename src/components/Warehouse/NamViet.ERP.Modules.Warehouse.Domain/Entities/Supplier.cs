@@ -10,6 +10,7 @@ public class Supplier : BaseEntity
     public string SupplierCode { get; set; } = string.Empty;
     public string SupplierName { get; set; } = string.Empty;
     public string? ContactPhone { get; set; }
+    public string? TaxCode { get; set; }
     public int MaxDebtDays { get; set; } = 30;
     /// <summary>Hạn mức công nợ (tiền). Null hoặc 0 = không giới hạn. Cảnh báo khi còn nợ vượt mức, không chặn đặt hàng.</summary>
     public decimal? CreditLimit { get; set; }

@@ -36,7 +36,8 @@ public record SupplierDto(
     string? BlacklistedByName,
     decimal PurchasedRevenue,
     IReadOnlyList<string> IndustryGroups,
-    SupplierLatestEvaluationDto? LatestEvaluation);
+    SupplierLatestEvaluationDto? LatestEvaluation,
+    string? TaxCode = null);
 
 public record SupplierLatestEvaluationDto(
     string Period,
@@ -48,7 +49,8 @@ public record SupplierLatestEvaluationDto(
 public record UpsertSupplierRequest(
     string? SupplierCode, string SupplierName,
     string? ContactPhone, int MaxDebtDays = 30, string? PaymentTerms = null,
-    decimal? CreditLimit = null);
+    decimal? CreditLimit = null,
+    string? TaxCode = null);
 
 public record SupplierNextCodeDto(string NextCode);
 

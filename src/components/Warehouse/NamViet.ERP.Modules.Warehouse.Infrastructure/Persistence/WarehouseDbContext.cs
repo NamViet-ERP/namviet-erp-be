@@ -224,6 +224,7 @@ public class WarehouseDbContext(DbContextOptions<WarehouseDbContext> options) : 
             e.HasIndex(s => s.SupplierCode).IsUnique();
             e.Property(s => s.SupplierName).HasMaxLength(255).IsRequired();
             e.Property(s => s.ContactPhone).HasMaxLength(50);
+            e.Property(s => s.TaxCode).HasMaxLength(50);
             e.Property(s => s.PaymentTerms).HasMaxLength(500);
             e.Property(s => s.CreditLimit).HasColumnType("numeric(18,2)");
             e.Property(s => s.Rating).HasMaxLength(10).HasDefaultValue("D");

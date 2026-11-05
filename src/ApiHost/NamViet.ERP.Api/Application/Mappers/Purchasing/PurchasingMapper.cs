@@ -173,7 +173,8 @@ public static class PurchasingMapper
         order.Installments
             .OrderBy(i => i.StageNumber)
             .Select(ToInstallmentDto)
-            .ToList());
+            .ToList(),
+        order.Supplier?.TaxCode);
 
     public static PurchaseOrderInstallmentDto ToInstallmentDto(PurchaseOrderInstallment installment) => new(
         installment.Id,
