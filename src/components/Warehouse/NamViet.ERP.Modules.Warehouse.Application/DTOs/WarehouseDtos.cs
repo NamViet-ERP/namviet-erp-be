@@ -37,7 +37,10 @@ public record SupplierDto(
     decimal PurchasedRevenue,
     IReadOnlyList<string> IndustryGroups,
     SupplierLatestEvaluationDto? LatestEvaluation,
-    string? TaxCode = null);
+    string? TaxCode = null,
+    string? SupplierType = null,
+    string? Scope = null,
+    string? Website = null);
 
 public record SupplierLatestEvaluationDto(
     string Period,
@@ -50,9 +53,39 @@ public record UpsertSupplierRequest(
     string? SupplierCode, string SupplierName,
     string? ContactPhone, int MaxDebtDays = 30, string? PaymentTerms = null,
     decimal? CreditLimit = null,
-    string? TaxCode = null);
+    string? TaxCode = null,
+    string? SupplierType = null,
+    string? Scope = null,
+    string? Website = null);
 
 public record SupplierNextCodeDto(string NextCode);
+
+public record SupplierImportRowPreviewDto(
+    string? SupplierCode,
+    string SupplierName,
+    string? TaxCode,
+    string? ContactPhone,
+    string? Website,
+    string? SupplierType,
+    string? Scope,
+    int MaxDebtDays,
+    decimal? CreditLimit,
+    string? PaymentTerms,
+    string? IndustryGroups,
+    bool IsValid,
+    string? Error);
+
+public record SupplierImportPreviewResponseDto(
+    int TotalRows,
+    int ValidRows,
+    int ErrorRows,
+    IReadOnlyList<SupplierImportRowPreviewDto> Rows);
+
+public record SupplierImportResultDto(
+    int TotalRows,
+    int ImportedCount,
+    int FailedCount,
+    IReadOnlyList<string> Errors);
 
 // ── Projects ──────────────────────────────────────────────────────────────
 public record NextProjectCodeResponse(string ProjectCode);

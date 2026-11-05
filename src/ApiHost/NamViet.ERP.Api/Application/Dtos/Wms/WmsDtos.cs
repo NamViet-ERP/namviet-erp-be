@@ -161,3 +161,30 @@ public record DashboardCategoryDto(string Category, decimal Value);
 public record DashboardActivityDto(string Type, string Code, string Description, string Time);
 public record BirthdayDto(string Name, string Department, int Day);
 public record TopProductDto(string Sku, string Name, decimal Qty, decimal Value);
+
+// ── Opening Stock ─────────────────────────────────────────────────────────────
+public record OpeningStockItemPreviewDto(
+    string MaterialCode,
+    string MaterialName,
+    string Unit,
+    decimal Qty,
+    decimal UnitPrice,
+    decimal TotalAmount,
+    string? Note,
+    bool IsValid,
+    string? Error);
+
+public record OpeningStockPreviewResponseDto(
+    int TotalRows,
+    int ValidRows,
+    int ErrorRows,
+    decimal TotalQty,
+    decimal TotalAmount,
+    IReadOnlyList<OpeningStockItemPreviewDto> Items);
+
+public record OpeningStockImportResultDto(
+    string TicketCode,
+    int TotalItems,
+    decimal TotalQty,
+    decimal TotalAmount,
+    string Message);

@@ -228,6 +228,9 @@ public class SuppliersController(
                 s.SupplierCode,
                 s.SupplierName,
                 s.TaxCode,
+                s.SupplierType,
+                s.Scope,
+                s.Website,
                 s.ContactPhone,
                 s.MaxDebtDays,
                 s.CreditLimit,
@@ -312,7 +315,10 @@ public class SuppliersController(
             revenueMap.GetValueOrDefault(s.Id, 0m),
             industryGroupMap.GetValueOrDefault(s.Id, Array.Empty<string>()),
             latestEvaluationMap.GetValueOrDefault(s.Id),
-            s.TaxCode)).ToList();
+            s.TaxCode,
+            s.SupplierType,
+            s.Scope,
+            s.Website)).ToList();
         return Ok(PagedResult<SupplierDto>.Create(items, total, page, pageSize));
     }
 
@@ -320,6 +326,327 @@ public class SuppliersController(
     [RequirePermission("wms.suppliers.create")]
     public async Task<ActionResult<SupplierNextCodeDto>> NextCode(CancellationToken ct) =>
         Ok(new SupplierNextCodeDto(await NextSupplierCodeAsync(ct)));
+
+    [HttpGet("template-excel")]
+    [RequirePermission("wms.suppliers.view:all")]
+    public IActionResult DownloadExcelTemplate()
+    {
+        using var workbook = new ClosedXML.Excel.XLWorkbook();
+        var ws = workbook.Worksheets.Add("DanhSachNCC");
+
+        string[] headers =
+        [
+            "Mã NCC (để trống tự sinh)",
+            "Tên nhà cung cấp",
+            "Mã số thuế",
+            "Số điện thoại",
+            "Website",
+            "Loại hình (Nhà sản xuất / Nhà phân phối / Đại lý)",
+            "Phạm vi (Trong nước / Nhập khẩu)",
+            "Hạn nợ (ngày)",
+            "Hạn mức nợ (tiền)",
+            "Điều khoản thanh toán",
+            "Nhóm ngành hàng"
+        ];
+
+        for (var col = 0; col < headers.Length; col++)
+        {
+            var cell = ws.Cell(1, col + 1);
+            cell.Value = headers[col];
+            cell.Style.Font.Bold = true;
+            cell.Style.Fill.BackgroundColor = ClosedXML.Excel.XLColor.FromHtml("#1E40AF");
+            cell.Style.Font.FontColor = ClosedXML.Excel.XLColor.White;
+        }
+
+        ws.Cell(2, 1).Value = "";
+        ws.Cell(2, 2).Value = "Công ty TNHH Thép Hòa Phát Hưng Yên";
+        ws.Cell(2, 3).Value = "0100123456";
+        ws.Cell(2, 4).Value = "0987654321";
+        ws.Cell(2, 5).Value = "https://hoaphat.com.vn";
+        ws.Cell(2, 6).Value = "Nhà sản xuất";
+        ws.Cell(2, 7).Value = "Trong nước";
+        ws.Cell(2, 8).Value = 45;
+        ws.Cell(2, 9).Value = 500000000;
+        ws.Cell(2, 10).Value = "Thanh toán trong vòng 45 ngày";
+        ws.Cell(2, 11).Value = "Hệ ống thép & phụ kiện hàn";
+
+        ws.Cell(3, 1).Value = "";
+        ws.Cell(3, 2).Value = "Công ty Cổ phần Van Kitz Nhật Bản";
+        ws.Cell(3, 3).Value = "0309988776";
+        ws.Cell(3, 4).Value = "0903123456";
+        ws.Cell(3, 5).Value = "https://kitz.co.jp";
+        ws.Cell(3, 6).Value = "Nhà phân phối";
+        ws.Cell(3, 7).Value = "Nhập khẩu";
+        ws.Cell(3, 8).Value = 30;
+        ws.Cell(3, 9).Value = 300000000;
+        ws.Cell(3, 10).Value = "Net 30 kể từ ngày giao hàng";
+        ws.Cell(3, 11).Value = "Hệ van công nghiệp & phụ kiện mặt bích";
+
+        ws.Columns().AdjustToContents();
+
+        using var ms = new MemoryStream();
+        workbook.SaveAs(ms);
+        return File(
+            ms.ToArray(),
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "Mau_Nhap_NhaCungCap.xlsx");
+    }
+
+    [HttpPost("preview-excel")]
+    [RequirePermission("wms.suppliers.create")]
+    public async Task<ActionResult<SupplierImportPreviewResponseDto>> PreviewExcel(IFormFile file, CancellationToken ct)
+    {
+        if (file == null || file.Length == 0)
+            return BadRequest("Vui lòng chọn file Excel danh sách NCC.");
+
+        using var stream = file.OpenReadStream();
+        using var workbook = new ClosedXML.Excel.XLWorkbook(stream);
+        var ws = workbook.Worksheets.FirstOrDefault();
+        if (ws is null)
+            return BadRequest("File Excel không có sheet nào.");
+
+        var existingNames = await db.Suppliers.AsNoTracking()
+            .Select(s => s.SupplierName)
+            .ToListAsync(ct);
+
+        var existingTaxCodes = await db.Suppliers.AsNoTracking()
+            .Where(s => !string.IsNullOrEmpty(s.TaxCode))
+            .Select(s => s.TaxCode!)
+            .ToListAsync(ct);
+
+        var previewRows = new List<SupplierImportRowPreviewDto>();
+        var seenNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        var rowsUsed = ws.RowsUsed().Skip(1);
+        foreach (var row in rowsUsed)
+        {
+            var code = row.Cell(1).GetString().Trim();
+            var name = row.Cell(2).GetString().Trim();
+            var taxCode = row.Cell(3).GetString().Trim();
+            var phone = row.Cell(4).GetString().Trim();
+            var website = row.Cell(5).GetString().Trim();
+            var supplierType = row.Cell(6).GetString().Trim();
+            var scope = row.Cell(7).GetString().Trim();
+
+            var debtStr = row.Cell(8).GetString().Trim();
+            int.TryParse(debtStr, out var debt);
+            if (debt <= 0) debt = 30;
+
+            var limitStr = row.Cell(9).GetString().Trim();
+            decimal? creditLimit = decimal.TryParse(limitStr, out var lim) && lim > 0 ? lim : null;
+
+            var terms = row.Cell(10).GetString().Trim();
+            var groups = row.Cell(11).GetString().Trim();
+
+            if (string.IsNullOrWhiteSpace(name) && string.IsNullOrWhiteSpace(taxCode) && string.IsNullOrWhiteSpace(phone))
+                continue;
+
+            var isValid = true;
+            var errorMsg = new List<string>();
+
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                isValid = false;
+                errorMsg.Add("Tên NCC là bắt buộc");
+            }
+            else if (existingNames.Any(n => Supplier.SameFoldedName(n, name)) || seenNames.Contains(name))
+            {
+                isValid = false;
+                errorMsg.Add("Tên NCC đã tồn tại hoặc bị trùng trong file");
+            }
+            else
+            {
+                seenNames.Add(name);
+            }
+
+            if (!string.IsNullOrWhiteSpace(taxCode))
+            {
+                if (taxCode.Length > 50)
+                {
+                    isValid = false;
+                    errorMsg.Add("Mã số thuế tối đa 50 ký tự");
+                }
+                else if (existingTaxCodes.Any(t => t.Equals(taxCode, StringComparison.OrdinalIgnoreCase)))
+                {
+                    isValid = false;
+                    errorMsg.Add($"MST '{taxCode}' đã tồn tại trên hệ thống");
+                }
+            }
+
+            previewRows.Add(new SupplierImportRowPreviewDto(
+                SupplierCode: string.IsNullOrWhiteSpace(code) ? "(Tự sinh)" : code,
+                SupplierName: name,
+                TaxCode: string.IsNullOrWhiteSpace(taxCode) ? null : taxCode,
+                ContactPhone: string.IsNullOrWhiteSpace(phone) ? null : phone,
+                Website: string.IsNullOrWhiteSpace(website) ? null : website,
+                SupplierType: string.IsNullOrWhiteSpace(supplierType) ? null : supplierType,
+                Scope: string.IsNullOrWhiteSpace(scope) ? null : scope,
+                MaxDebtDays: debt,
+                CreditLimit: creditLimit,
+                PaymentTerms: string.IsNullOrWhiteSpace(terms) ? null : terms,
+                IndustryGroups: string.IsNullOrWhiteSpace(groups) ? null : groups,
+                IsValid: isValid,
+                Error: errorMsg.Count > 0 ? string.Join("; ", errorMsg) : null));
+        }
+
+        var total = previewRows.Count;
+        var valid = previewRows.Count(r => r.IsValid);
+        var errors = total - valid;
+
+        return Ok(new SupplierImportPreviewResponseDto(total, valid, errors, previewRows));
+    }
+
+    [HttpPost("import-excel")]
+    [RequirePermission("wms.suppliers.create")]
+    public async Task<ActionResult<SupplierImportResultDto>> ImportExcel(IFormFile file, CancellationToken ct)
+    {
+        if (file == null || file.Length == 0)
+            return BadRequest("Vui lòng chọn file Excel danh sách NCC.");
+
+        using var stream = file.OpenReadStream();
+        using var workbook = new ClosedXML.Excel.XLWorkbook(stream);
+        var ws = workbook.Worksheets.FirstOrDefault();
+        if (ws is null)
+            return BadRequest("File Excel không có sheet nào.");
+
+        var existingNames = await db.Suppliers.AsNoTracking()
+            .Select(s => s.SupplierName)
+            .ToListAsync(ct);
+
+        var existingTaxCodes = await db.Suppliers.AsNoTracking()
+            .Where(s => !string.IsNullOrEmpty(s.TaxCode))
+            .Select(s => s.TaxCode!)
+            .ToListAsync(ct);
+
+        var allGroups = await db.SupplierGroups.AsNoTracking().ToListAsync(ct);
+        var groupMap = allGroups.ToDictionary(g => g.Name.Trim().ToLower(), g => g.Id);
+
+        var importedCount = 0;
+        var failedCount = 0;
+        var errors = new List<string>();
+        var seenNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        var rowsUsed = ws.RowsUsed().Skip(1);
+        var rowIndex = 1;
+
+        foreach (var row in rowsUsed)
+        {
+            rowIndex++;
+            var code = row.Cell(1).GetString().Trim();
+            var name = row.Cell(2).GetString().Trim();
+            var taxCode = row.Cell(3).GetString().Trim();
+            var phone = row.Cell(4).GetString().Trim();
+            var website = row.Cell(5).GetString().Trim();
+            var supplierType = row.Cell(6).GetString().Trim();
+            var scope = row.Cell(7).GetString().Trim();
+
+            var debtStr = row.Cell(8).GetString().Trim();
+            int.TryParse(debtStr, out var debt);
+            if (debt <= 0) debt = 30;
+
+            var limitStr = row.Cell(9).GetString().Trim();
+            decimal? creditLimit = decimal.TryParse(limitStr, out var lim) && lim > 0 ? lim : null;
+
+            var terms = row.Cell(10).GetString().Trim();
+            var groups = row.Cell(11).GetString().Trim();
+
+            if (string.IsNullOrWhiteSpace(name) && string.IsNullOrWhiteSpace(taxCode) && string.IsNullOrWhiteSpace(phone))
+                continue;
+
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                failedCount++;
+                errors.Add($"Dòng {rowIndex}: Tên nhà cung cấp không được để trống.");
+                continue;
+            }
+
+            if (existingNames.Any(n => Supplier.SameFoldedName(n, name)) || seenNames.Contains(name))
+            {
+                failedCount++;
+                errors.Add($"Dòng {rowIndex}: Tên nhà cung cấp '{name}' đã tồn tại hoặc bị trùng trong file.");
+                continue;
+            }
+
+            if (!string.IsNullOrWhiteSpace(taxCode))
+            {
+                if (taxCode.Length > 50)
+                {
+                    failedCount++;
+                    errors.Add($"Dòng {rowIndex}: Mã số thuế tối đa 50 ký tự.");
+                    continue;
+                }
+                if (existingTaxCodes.Any(t => t.Equals(taxCode, StringComparison.OrdinalIgnoreCase)))
+                {
+                    failedCount++;
+                    errors.Add($"Dòng {rowIndex}: MST '{taxCode}' đã tồn tại trên hệ thống.");
+                    continue;
+                }
+            }
+
+            seenNames.Add(name);
+
+            string? normalizedPhone = null;
+            if (!string.IsNullOrWhiteSpace(phone))
+            {
+                try
+                {
+                    normalizedPhone = VietnamPhoneRules.NormalizeOptional(phone);
+                }
+                catch
+                {
+                    normalizedPhone = phone.Length <= 50 ? phone : phone[..50];
+                }
+            }
+
+            var finalCode = !string.IsNullOrWhiteSpace(code)
+                ? code
+                : await NextSupplierCodeAsync(ct);
+
+            var supplier = new Supplier
+            {
+                SupplierCode = finalCode,
+                SupplierName = name,
+                TaxCode = string.IsNullOrWhiteSpace(taxCode) ? null : taxCode,
+                ContactPhone = normalizedPhone,
+                Website = string.IsNullOrWhiteSpace(website) ? null : (website.Length <= 255 ? website : website[..255]),
+                SupplierType = string.IsNullOrWhiteSpace(supplierType) ? null : (supplierType.Length <= 50 ? supplierType : supplierType[..50]),
+                Scope = string.IsNullOrWhiteSpace(scope) ? null : (scope.Length <= 50 ? scope : scope[..50]),
+                MaxDebtDays = debt,
+                CreditLimit = creditLimit,
+                PaymentTerms = string.IsNullOrWhiteSpace(terms) ? null : terms,
+                Rating = SupplierGrades.D,
+                ApprovalStatus = SupplierApprovalStatuses.New,
+                CreatedAt = DateTime.UtcNow,
+            };
+
+            db.Suppliers.Add(supplier);
+            await db.SaveChangesAsync(ct);
+            existingNames.Add(name);
+            if (!string.IsNullOrEmpty(supplier.TaxCode)) existingTaxCodes.Add(supplier.TaxCode);
+
+            if (!string.IsNullOrWhiteSpace(groups))
+            {
+                var groupNames = groups.Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                foreach (var gn in groupNames)
+                {
+                    if (groupMap.TryGetValue(gn.ToLower(), out var gId))
+                    {
+                        db.SupplierGroupMembers.Add(new SupplierGroupMember
+                        {
+                            SupplierId = supplier.Id,
+                            SupplierGroupId = gId,
+                        });
+                    }
+                }
+                await db.SaveChangesAsync(ct);
+            }
+
+            importedCount++;
+        }
+
+        var totalRows = importedCount + failedCount;
+        return Ok(new SupplierImportResultDto(totalRows, importedCount, failedCount, errors));
+    }
 
     [HttpGet("blacklist")]
     [RequirePermission("wms.suppliers.view:all")]
@@ -395,7 +722,10 @@ public class SuppliersController(
             Math.Round(purchasedRevenue, 2),
             groupsOfSupplier,
             latestEvaluation,
-            s.TaxCode));
+            s.TaxCode,
+            s.SupplierType,
+            s.Scope,
+            s.Website));
     }
 
     [HttpPost]
@@ -417,6 +747,9 @@ public class SuppliersController(
             SupplierCode = await NextSupplierCodeAsync(ct),
             SupplierName = name,
             TaxCode = string.IsNullOrWhiteSpace(req.TaxCode) ? null : req.TaxCode.Trim(),
+            SupplierType = string.IsNullOrWhiteSpace(req.SupplierType) ? null : req.SupplierType.Trim(),
+            Scope = string.IsNullOrWhiteSpace(req.Scope) ? null : req.Scope.Trim(),
+            Website = string.IsNullOrWhiteSpace(req.Website) ? null : req.Website.Trim(),
             ContactPhone = phone,
             MaxDebtDays = req.MaxDebtDays,
             CreditLimit = NormalizeCreditLimit(req.CreditLimit),
@@ -450,6 +783,9 @@ public class SuppliersController(
 
         s.SupplierName = name;
         s.TaxCode = string.IsNullOrWhiteSpace(req.TaxCode) ? null : req.TaxCode.Trim();
+        s.SupplierType = string.IsNullOrWhiteSpace(req.SupplierType) ? null : req.SupplierType.Trim();
+        s.Scope = string.IsNullOrWhiteSpace(req.Scope) ? null : req.Scope.Trim();
+        s.Website = string.IsNullOrWhiteSpace(req.Website) ? null : req.Website.Trim();
         s.ContactPhone = phone;
         s.MaxDebtDays = req.MaxDebtDays;
         s.CreditLimit = NormalizeCreditLimit(req.CreditLimit);
@@ -581,6 +917,15 @@ public class SuppliersController(
         var tax = req.TaxCode?.Trim() ?? string.Empty;
         if (tax.Length > 50)
             errors["taxCode"] = ["Mã số thuế tối đa 50 ký tự."];
+
+        if ((req.SupplierType?.Trim().Length ?? 0) > 50)
+            errors["supplierType"] = ["Loại hình nhà cung cấp tối đa 50 ký tự."];
+
+        if ((req.Scope?.Trim().Length ?? 0) > 50)
+            errors["scope"] = ["Phạm vi hoạt động tối đa 50 ký tự."];
+
+        if ((req.Website?.Trim().Length ?? 0) > 255)
+            errors["website"] = ["Website tối đa 255 ký tự."];
 
         try
         {
