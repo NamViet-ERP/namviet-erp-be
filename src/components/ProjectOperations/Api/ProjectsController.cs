@@ -100,8 +100,34 @@ public class ProjectsController(
         await db.SaveChangesAsync(ct);
     }
 
+    private static readonly HashSet<string> SystemRoleAccountNames = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "Kho hàng", "Kho hang", "Khohang", "Thủ kho", "Thu kho", "Thukho",
+        "Warehouse", "Warehouse Keeper", "Warehouse_Keeper", "WarehouseKeeper",
+        "Cung ứng", "Cung ung", "Cungung", "Procurement", "Procurement Lead", "Procurement Boss", "Procurement_Lead", "Procurement_Boss", "ProcurementLead", "ProcurementBoss",
+        "Kế toán", "Ke toan", "Ketoan", "Accountant",
+        "Admin", "Administrator", "Hệ thống", "He thong", "Hethong", "System", "Quản trị viên", "Quan tri vien", "Quantrivien",
+        "Ban giám đốc", "Ban Giam Doc", "Bangiamdoc", "BOD",
+        "Nhân viên", "Nhan vien", "Nhanvien", "Staff"
+    };
+
+    public static bool IsSystemRoleAccount(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return true;
+        var trimmed = name.Trim();
+        if (SystemRoleAccountNames.Contains(trimmed)) return true;
+
+        var normalized = trimmed.Replace(" ", "").Replace(".", "").Replace("_", "").Replace("-", "");
+        if (SystemRoleAccountNames.Contains(normalized)) return true;
+
+        var emailPrefix = trimmed.Split('@')[0].Replace(".", "").Replace("_", "").Replace("-", "").Trim();
+        if (SystemRoleAccountNames.Contains(emailPrefix)) return true;
+
+        return false;
+    }
+
     [HttpGet]
-    [RequirePermission("wms.projects.view:all")]
+    [RequireAnyPermission("wms.projects.view:all", "purchasing.plans.create", "purchasing.plans.view")]
     public async Task<ActionResult<PagedResult<ProjectDto>>> GetAll(
         [FromQuery] int page = 1, [FromQuery] int pageSize = 20,
         [FromQuery] string? search = null, [FromQuery] string? status = null,
@@ -125,9 +151,9 @@ public class ProjectsController(
         return Ok(PagedResult<ProjectDto>.Create(items, total, page, pageSize));
     }
 
-    /// <summary>Danh sách nhân sự công ty gợi ý cho PIC / Quản lý và Thành viên SC của dự án.</summary>
+    /// <summary>Danh sách nhân sự công ty gợi ý cho PIC / Quản lý và Thành viên SC của dự án (loại trừ tài khoản hệ thống/vai trò).</summary>
     [HttpGet("personnel")]
-    [RequirePermission("wms.projects.view:all")]
+    [RequireAnyPermission("wms.projects.view:all", "purchasing.plans.create", "purchasing.plans.view")]
     public async Task<ActionResult<IReadOnlyList<ProjectPersonnelDto>>> GetPersonnel(
         [FromServices] UserManager<ApplicationUser> userManager,
         [FromServices] HrDbContext hrDb,
@@ -151,6 +177,10 @@ public class ProjectsController(
         foreach (var u in users)
         {
             var displayName = !string.IsNullOrWhiteSpace(u.Name) ? u.Name.Trim() : (u.Email ?? u.EmployeeCode ?? u.Id.ToString());
+            if (IsSystemRoleAccount(displayName) || IsSystemRoleAccount(u.Name) || IsSystemRoleAccount(u.EmployeeCode) || IsSystemRoleAccount(u.Email))
+            {
+                continue;
+            }
             if (seenNames.Add(displayName))
             {
                 result.Add(new ProjectPersonnelDto(u.Id, displayName, u.EmployeeCode, u.Email));
@@ -160,6 +190,10 @@ public class ProjectsController(
         foreach (var emp in employees)
         {
             var displayName = emp.FullName.Trim();
+            if (IsSystemRoleAccount(displayName) || IsSystemRoleAccount(emp.Code) || IsSystemRoleAccount(emp.Email))
+            {
+                continue;
+            }
             if (!string.IsNullOrWhiteSpace(displayName) && seenNames.Add(displayName))
             {
                 result.Add(new ProjectPersonnelDto(emp.UserId, displayName, emp.Code, emp.Email));
@@ -219,7 +253,7 @@ public class ProjectsController(
     }
 
     [HttpGet("{code}")]
-    [RequirePermission("wms.projects.view:all")]
+    [RequireAnyPermission("wms.projects.view:all", "purchasing.plans.create", "purchasing.plans.view")]
     public async Task<ActionResult<ProjectDto>> GetById(string code, CancellationToken ct)
     {
         var p = await db.Projects.FirstOrDefaultAsync(x => x.ProjectCode == code, ct);
