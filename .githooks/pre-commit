@@ -1,0 +1,19 @@
+#!/bin/sh
+echo "🛡️ [PRE-COMMIT HARNESS BE] Đang kích hoạt kiểm tra an toàn C# .NET..."
+
+# 1. Living Invariants .NET Tests
+echo "🧪 [1/2] Kiểm tra Unit Tests & Invariants C#..."
+dotnet test tests/NamViet.ERP.Tests/NamViet.ERP.Tests.csproj --no-build || {
+    echo "❌ Unit Tests BE thất bại!"; exit 1;
+}
+
+# 2. Quét file cấm
+echo "🔒 [2/2] Quét file nhạy cảm và rác..."
+FORBIDDEN=$(git diff --cached --name-only | grep -E '(\.env|docker-compose.*\.yml|\.sql$|\.py$|docs/|scratch/)')
+if [ -n "$FORBIDDEN" ]; then
+    echo "❌ VI PHẠM BẢO MẬT: Phát hiện file cấm push vào git:\n$FORBIDDEN"
+    exit 1
+fi
+
+echo "✅ [PRE-COMMIT HARNESS BE] Toàn bộ kiểm thử đạt chuẩn! Cho phép commit."
+exit 0
