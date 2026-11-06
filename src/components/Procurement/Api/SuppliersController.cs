@@ -742,9 +742,25 @@ public class SuppliersController(
             return FieldErrors(errors);
         }
 
+        string supplierCode;
+        if (!string.IsNullOrWhiteSpace(req.SupplierCode))
+        {
+            var customCode = req.SupplierCode.Trim();
+            if (await db.Suppliers.IgnoreQueryFilters().AnyAsync(s => s.SupplierCode == customCode, ct))
+            {
+                errors["supplierCode"] = [$"Mã nhà cung cấp '{customCode}' đã tồn tại."];
+                return FieldErrors(errors);
+            }
+            supplierCode = customCode;
+        }
+        else
+        {
+            supplierCode = await NextSupplierCodeAsync(ct);
+        }
+
         var s = new Supplier
         {
-            SupplierCode = await NextSupplierCodeAsync(ct),
+            SupplierCode = supplierCode,
             SupplierName = name,
             TaxCode = string.IsNullOrWhiteSpace(req.TaxCode) ? null : req.TaxCode.Trim(),
             SupplierType = string.IsNullOrWhiteSpace(req.SupplierType) ? null : req.SupplierType.Trim(),
@@ -766,7 +782,7 @@ public class SuppliersController(
     [RequirePermission("wms.suppliers.update")]
     public async Task<IActionResult> Update(int id, [FromBody] UpsertSupplierRequest req, CancellationToken ct)
     {
-        if (TryValidateUpsert(req, requireCode: false, out var phone, out _) is { } invalid)
+        if (TryValidateUpsert(req, requireCode: false, out var phone, out var errors) is BadRequestObjectResult invalid)
             return invalid;
 
         var s = await db.Suppliers.FindAsync([id], ct);
@@ -779,6 +795,22 @@ public class SuppliersController(
             {
                 ["supplierName"] = ["Tên nhà cung cấp đã tồn tại."],
             });
+        }
+
+        if (!string.IsNullOrWhiteSpace(req.SupplierCode))
+        {
+            var customCode = req.SupplierCode.Trim();
+            if (customCode != s.SupplierCode)
+            {
+                if (await db.Suppliers.IgnoreQueryFilters().AnyAsync(x => x.Id != id && x.SupplierCode == customCode, ct))
+                {
+                    return FieldErrors(new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)
+                    {
+                        ["supplierCode"] = [$"Mã nhà cung cấp '{customCode}' đã tồn tại."],
+                    });
+                }
+                s.SupplierCode = customCode;
+            }
         }
 
         s.SupplierName = name;
@@ -894,6 +926,10 @@ public class SuppliersController(
                 errors["supplierCode"] = ["Mã NCC là bắt buộc."];
             else if (code.Length > SupplierFieldLimits.CodeMax)
                 errors["supplierCode"] = [$"Mã NCC tối đa {SupplierFieldLimits.CodeMax} ký tự."];
+        }
+        else if (code.Length > SupplierFieldLimits.CodeMax)
+        {
+            errors["supplierCode"] = [$"Mã NCC tối đa {SupplierFieldLimits.CodeMax} ký tự."];
         }
 
         var name = req.SupplierName?.Trim() ?? string.Empty;

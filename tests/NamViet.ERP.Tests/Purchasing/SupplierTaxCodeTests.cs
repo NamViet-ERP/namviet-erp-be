@@ -141,6 +141,65 @@ public class SupplierTaxCodeTests : IDisposable
         Assert.Equal("NCC-0010", paged.Items[0].SupplierCode);
     }
 
+    [Fact]
+    public async Task Create_WithCustomSupplierCode_SavesCustomCode()
+    {
+        // Arrange
+        var req = new UpsertSupplierRequest(
+            SupplierCode: "NCC-POMINA-01",
+            SupplierName: "Công ty Thép Pomina Chi Nhánh 1",
+            ContactPhone: "0912345678",
+            MaxDebtDays: 30,
+            PaymentTerms: "Net 30",
+            CreditLimit: 200_000_000m,
+            TaxCode: "0301112233");
+
+        // Act
+        var result = await _controller.Create(req, CancellationToken.None);
+
+        // Assert
+        var okResult = Assert.IsType<OkObjectResult>(result.Result);
+        var dto = Assert.IsType<SupplierDto>(okResult.Value);
+        Assert.Equal("NCC-POMINA-01", dto.SupplierCode);
+
+        var inDb = await _db.Suppliers.FirstOrDefaultAsync(s => s.Id == dto.Id);
+        Assert.NotNull(inDb);
+        Assert.Equal("NCC-POMINA-01", inDb.SupplierCode);
+    }
+
+    [Fact]
+    public async Task Create_WithDuplicateSupplierCode_ReturnsBadRequest()
+    {
+        // Arrange
+        var req1 = new UpsertSupplierRequest(
+            SupplierCode: "NCC-CUSTOM-DUP",
+            SupplierName: "Công ty NCC Bản Đầu",
+            ContactPhone: "0912345678",
+            MaxDebtDays: 30,
+            PaymentTerms: null,
+            CreditLimit: null,
+            TaxCode: null);
+
+        var res1 = await _controller.Create(req1, CancellationToken.None);
+        Assert.IsType<OkObjectResult>(res1.Result);
+
+        var req2 = new UpsertSupplierRequest(
+            SupplierCode: "NCC-CUSTOM-DUP",
+            SupplierName: "Công ty NCC Trùng Mã",
+            ContactPhone: "0912345679",
+            MaxDebtDays: 30,
+            PaymentTerms: null,
+            CreditLimit: null,
+            TaxCode: null);
+
+        // Act
+        var res2 = await _controller.Create(req2, CancellationToken.None);
+
+        // Assert
+        var bad = Assert.IsType<BadRequestObjectResult>(res2.Result);
+        Assert.NotNull(bad.Value);
+    }
+
     private class FakeSupplierGroupService : ISupplierGroupService
     {
         public Task<SupplierGroupPagedResponse> ListAsync(string? search, int page, int pageSize, CancellationToken ct = default)
