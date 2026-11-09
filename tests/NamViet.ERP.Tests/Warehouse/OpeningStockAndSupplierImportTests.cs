@@ -1,6 +1,10 @@
+using System.Security.Claims;
+using ClosedXML.Excel;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using NamViet.ERP.Api.Application.Dtos.Purchasing;
+using NamViet.ERP.Api.Application.Dtos.Wms;
 using NamViet.ERP.Api.Application.Services.Purchasing;
 using NamViet.ERP.Api.Controllers;
 using NamViet.ERP.Api.Controllers.Wms;
@@ -10,7 +14,6 @@ using NamViet.ERP.Modules.Warehouse.Domain.Services;
 using NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence;
 using NamViet.ERP.SharedKernel.Common;
 using NamViet.ERP.SharedKernel.Interfaces;
-using System.Security.Claims;
 using Xunit;
 
 namespace NamViet.ERP.Tests.Warehouse;
@@ -109,6 +112,178 @@ public class OpeningStockAndSupplierImportTests : IDisposable
         Assert.Equal("Nhà sản xuất", inDb.SupplierType);
         Assert.Equal("Quốc tế", inDb.Scope);
         Assert.Equal("https://grundfos.com", inDb.Website);
+    }
+
+    [Fact]
+    public async Task PreviewOpeningBalance_WithActualCompanyFile_ParsesRowsWithoutCrashing()
+    {
+        // Arrange
+        var filePath = @"D:\WorkspaceRoot\NamViet\Test\261109 - SỐ LƯỢNG TỒN KHO.xlsx";
+        if (!File.Exists(filePath)) return;
+
+        // Seed some materials matching what is in the file
+        _db.Materials.AddRange(
+            new Material { MaterialCode = "TH-DUC-SA106-H-Ø51x3.68x6000", MaterialName = "Ống thép đúc SA106 Ø51x3.68x6000mm", Unit = "Cây", IsActive = true },
+            new Material { MaterialCode = "LB-CYC-", MaterialName = "Lọc bụi Cyclo", Unit = "Cái", IsActive = true }
+        );
+        await _db.SaveChangesAsync();
+
+        using var fileStream = File.OpenRead(filePath);
+        var formFile = new FormFile(fileStream, 0, fileStream.Length, "file", Path.GetFileName(filePath))
+        {
+            Headers = new HeaderDictionary(),
+            ContentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        };
+
+        // Act
+        var result = await _stockController.PreviewOpeningBalance(formFile, null, CancellationToken.None);
+
+        // Assert
+        var okResult = Assert.IsType<OkObjectResult>(result.Result);
+        var preview = Assert.IsType<OpeningStockPreviewResponseDto>(okResult.Value);
+
+        Assert.True(preview.TotalRows > 0, "Total rows should be greater than 0");
+        Assert.Equal(284, preview.TotalRows); // Exactly 284 rows with non-empty quantity
+        Assert.True(preview.ValidRows >= 2, "Seeded materials should be valid");
+        Assert.NotEmpty(preview.Items);
+    }
+
+    [Fact]
+    public async Task PreviewOpeningBalance_WithStandardTemplate_ParsesCorrectly()
+    {
+        // Arrange
+        _db.Materials.AddRange(
+            new Material { MaterialCode = "VT-THEP-001", MaterialName = "Ống thép đúc DN100 SCH40", Unit = "Cây", IsActive = true },
+            new Material { MaterialCode = "VT-VAN-002", MaterialName = "Van cổng ty chìm gang DN100 PN16", Unit = "Cái", IsActive = true }
+        );
+        await _db.SaveChangesAsync();
+
+        using var workbook = new XLWorkbook();
+        var ws = workbook.Worksheets.Add("TonKhoDauKy");
+        ws.Cell(1, 1).Value = "Mã vật tư";
+        ws.Cell(1, 2).Value = "Tên vật tư";
+        ws.Cell(1, 3).Value = "Đơn vị tính";
+        ws.Cell(1, 4).Value = "Số lượng tồn";
+        ws.Cell(1, 5).Value = "Đơn giá vốn";
+        ws.Cell(1, 6).Value = "Ghi chú";
+
+        // Row 2: Valid
+        ws.Cell(2, 1).Value = "VT-THEP-001";
+        ws.Cell(2, 2).Value = "Ống thép đúc DN100 SCH40";
+        ws.Cell(2, 3).Value = "Cây";
+        ws.Cell(2, 4).Value = "50";
+        ws.Cell(2, 5).Value = "850000";
+        ws.Cell(2, 6).Value = "Tồn kho đầu kỳ";
+
+        // Row 3: Valid
+        ws.Cell(3, 1).Value = "VT-VAN-002";
+        ws.Cell(3, 2).Value = "Van cổng ty chìm gang DN100 PN16";
+        ws.Cell(3, 3).Value = "Cái";
+        ws.Cell(3, 4).Value = "20";
+        ws.Cell(3, 5).Value = "1250000";
+
+        // Row 4: Material code not found in db
+        ws.Cell(4, 1).Value = "VT-NON-EXIST";
+        ws.Cell(4, 2).Value = "Vật tư chưa có trong DB";
+        ws.Cell(4, 3).Value = "Bộ";
+        ws.Cell(4, 4).Value = "10";
+        ws.Cell(4, 5).Value = "100000";
+
+        // Row 5: Invalid qty (<= 0)
+        ws.Cell(5, 1).Value = "VT-THEP-001";
+        ws.Cell(5, 2).Value = "Ống thép đúc DN100 SCH40";
+        ws.Cell(5, 3).Value = "Cây";
+        ws.Cell(5, 4).Value = "-5";
+
+        using var ms = new MemoryStream();
+        workbook.SaveAs(ms);
+        ms.Position = 0;
+
+        var formFile = new FormFile(ms, 0, ms.Length, "file", "test.xlsx")
+        {
+            Headers = new HeaderDictionary(),
+            ContentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        };
+
+        // Act
+        var result = await _stockController.PreviewOpeningBalance(formFile, null, CancellationToken.None);
+
+        // Assert
+        var okResult = Assert.IsType<OkObjectResult>(result.Result);
+        var preview = Assert.IsType<OpeningStockPreviewResponseDto>(okResult.Value);
+
+        Assert.Equal(4, preview.TotalRows);
+        Assert.Equal(2, preview.ValidRows);
+        Assert.Equal(2, preview.ErrorRows);
+        Assert.Equal(70m, preview.TotalQty);
+        Assert.Equal(50m * 850000m + 20m * 1250000m, preview.TotalAmount);
+    }
+
+    [Fact]
+    public async Task ImportOpeningBalance_WithStandardTemplate_CreatesTransactionAndInventory()
+    {
+        // Arrange
+        _db.Materials.AddRange(
+            new Material { MaterialCode = "VT-IMP-001", MaterialName = "Vật tư nhập 1", Unit = "Cái", IsActive = true },
+            new Material { MaterialCode = "VT-IMP-002", MaterialName = "Vật tư nhập 2", Unit = "Cây", IsActive = true }
+        );
+        await _db.SaveChangesAsync();
+
+        using var workbook = new XLWorkbook();
+        var ws = workbook.Worksheets.Add("TonKhoDauKy");
+        ws.Cell(1, 1).Value = "Mã vật tư";
+        ws.Cell(1, 2).Value = "Tên vật tư";
+        ws.Cell(1, 3).Value = "Đơn vị tính";
+        ws.Cell(1, 4).Value = "Số lượng tồn";
+        ws.Cell(1, 5).Value = "Đơn giá vốn";
+        ws.Cell(1, 6).Value = "Ghi chú";
+
+        ws.Cell(2, 1).Value = "VT-IMP-001";
+        ws.Cell(2, 2).Value = "Vật tư nhập 1";
+        ws.Cell(2, 3).Value = "Cái";
+        ws.Cell(2, 4).Value = "15";
+        ws.Cell(2, 5).Value = "200000";
+
+        ws.Cell(3, 1).Value = "VT-IMP-002";
+        ws.Cell(3, 2).Value = "Vật tư nhập 2";
+        ws.Cell(3, 3).Value = "Cây";
+        ws.Cell(3, 4).Value = "25";
+        ws.Cell(3, 5).Value = "400000";
+
+        using var ms = new MemoryStream();
+        workbook.SaveAs(ms);
+        ms.Position = 0;
+
+        var formFile = new FormFile(ms, 0, ms.Length, "file", "import_test.xlsx")
+        {
+            Headers = new HeaderDictionary(),
+            ContentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        };
+
+        // Act
+        var result = await _stockController.ImportOpeningBalance(formFile, null, CancellationToken.None);
+
+        // Assert
+        var okResult = Assert.IsType<OkObjectResult>(result.Result);
+        var resDto = Assert.IsType<OpeningStockImportResultDto>(okResult.Value);
+
+        Assert.Equal(2, resDto.TotalItems);
+        Assert.Equal(40m, resDto.TotalQty);
+        Assert.Equal(15m * 200000m + 25m * 400000m, resDto.TotalAmount);
+
+        // Verify transaction in DB
+        var tx = await _db.WarehouseTransactions.FirstOrDefaultAsync(t => t.TicketCode == resDto.TicketCode);
+        Assert.NotNull(tx);
+        Assert.Equal("OPENING-STOCK", tx.InvoiceNumber);
+
+        // Verify inventories in general warehouse
+        var inv1 = await _db.WarehouseInventories.FirstOrDefaultAsync(i => i.MaterialCode == "VT-IMP-001");
+        Assert.NotNull(inv1);
+        Assert.Equal(15m, inv1.Qty);
+
+        var inv2 = await _db.WarehouseInventories.FirstOrDefaultAsync(i => i.MaterialCode == "VT-IMP-002");
+        Assert.NotNull(inv2);
+        Assert.Equal(25m, inv2.Qty);
     }
 
     private class FakeInventoryDomainService : IInventoryDomainService

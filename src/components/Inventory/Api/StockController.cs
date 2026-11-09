@@ -1,3 +1,6 @@
+using System.Globalization;
+using System.Text;
+using System.Text.RegularExpressions;
 using ClosedXML.Excel;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -235,29 +238,43 @@ public class StockController(
                 return BadRequest($"Không tìm thấy dự án với mã '{projectCode}'.");
         }
 
-        var materials = await db.Materials.AsNoTracking()
-            .Where(m => m.DeletedAt == null)
-            .ToDictionaryAsync(m => m.MaterialCode.ToUpperInvariant(), ct);
+        var materialsList = await db.Materials.AsNoTracking()
+            .Where(m => m.DeletedAt == null && !string.IsNullOrWhiteSpace(m.MaterialCode))
+            .ToListAsync(ct);
+        var materials = materialsList
+            .GroupBy(m => m.MaterialCode.Trim().ToUpperInvariant())
+            .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
 
+        var mapping = DetectColumnMapping(ws);
         var previewItems = new List<OpeningStockItemPreviewDto>();
-        var rowsUsed = ws.RowsUsed().Skip(1);
-        var rowIdx = 1;
+        var lastRow = ws.LastRowUsed()?.RowNumber() ?? 0;
 
-        foreach (var row in rowsUsed)
+        for (var rowIdx = mapping.HeaderRow + 1; rowIdx <= lastRow; rowIdx++)
         {
-            rowIdx++;
-            var code = row.Cell(1).GetString().Trim();
-            var name = row.Cell(2).GetString().Trim();
-            var unit = row.Cell(3).GetString().Trim();
-            var qtyStr = row.Cell(4).GetString().Trim();
-            var priceStr = row.Cell(5).GetString().Trim();
-            var note = row.Cell(6).GetString().Trim();
+            var row = ws.Row(rowIdx);
+            var code = mapping.CodeCol > 0 ? GetSafeCellString(row.Cell(mapping.CodeCol)) : string.Empty;
+            var name = mapping.NameCol > 0 ? GetSafeCellString(row.Cell(mapping.NameCol)) : string.Empty;
+            var unit = mapping.UnitCol > 0 ? GetSafeCellString(row.Cell(mapping.UnitCol)) : string.Empty;
+            var qtyStr = mapping.QtyCol > 0 ? GetSafeCellString(row.Cell(mapping.QtyCol)) : string.Empty;
+            var priceStr = mapping.PriceCol > 0 ? GetSafeCellString(row.Cell(mapping.PriceCol)) : string.Empty;
+            var note = mapping.NoteCol > 0 ? GetSafeCellString(row.Cell(mapping.NoteCol)) : string.Empty;
 
-            if (string.IsNullOrWhiteSpace(code) && string.IsNullOrWhiteSpace(name) && string.IsNullOrWhiteSpace(qtyStr))
+            // Bỏ qua dòng placeholder công thức dạng F1-F2... nếu không có số lượng tồn
+            if (string.IsNullOrWhiteSpace(qtyStr) && (string.IsNullOrWhiteSpace(code) || code.StartsWith("F1-", StringComparison.OrdinalIgnoreCase)))
                 continue;
 
-            decimal.TryParse(qtyStr, out var qty);
-            decimal.TryParse(priceStr, out var price);
+            // Bỏ qua dòng trống cả mã và số lượng
+            if (string.IsNullOrWhiteSpace(code) && string.IsNullOrWhiteSpace(qtyStr))
+                continue;
+
+            // Bỏ qua dòng tổng cộng
+            if (code.Contains("tổng cộng", StringComparison.OrdinalIgnoreCase) ||
+                name.Contains("tổng cộng", StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            // Bỏ qua các dòng không có số lượng tồn được ghi nhận trong file (chỉ là dòng danh mục tham chiếu)
+            if (string.IsNullOrWhiteSpace(qtyStr))
+                continue;
 
             var isValid = true;
             var errorList = new List<string>();
@@ -278,16 +295,19 @@ public class StockController(
                 if (string.IsNullOrWhiteSpace(unit)) unit = mat.Unit;
             }
 
-            if (qty <= 0)
+            var hasValidQty = TryParseDecimalFlex(qtyStr, out var qty) && qty > 0;
+            if (!hasValidQty)
             {
                 isValid = false;
                 errorList.Add("Số lượng tồn phải lớn hơn 0");
             }
 
+            TryParseDecimalFlex(priceStr, out var price);
             if (price < 0)
             {
                 isValid = false;
                 errorList.Add("Đơn giá không được âm");
+                price = 0;
             }
 
             previewItems.Add(new OpeningStockItemPreviewDto(
@@ -337,25 +357,42 @@ public class StockController(
                 return BadRequest($"Không tìm thấy dự án với mã '{projectCode}'.");
         }
 
-        var materials = await db.Materials
-            .Where(m => m.DeletedAt == null)
-            .ToDictionaryAsync(m => m.MaterialCode.ToUpperInvariant(), ct);
+        var materialsList = await db.Materials
+            .Where(m => m.DeletedAt == null && !string.IsNullOrWhiteSpace(m.MaterialCode))
+            .ToListAsync(ct);
+        var materials = materialsList
+            .GroupBy(m => m.MaterialCode.Trim().ToUpperInvariant())
+            .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
 
+        var mapping = DetectColumnMapping(ws);
         var parsedItems = new List<(Material Mat, decimal Qty, decimal Price, string? Note)>();
         var errors = new List<string>();
-        var rowsUsed = ws.RowsUsed().Skip(1);
-        var rowIdx = 1;
+        var lastRow = ws.LastRowUsed()?.RowNumber() ?? 0;
 
-        foreach (var row in rowsUsed)
+        for (var rowIdx = mapping.HeaderRow + 1; rowIdx <= lastRow; rowIdx++)
         {
-            rowIdx++;
-            var code = row.Cell(1).GetString().Trim();
-            var name = row.Cell(2).GetString().Trim();
-            var qtyStr = row.Cell(4).GetString().Trim();
-            var priceStr = row.Cell(5).GetString().Trim();
-            var note = row.Cell(6).GetString().Trim();
+            var row = ws.Row(rowIdx);
+            var code = mapping.CodeCol > 0 ? GetSafeCellString(row.Cell(mapping.CodeCol)) : string.Empty;
+            var name = mapping.NameCol > 0 ? GetSafeCellString(row.Cell(mapping.NameCol)) : string.Empty;
+            var qtyStr = mapping.QtyCol > 0 ? GetSafeCellString(row.Cell(mapping.QtyCol)) : string.Empty;
+            var priceStr = mapping.PriceCol > 0 ? GetSafeCellString(row.Cell(mapping.PriceCol)) : string.Empty;
+            var note = mapping.NoteCol > 0 ? GetSafeCellString(row.Cell(mapping.NoteCol)) : string.Empty;
 
-            if (string.IsNullOrWhiteSpace(code) && string.IsNullOrWhiteSpace(name) && string.IsNullOrWhiteSpace(qtyStr))
+            // Bỏ qua dòng placeholder công thức dạng F1-F2... nếu không có số lượng tồn
+            if (string.IsNullOrWhiteSpace(qtyStr) && (string.IsNullOrWhiteSpace(code) || code.StartsWith("F1-", StringComparison.OrdinalIgnoreCase)))
+                continue;
+
+            // Bỏ qua dòng trống cả mã và số lượng
+            if (string.IsNullOrWhiteSpace(code) && string.IsNullOrWhiteSpace(qtyStr))
+                continue;
+
+            // Bỏ qua dòng tổng cộng
+            if (code.Contains("tổng cộng", StringComparison.OrdinalIgnoreCase) ||
+                name.Contains("tổng cộng", StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            // Bỏ qua các dòng không có số lượng tồn được ghi nhận trong file
+            if (string.IsNullOrWhiteSpace(qtyStr))
                 continue;
 
             if (string.IsNullOrWhiteSpace(code))
@@ -370,16 +407,16 @@ public class StockController(
                 continue;
             }
 
-            if (!decimal.TryParse(qtyStr, out var qty) || qty <= 0)
+            if (!TryParseDecimalFlex(qtyStr, out var qty) || qty <= 0)
             {
                 errors.Add($"Dòng {rowIdx}: Số lượng tồn '{qtyStr}' không hợp lệ (phải > 0).");
                 continue;
             }
 
-            decimal.TryParse(priceStr, out var price);
+            TryParseDecimalFlex(priceStr, out var price);
             if (price < 0) price = 0;
 
-            parsedItems.Add((mat, qty, price, note));
+            parsedItems.Add((mat, qty, price, string.IsNullOrWhiteSpace(note) ? null : note));
         }
 
         if (errors.Count > 0)
@@ -490,6 +527,253 @@ public class StockController(
             totalAmount,
             $"Nạp thành công {parsedItems.Count} mục vật tư vào {(project != null ? $"kho dự án {project.ProjectCode}" : "kho tổng")}. Mã phiếu: {ticketCode}"));
     }
+
+    #region Helper Methods for Smart Opening Balance Import
+
+    private record OpeningStockColumnMapping(
+        int HeaderRow,
+        int CodeCol,
+        int NameCol,
+        int UnitCol,
+        int QtyCol,
+        int PriceCol,
+        int NoteCol);
+
+    private static readonly string[] CodeKeywords =
+    [
+        "mã hàng hóa", "mahanghoa", "mã vật tư", "mavattu", "mã hàng", "mahang", "mã vt", "sku", "materialcode", "mã"
+    ];
+
+    private static readonly string[] PrimaryNameKeywords =
+    [
+        "tên hàng hóa", "tenhanghoa", "tên vật tư", "tenvattu", "tên hàng", "tenhang", "tên vt", "materialname", "productname", "tên"
+    ];
+
+    private static readonly string[] FallbackNameKeywords =
+    [
+        "diễn giải", "diengiai", "mô tả", "mota", "description"
+    ];
+
+    private static readonly string[] QtyKeywords =
+    [
+        "sl tồn kho", "sltonkho", "sl tồn", "slton", "số lượng tồn", "soluongton", "số lượng", "soluong", "tồn kho", "tonkho", "qty", "quantity", "sl"
+    ];
+
+    private static readonly string[] UnitKeywords =
+    [
+        "đơn vị tính", "donvitinh", "đvt", "dvt", "đơn vị", "donvi", "unit"
+    ];
+
+    private static readonly string[] PriceKeywords =
+    [
+        "đơn giá vốn", "dongiavon", "đơn giá", "dongia", "giá vốn", "giavon", "giá", "price", "unitprice"
+    ];
+
+    private static readonly string[] NoteKeywords =
+    [
+        "ghi chú", "ghichu", "note", "notes", "remark", "remarks"
+    ];
+
+    private static string NormalizeHeader(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return string.Empty;
+        var s = text.Trim().ToLowerInvariant()
+            .Replace('đ', 'd')
+            .Replace('Đ', 'd');
+        s = s.Normalize(NormalizationForm.FormD);
+        var chars = s.Where(c => CharUnicodeInfo.GetUnicodeCategory(c) != UnicodeCategory.NonSpacingMark).ToArray();
+        s = new string(chars).Normalize(NormalizationForm.FormC);
+        return new string(s.Where(c => char.IsLetterOrDigit(c) || char.IsWhiteSpace(c)).ToArray()).Trim();
+    }
+
+    private static bool MatchHeaderKeyword(string norm, string[] keywords)
+    {
+        var normNoSpace = norm.Replace(" ", "");
+        foreach (var kw in keywords)
+        {
+            var cleanKw = NormalizeHeader(kw);
+            var cleanKwNoSpace = cleanKw.Replace(" ", "");
+            if (string.IsNullOrEmpty(cleanKw)) continue;
+
+            if (cleanKw.Length <= 3)
+            {
+                if (norm == cleanKw || normNoSpace == cleanKwNoSpace)
+                    return true;
+
+                var words = norm.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                if (words.Any(w => w == cleanKw))
+                    return true;
+            }
+            else
+            {
+                if (norm.Contains(cleanKw, StringComparison.OrdinalIgnoreCase) ||
+                    normNoSpace.Contains(cleanKwNoSpace, StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private static OpeningStockColumnMapping DetectColumnMapping(IXLWorksheet ws)
+    {
+        var maxScanRow = Math.Min(15, ws.LastRowUsed()?.RowNumber() ?? 1);
+
+        for (var row = 1; row <= maxScanRow; row++)
+        {
+            var lastCol = ws.Row(row).LastCellUsed()?.Address.ColumnNumber ?? 0;
+            if (lastCol == 0) continue;
+
+            int codeCol = 0, nameCol = 0, unitCol = 0, qtyCol = 0, priceCol = 0, noteCol = 0;
+            int fallbackNameCol = 0;
+
+            for (var col = 1; col <= lastCol; col++)
+            {
+                var text = GetSafeCellString(ws.Cell(row, col));
+                if (string.IsNullOrWhiteSpace(text)) continue;
+
+                var norm = NormalizeHeader(text);
+                if (string.IsNullOrWhiteSpace(norm)) continue;
+
+                // 1. Qty match (ưu tiên nhận diện cột SL trước)
+                if (qtyCol == 0 && MatchHeaderKeyword(norm, QtyKeywords))
+                {
+                    qtyCol = col;
+                    continue;
+                }
+
+                // 2. Price match
+                if (priceCol == 0 && MatchHeaderKeyword(norm, PriceKeywords))
+                {
+                    priceCol = col;
+                    continue;
+                }
+
+                // 3. Unit match
+                if (unitCol == 0 && MatchHeaderKeyword(norm, UnitKeywords))
+                {
+                    unitCol = col;
+                    continue;
+                }
+
+                // 4. Code match
+                if (codeCol == 0 && MatchHeaderKeyword(norm, CodeKeywords))
+                {
+                    codeCol = col;
+                    continue;
+                }
+
+                // 5. Primary Name match
+                if (nameCol == 0 && MatchHeaderKeyword(norm, PrimaryNameKeywords))
+                {
+                    nameCol = col;
+                    continue;
+                }
+
+                // Fallback Name match (mô tả, diễn giải)
+                if (fallbackNameCol == 0 && MatchHeaderKeyword(norm, FallbackNameKeywords))
+                {
+                    fallbackNameCol = col;
+                    continue;
+                }
+
+                // 6. Note match
+                if (noteCol == 0 && MatchHeaderKeyword(norm, NoteKeywords))
+                {
+                    noteCol = col;
+                    continue;
+                }
+            }
+
+            if (nameCol == 0 && fallbackNameCol > 0)
+            {
+                nameCol = fallbackNameCol;
+            }
+
+            // Dòng header hợp lệ bắt buộc phải có ít nhất cột Mã VT và Số lượng tồn
+            if (codeCol > 0 && qtyCol > 0)
+            {
+                return new OpeningStockColumnMapping(row, codeCol, nameCol, unitCol, qtyCol, priceCol, noteCol);
+            }
+        }
+
+        // Fallback mặc định cho file mẫu 6 cột
+        return new OpeningStockColumnMapping(
+            HeaderRow: 1,
+            CodeCol: 1,
+            NameCol: 2,
+            UnitCol: 3,
+            QtyCol: 4,
+            PriceCol: 5,
+            NoteCol: 6);
+    }
+
+    private static string GetSafeCellString(IXLCell? cell)
+    {
+        if (cell == null || cell.IsEmpty()) return string.Empty;
+        try
+        {
+            if (cell.HasFormula)
+            {
+                var cached = cell.CachedValue.ToString()?.Trim() ?? string.Empty;
+                if (!string.IsNullOrEmpty(cached)) return cached;
+            }
+            return cell.GetFormattedString().Trim();
+        }
+        catch
+        {
+            try
+            {
+                return cell.Value.ToString()?.Trim() ?? string.Empty;
+            }
+            catch
+            {
+                try
+                {
+                    return cell.CachedValue.ToString()?.Trim() ?? string.Empty;
+                }
+                catch
+                {
+                    return string.Empty;
+                }
+            }
+        }
+    }
+
+    private static bool TryParseDecimalFlex(string? raw, out decimal result)
+    {
+        result = 0m;
+        if (string.IsNullOrWhiteSpace(raw)) return false;
+        var s = raw.Trim();
+
+        // 1. Direct Invariant Parse
+        if (decimal.TryParse(s, NumberStyles.Any, CultureInfo.InvariantCulture, out result))
+            return true;
+
+        // 2. Vietnamese culture parse
+        var vn = CultureInfo.GetCultureInfo("vi-VN");
+        if (decimal.TryParse(s, NumberStyles.Any, vn, out result))
+            return true;
+
+        // 3. Normalized string handling (loại bỏ khoảng trắng, đổi dấu phân cách)
+        var cleaned = s.Replace(" ", "").Replace("\u00A0", "");
+        if (cleaned.Contains(',') && cleaned.Contains('.'))
+        {
+            if (cleaned.IndexOf(',') < cleaned.IndexOf('.'))
+                cleaned = cleaned.Replace(",", "");
+            else
+                cleaned = cleaned.Replace(".", "").Replace(",", ".");
+        }
+        else if (cleaned.Contains(','))
+        {
+            cleaned = cleaned.Replace(',', '.');
+        }
+
+        return decimal.TryParse(cleaned, NumberStyles.Any, CultureInfo.InvariantCulture, out result);
+    }
+
+    #endregion
 
     private bool IsAdminUser() =>
         currentUser.IsInRole("Admin")
