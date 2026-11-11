@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using NamViet.ERP.Api.Application.Dtos.Purchasing;
 using NamViet.ERP.Api.Application.Services.Purchasing;
 using NamViet.ERP.Api.Infrastructure.Authorization;
+using NamViet.ERP.Api.Services.Storage;
 using NamViet.ERP.Modules.Warehouse.Application.DTOs;
 using NamViet.ERP.Modules.Warehouse.Domain.Entities;
 using NamViet.ERP.Modules.Warehouse.Domain.SupplierEvaluation;
@@ -19,7 +20,8 @@ namespace NamViet.ERP.Api.Controllers;
 public class SuppliersController(
     WarehouseDbContext db,
     ISupplierGroupService groups,
-    ICurrentUser currentUser) : ControllerBase
+    ICurrentUser currentUser,
+    IFileStorage? fileStorage = null) : ControllerBase
 {
     [HttpGet("{id:int}/groups")]
     [RequirePermission("wms.suppliers.view:all")]
@@ -298,6 +300,33 @@ public class SuppliersController(
                     SupplierGradeMapper.KpiGradeLabel(x.Grade),
                     x.EvaluatedAt));
 
+        var supplierContacts = await db.SupplierContacts
+            .AsNoTracking()
+            .Where(c => supplierIds.Contains(c.SupplierId))
+            .OrderBy(c => c.Role == SupplierContactRoles.Primary ? 0 : 1)
+            .ThenBy(c => c.Id)
+            .ToListAsync(ct);
+
+        var contactCountMap = supplierContacts
+            .GroupBy(c => c.SupplierId)
+            .ToDictionary(g => g.Key, g => g.Count());
+
+        var primaryContactMap = supplierContacts
+            .GroupBy(c => c.SupplierId)
+            .ToDictionary(
+                g => g.Key,
+                g =>
+                {
+                    var pc = g.FirstOrDefault(c => c.Role == SupplierContactRoles.Primary) ?? g.FirstOrDefault();
+                    return pc == null ? null : new SupplierPrimaryContactDto(
+                        pc.Id,
+                        pc.FullName,
+                        pc.Position,
+                        pc.Phone,
+                        pc.Email,
+                        pc.Role);
+                });
+
         var items = suppliers.Select(s => new SupplierDto(
             s.Id,
             s.SupplierCode,
@@ -318,7 +347,10 @@ public class SuppliersController(
             s.TaxCode,
             s.SupplierType,
             s.Scope,
-            s.Website)).ToList();
+            s.Website,
+            primaryContactMap.GetValueOrDefault(s.Id),
+            null,
+            contactCountMap.GetValueOrDefault(s.Id, 0))).ToList();
         return Ok(PagedResult<SupplierDto>.Create(items, total, page, pageSize));
     }
 
@@ -705,6 +737,40 @@ public class SuppliersController(
                 SupplierGradeMapper.KpiGradeLabel(latest.Grade),
                 latest.EvaluatedAt);
 
+        var contacts = await db.SupplierContacts.AsNoTracking()
+            .Where(c => c.SupplierId == id)
+            .OrderBy(c => c.Role == SupplierContactRoles.Primary ? 0 : 1)
+            .ThenBy(c => c.Id)
+            .ToListAsync(ct);
+
+        var primaryContactEntity = contacts.FirstOrDefault(c => c.Role == SupplierContactRoles.Primary) ?? contacts.FirstOrDefault();
+        SupplierPrimaryContactDto? primaryContact = primaryContactEntity is null
+            ? null
+            : new SupplierPrimaryContactDto(
+                primaryContactEntity.Id,
+                primaryContactEntity.FullName,
+                primaryContactEntity.Position,
+                primaryContactEntity.Phone,
+                primaryContactEntity.Email,
+                primaryContactEntity.Role);
+
+        var attachments = await db.SupplierAttachments.AsNoTracking()
+            .Where(a => a.SupplierId == id)
+            .OrderByDescending(a => a.UploadedAt)
+            .Select(a => new SupplierAttachmentDto(
+                a.Id,
+                a.SupplierId,
+                a.DocType,
+                SupplierAttachmentDocTypes.ToClientLabel(a.DocType),
+                a.FileName,
+                a.FileSizeBytes,
+                a.ContentType,
+                a.UploadedAt,
+                a.UploadedByName,
+                $"/api/warehouse/suppliers/{id}/attachments/{a.Id}/download"
+            ))
+            .ToListAsync(ct);
+
         return Ok(new SupplierDto(
             s.Id,
             s.SupplierCode,
@@ -725,7 +791,10 @@ public class SuppliersController(
             s.TaxCode,
             s.SupplierType,
             s.Scope,
-            s.Website));
+            s.Website,
+            primaryContact,
+            attachments,
+            contacts.Count));
     }
 
     [HttpPost]
@@ -775,6 +844,27 @@ public class SuppliersController(
         };
         db.Suppliers.Add(s);
         await db.SaveChangesAsync(ct);
+
+        var contactName = req.ResolvedContactName;
+        var contactEmail = req.ResolvedContactEmail;
+        var contactPosition = req.ResolvedContactPosition;
+
+        if (!string.IsNullOrWhiteSpace(contactName) || !string.IsNullOrWhiteSpace(phone) || !string.IsNullOrWhiteSpace(contactEmail))
+        {
+            var primaryContact = new SupplierContact
+            {
+                SupplierId = s.Id,
+                FullName = !string.IsNullOrWhiteSpace(contactName) ? contactName : (!string.IsNullOrWhiteSpace(phone) ? $"Liên hệ {phone}" : s.SupplierName),
+                Position = contactPosition,
+                Phone = phone,
+                Email = contactEmail,
+                Role = SupplierContactRoles.Primary,
+                IsPrimary = true
+            };
+            db.SupplierContacts.Add(primaryContact);
+            await db.SaveChangesAsync(ct);
+        }
+
         return await GetById(s.Id, ct);
     }
 
@@ -824,6 +914,41 @@ public class SuppliersController(
         s.PaymentTerms = string.IsNullOrWhiteSpace(req.PaymentTerms) ? null : req.PaymentTerms.Trim();
         // Rating + ApprovalStatus are system-owned — never overwrite from client.
         s.UpdatedAt = DateTime.UtcNow;
+
+        var contactName = req.ResolvedContactName;
+        var contactEmail = req.ResolvedContactEmail;
+        var contactPosition = req.ResolvedContactPosition;
+
+        var existingPrimary = await db.SupplierContacts
+            .FirstOrDefaultAsync(c => c.SupplierId == id && c.Role == SupplierContactRoles.Primary, ct);
+
+        if (existingPrimary != null)
+        {
+            if (!string.IsNullOrWhiteSpace(contactName))
+                existingPrimary.FullName = contactName;
+            if (contactPosition != null)
+                existingPrimary.Position = contactPosition;
+            if (phone != null)
+                existingPrimary.Phone = phone;
+            if (contactEmail != null)
+                existingPrimary.Email = contactEmail;
+            existingPrimary.UpdatedAt = DateTime.UtcNow;
+        }
+        else if (!string.IsNullOrWhiteSpace(contactName) || !string.IsNullOrWhiteSpace(phone) || !string.IsNullOrWhiteSpace(contactEmail))
+        {
+            var primaryContact = new SupplierContact
+            {
+                SupplierId = s.Id,
+                FullName = !string.IsNullOrWhiteSpace(contactName) ? contactName : (!string.IsNullOrWhiteSpace(phone) ? $"Liên hệ {phone}" : s.SupplierName),
+                Position = contactPosition,
+                Phone = phone,
+                Email = contactEmail,
+                Role = SupplierContactRoles.Primary,
+                IsPrimary = true
+            };
+            db.SupplierContacts.Add(primaryContact);
+        }
+
         await db.SaveChangesAsync(ct);
         return NoContent();
     }
@@ -906,6 +1031,146 @@ public class SuppliersController(
         var s = await db.Suppliers.FindAsync([id], ct);
         if (s is null) return NotFound();
         s.DeletedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
+        return NoContent();
+    }
+
+    [HttpGet("{id:int}/attachments")]
+    [RequirePermission("wms.suppliers.view:all")]
+    public async Task<ActionResult<IReadOnlyList<SupplierAttachmentDto>>> ListAttachments(
+        int id, CancellationToken ct)
+    {
+        var supplier = await db.Suppliers.AsNoTracking().FirstOrDefaultAsync(s => s.Id == id, ct);
+        if (supplier is null) return NotFound(new { message = $"Không tìm thấy nhà cung cấp #{id}." });
+
+        var list = await db.SupplierAttachments.AsNoTracking()
+            .Where(a => a.SupplierId == id)
+            .OrderByDescending(a => a.UploadedAt)
+            .Select(a => new SupplierAttachmentDto(
+                a.Id,
+                a.SupplierId,
+                a.DocType,
+                SupplierAttachmentDocTypes.ToClientLabel(a.DocType),
+                a.FileName,
+                a.FileSizeBytes,
+                a.ContentType,
+                a.UploadedAt,
+                a.UploadedByName,
+                $"/api/warehouse/suppliers/{id}/attachments/{a.Id}/download"))
+            .ToListAsync(ct);
+
+        return Ok(list);
+    }
+
+    [HttpPost("{id:int}/attachments")]
+    [RequirePermission("wms.suppliers.update")]
+    [RequestSizeLimit(20 * 1024 * 1024)]
+    public async Task<ActionResult<SupplierAttachmentDto>> UploadAttachment(
+        int id,
+        IFormFile file,
+        [FromForm] string docType = "other",
+        CancellationToken ct = default)
+    {
+        if (file is null || file.Length == 0)
+            return BadRequest(new { message = "File tải lên trống." });
+
+        var supplier = await db.Suppliers.FirstOrDefaultAsync(s => s.Id == id, ct);
+        if (supplier is null)
+            return NotFound(new { message = $"Không tìm thấy nhà cung cấp #{id}." });
+
+        if (fileStorage is null)
+            return StatusCode(500, new { message = "Dịch vụ lưu trữ tệp chưa được cấu hình." });
+
+        var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
+        string[] allowed =
+        [
+            ".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp",
+            ".pdf",
+            ".doc", ".docx", ".rtf",
+            ".xls", ".xlsx", ".xlsm", ".xlsb", ".csv",
+            ".ppt", ".pptx",
+            ".txt", ".zip", ".rar"
+        ];
+        if (!allowed.Contains(ext))
+        {
+            return BadRequest(new { message = $"Định dạng tệp không được hỗ trợ: {ext}. Vui lòng chọn tệp PDF, Word, Excel hoặc hình ảnh." });
+        }
+
+        var normalizedDocType = SupplierAttachmentDocTypes.Allowed.Contains(docType.Trim())
+            ? docType.Trim().ToLowerInvariant()
+            : SupplierAttachmentDocTypes.Other;
+
+        var relativePath = $"purchasing/suppliers/{id}/{normalizedDocType}/{Guid.NewGuid():N}{ext}";
+        var contentType = !string.IsNullOrWhiteSpace(file.ContentType) ? file.ContentType : "application/octet-stream";
+
+        await using var stream = file.OpenReadStream();
+        var stored = await fileStorage.SaveAsync(stream, relativePath, contentType, ct);
+
+        var attachment = new SupplierAttachment
+        {
+            Id = Guid.NewGuid(),
+            SupplierId = id,
+            DocType = normalizedDocType,
+            FileName = Path.GetFileName(file.FileName),
+            StorageKey = stored.StorageKey,
+            FileSizeBytes = file.Length,
+            ContentType = contentType,
+            UploadedAt = DateTime.UtcNow,
+            UploadedByName = currentUser.IsAuthenticated ? currentUser.Name : null,
+        };
+
+        db.SupplierAttachments.Add(attachment);
+        supplier.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
+
+        var dto = new SupplierAttachmentDto(
+            attachment.Id,
+            attachment.SupplierId,
+            attachment.DocType,
+            SupplierAttachmentDocTypes.ToClientLabel(attachment.DocType),
+            attachment.FileName,
+            attachment.FileSizeBytes,
+            attachment.ContentType,
+            attachment.UploadedAt,
+            attachment.UploadedByName,
+            $"/api/warehouse/suppliers/{id}/attachments/{attachment.Id}/download");
+
+        return Ok(dto);
+    }
+
+    [HttpGet("{id:int}/attachments/{attachmentId:guid}/download")]
+    [RequirePermission("wms.suppliers.view:all")]
+    public async Task<IActionResult> DownloadAttachment(int id, Guid attachmentId, CancellationToken ct)
+    {
+        var att = await db.SupplierAttachments.AsNoTracking()
+            .FirstOrDefaultAsync(a => a.SupplierId == id && a.Id == attachmentId, ct);
+        if (att is null)
+            return NotFound(new { message = "Không tìm thấy hồ sơ đính kèm." });
+
+        if (fileStorage is null)
+            return StatusCode(500, new { message = "Dịch vụ lưu trữ tệp chưa được cấu hình." });
+
+        var stored = await fileStorage.OpenReadAsync(att.StorageKey, ct);
+        if (stored is null)
+            return NotFound(new { message = "Tệp đính kèm không còn tồn tại trên máy chủ lưu trữ. Vui lòng tải lại hồ sơ." });
+
+        return File(stored.Stream, stored.ResolveContentType(att.FileName), att.FileName);
+    }
+
+    [HttpDelete("{id:int}/attachments/{attachmentId:guid}")]
+    [RequirePermission("wms.suppliers.update")]
+    public async Task<IActionResult> DeleteAttachment(int id, Guid attachmentId, CancellationToken ct)
+    {
+        var att = await db.SupplierAttachments
+            .FirstOrDefaultAsync(a => a.SupplierId == id && a.Id == attachmentId, ct);
+        if (att is null)
+            return NotFound(new { message = "Không tìm thấy hồ sơ đính kèm." });
+
+        var supplier = await db.Suppliers.FirstOrDefaultAsync(s => s.Id == id, ct);
+        if (supplier is not null)
+            supplier.UpdatedAt = DateTime.UtcNow;
+
+        att.DeletedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
         return NoContent();
     }

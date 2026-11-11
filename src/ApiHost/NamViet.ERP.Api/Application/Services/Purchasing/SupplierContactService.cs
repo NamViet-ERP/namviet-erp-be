@@ -80,7 +80,14 @@ public sealed class SupplierContactService(WarehouseDbContext db) : ISupplierCon
 
         db.SupplierContacts.Add(contact);
         if (contact.IsPrimary)
+        {
             await DemoteOtherPrimariesAsync(supplier.Id, contactIdToKeep: null, ct);
+            if (!string.IsNullOrWhiteSpace(contact.Phone))
+            {
+                supplier.ContactPhone = contact.Phone;
+                supplier.UpdatedAt = DateTime.UtcNow;
+            }
+        }
 
         await db.SaveChangesAsync(ct);
         return ToDto(contact, supplier.SupplierName);
@@ -107,7 +114,14 @@ public sealed class SupplierContactService(WarehouseDbContext db) : ISupplierCon
         contact.UpdatedAt = DateTime.UtcNow;
 
         if (contact.IsPrimary)
+        {
             await DemoteOtherPrimariesAsync(supplier.Id, contact.Id, ct);
+            if (!string.IsNullOrWhiteSpace(contact.Phone))
+            {
+                supplier.ContactPhone = contact.Phone;
+                supplier.UpdatedAt = DateTime.UtcNow;
+            }
+        }
 
         await db.SaveChangesAsync(ct);
         return ToDto(contact, supplier.SupplierName);

@@ -22,6 +22,26 @@ public record UpsertMaterialRequest(
     string? ImageUrl = null);
 
 // ── Suppliers ─────────────────────────────────────────────────────────────
+public record SupplierPrimaryContactDto(
+    int Id,
+    string FullName,
+    string? Position,
+    string? Phone,
+    string? Email,
+    string Role = "primary");
+
+public record SupplierAttachmentDto(
+    Guid Id,
+    int SupplierId,
+    string DocType,
+    string DocTypeLabel,
+    string FileName,
+    long FileSizeBytes,
+    string ContentType,
+    DateTime UploadedAt,
+    string? UploadedByName,
+    string? DownloadUrl = null);
+
 public record SupplierDto(
     int Id, string SupplierCode, string SupplierName,
     string? ContactPhone,
@@ -40,7 +60,10 @@ public record SupplierDto(
     string? TaxCode = null,
     string? SupplierType = null,
     string? Scope = null,
-    string? Website = null);
+    string? Website = null,
+    SupplierPrimaryContactDto? PrimaryContact = null,
+    IReadOnlyList<SupplierAttachmentDto>? Attachments = null,
+    int ContactCount = 0);
 
 public record SupplierLatestEvaluationDto(
     string Period,
@@ -56,7 +79,18 @@ public record UpsertSupplierRequest(
     string? TaxCode = null,
     string? SupplierType = null,
     string? Scope = null,
-    string? Website = null);
+    string? Website = null,
+    string? ContactName = null,
+    string? ContactEmail = null,
+    string? ContactPosition = null,
+    string? PrimaryContactName = null,
+    string? PrimaryContactEmail = null,
+    string? PrimaryContactPosition = null)
+{
+    public string? ResolvedContactName => !string.IsNullOrWhiteSpace(ContactName) ? ContactName.Trim() : (!string.IsNullOrWhiteSpace(PrimaryContactName) ? PrimaryContactName.Trim() : null);
+    public string? ResolvedContactEmail => !string.IsNullOrWhiteSpace(ContactEmail) ? ContactEmail.Trim() : (!string.IsNullOrWhiteSpace(PrimaryContactEmail) ? PrimaryContactEmail.Trim() : null);
+    public string? ResolvedContactPosition => !string.IsNullOrWhiteSpace(ContactPosition) ? ContactPosition.Trim() : (!string.IsNullOrWhiteSpace(PrimaryContactPosition) ? PrimaryContactPosition.Trim() : null);
+}
 
 public record SupplierNextCodeDto(string NextCode);
 

@@ -48,6 +48,7 @@ public class WarehouseDbContext(DbContextOptions<WarehouseDbContext> options) : 
     public DbSet<SupplierGroup> SupplierGroups => Set<SupplierGroup>();
     public DbSet<SupplierGroupMember> SupplierGroupMembers => Set<SupplierGroupMember>();
     public DbSet<SupplierContact> SupplierContacts => Set<SupplierContact>();
+    public DbSet<SupplierAttachment> SupplierAttachments => Set<SupplierAttachment>();
     public DbSet<SupplierEvaluation> SupplierEvaluations => Set<SupplierEvaluation>();
     public DbSet<SupplierDeliveryEvaluation> SupplierDeliveryEvaluations => Set<SupplierDeliveryEvaluation>();
     public DbSet<SupplierTierEvaluation> SupplierTierEvaluations => Set<SupplierTierEvaluation>();
@@ -277,6 +278,22 @@ public class WarehouseDbContext(DbContextOptions<WarehouseDbContext> options) : 
             e.HasOne(c => c.Supplier).WithMany(s => s.Contacts)
              .HasForeignKey(c => c.SupplierId).OnDelete(DeleteBehavior.Cascade);
             e.HasQueryFilter(c => c.DeletedAt == null);
+        });
+
+        model.Entity<SupplierAttachment>(e =>
+        {
+            e.ToTable("supplier_attachments");
+            e.HasKey(a => a.Id);
+            e.Property(a => a.DocType).HasMaxLength(50).IsRequired();
+            e.Property(a => a.FileName).HasMaxLength(255).IsRequired();
+            e.Property(a => a.StorageKey).HasMaxLength(500).IsRequired();
+            e.Property(a => a.ContentType).HasMaxLength(100);
+            e.Property(a => a.UploadedByName).HasMaxLength(200);
+            e.HasIndex(a => a.SupplierId);
+            e.HasIndex(a => new { a.SupplierId, a.DocType });
+            e.HasOne(a => a.Supplier).WithMany(s => s.Attachments)
+             .HasForeignKey(a => a.SupplierId).OnDelete(DeleteBehavior.Cascade);
+            e.HasQueryFilter(a => a.DeletedAt == null);
         });
 
         model.Entity<SupplierEvaluation>(e =>
