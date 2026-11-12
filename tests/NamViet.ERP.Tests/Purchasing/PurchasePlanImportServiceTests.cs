@@ -60,6 +60,7 @@ public class PurchasePlanImportServiceTests
         Assert.Equal(25_455m, line.ProposalUnitPrice);
         Assert.Equal("ĐÔNG Á", line.ProposalSupplierName);
         Assert.Equal(PurchasePlanLineTypes.Material, line.LineType);
+        Assert.Contains(preview.MappedColumns, c => c.Field == "Description");
         Assert.Contains(preview.MappedColumns, c => c.Field == "BudgetUnitPrice");
         Assert.Contains(preview.MappedColumns, c => c.Field == "ProposalUnitPrice");
         Assert.Contains(preview.MappedColumns, c => c.Field == "PurchaseUnitPrice");
@@ -576,5 +577,76 @@ public class PurchasePlanImportServiceTests
         Assert.Contains(preview.Errors, e => e.Message.Contains("chưa có trong danh mục hệ thống") && e.Message.Contains("VT-ONG"));
         var line = Assert.Single(preview.Lines);
         Assert.False(line.IsValid);
+    }
+
+    [Fact]
+    public void Preview_MapsDescriptionColumn_SeparatelyFromSpecAndLineNote()
+    {
+        using var wb = new XLWorkbook();
+        var ws = wb.AddWorksheet("KHMH");
+        ws.Cell(1, 1).Value = "Mã vật tư";
+        ws.Cell(1, 2).Value = "Tên hàng";
+        ws.Cell(1, 3).Value = "Quy cách";
+        ws.Cell(1, 4).Value = "Diễn giải";
+        ws.Cell(1, 5).Value = "ĐVT";
+        ws.Cell(1, 6).Value = "Số lượng";
+        ws.Cell(1, 7).Value = "Ghi chú dòng";
+
+        ws.Cell(2, 1).Value = "VT-ONG";
+        ws.Cell(2, 2).Value = "Ống thép";
+        ws.Cell(2, 3).Value = "D49 dày 3mm";
+        ws.Cell(2, 4).Value = "Ống cấp nước khu A tầng 2";
+        ws.Cell(2, 5).Value = "Cái";
+        ws.Cell(2, 6).Value = 10;
+        ws.Cell(2, 7).Value = "Giao hàng buổi sáng";
+
+        using var ms = new MemoryStream();
+        wb.SaveAs(ms);
+        ms.Position = 0;
+
+        var service = new PurchasePlanImportService();
+        var preview = service.Preview(ms, "DA-DESC-TEST");
+
+        Assert.Equal(1, preview.ValidRowCount);
+        var line = Assert.Single(preview.Lines);
+        Assert.Equal("D49 dày 3mm", line.Spec);
+        Assert.Equal("Ống cấp nước khu A tầng 2", line.Description);
+        Assert.Equal("Giao hàng buổi sáng", line.LineNote);
+    }
+
+    [Theory]
+    [InlineData("diễn giải", "Chi tiết thi công")]
+    [InlineData("dien giai", "Chi tiết thi công")]
+    [InlineData("mô tả chi tiết", "Chi tiết thi công")]
+    [InlineData("mục đích sử dụng", "Chi tiết thi công")]
+    [InlineData("description", "Chi tiết thi công")]
+    public void Preview_RecognizesAllDescriptionAliases(string headerName, string expectedDescription)
+    {
+        using var wb = new XLWorkbook();
+        var ws = wb.AddWorksheet("KHMH");
+        ws.Cell(1, 1).Value = "Mã vật tư";
+        ws.Cell(1, 2).Value = "Tên hàng";
+        ws.Cell(1, 3).Value = "Quy cách";
+        ws.Cell(1, 4).Value = headerName;
+        ws.Cell(1, 5).Value = "ĐVT";
+        ws.Cell(1, 6).Value = "Số lượng";
+
+        ws.Cell(2, 1).Value = "VT-ONG";
+        ws.Cell(2, 2).Value = "Ống thép";
+        ws.Cell(2, 3).Value = "D49";
+        ws.Cell(2, 4).Value = expectedDescription;
+        ws.Cell(2, 5).Value = "Cái";
+        ws.Cell(2, 6).Value = 5;
+
+        using var ms = new MemoryStream();
+        wb.SaveAs(ms);
+        ms.Position = 0;
+
+        var service = new PurchasePlanImportService();
+        var preview = service.Preview(ms, "DA-DESC-ALIAS");
+
+        var line = Assert.Single(preview.Lines);
+        Assert.Equal("D49", line.Spec);
+        Assert.Equal(expectedDescription, line.Description);
     }
 }

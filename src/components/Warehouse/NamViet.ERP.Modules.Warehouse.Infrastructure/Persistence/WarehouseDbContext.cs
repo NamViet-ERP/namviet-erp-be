@@ -637,6 +637,7 @@ public class WarehouseDbContext(DbContextOptions<WarehouseDbContext> options) : 
             e.Property(l => l.MaterialCode).HasMaxLength(100);
             e.Property(l => l.ProductName).HasMaxLength(500).IsRequired();
             e.Property(l => l.Spec).HasMaxLength(1000);
+            e.Property(l => l.Description).HasMaxLength(2000);
             e.Property(l => l.Unit).HasMaxLength(50);
             e.Property(l => l.Quantity).HasColumnType("numeric(18,4)");
             e.Property(l => l.KgPerUnit).HasColumnType("numeric(18,4)");

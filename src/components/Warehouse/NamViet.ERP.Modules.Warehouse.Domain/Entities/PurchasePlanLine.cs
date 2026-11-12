@@ -14,6 +14,8 @@ public class PurchasePlanLine
     public string? MaterialCode { get; set; }
     public string ProductName { get; set; } = string.Empty;
     public string? Spec { get; set; }
+    /// <summary>Diễn giải mục đích sử dụng / vị trí thi công / chi tiết bổ sung (tách biệt với LineNote).</summary>
+    public string? Description { get; set; }
     public string Unit { get; set; } = string.Empty;
     public decimal Quantity { get; set; }
     public decimal? KgPerUnit { get; set; }

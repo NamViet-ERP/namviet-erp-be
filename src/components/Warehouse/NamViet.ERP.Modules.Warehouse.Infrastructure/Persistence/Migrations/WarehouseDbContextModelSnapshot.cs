@@ -2606,6 +2606,10 @@ namespace NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence.Migrations
                     b.Property<decimal>("DefectQty")
                         .HasColumnType("numeric(18,4)");
 
+                    b.Property<string>("Description")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
                     b.Property<string>("DeliveryNote")
                         .HasMaxLength(2000)
                         .HasColumnType("character varying(2000)");

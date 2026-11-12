@@ -29,7 +29,8 @@ public sealed class PurchasePlanImportService(WarehouseDbContext? db = null) : I
         ("Category", ["danh mục", "danh muc", "nhóm", "nhom", "loại", "loai", "category", "itemtype"]),
         ("MaterialCode", ["mã vật tư", "ma vat tu", "materialcode", "material code", "mã vt", "ma vt", "sku"]),
         ("ProductName", ["tên sản phẩm", "ten san pham", "tên hàng", "ten hang", "tên vật tư", "sản phẩm", "san pham", "productname", "item", "hàng hóa"]),
-        ("Spec", ["quy cách", "quy cach", "spec", "specification", "mô tả", "mo ta"]),
+        ("Spec", ["quy cách", "quy cach", "spec", "specification"]),
+        ("Description", ["diễn giải", "dien giai", "mô tả chi tiết", "diễn giải chi tiết", "description", "mục đích sử dụng"]),
         ("Unit", ["đvt", "dvt", "đơn vị", "don vi", "unit"]),
         ("Quantity", ["sl", "số lượng", "so luong", "quantity", "qty"]),
         ("KgPerUnit", ["kg/đvt", "kg/dvt", "kg per unit", "kgperunit", "trọng lượng"]),
@@ -73,6 +74,7 @@ public sealed class PurchasePlanImportService(WarehouseDbContext? db = null) : I
         ("", "MÃ VẬT TƯ", "MaterialCode"),
         ("", "TÊN SẢN PHẨM", "ProductName"),
         ("", "QUY CÁCH", "Spec"),
+        ("", "DIỄN GIẢI", "Description"),
         ("", "ĐVT", "Unit"),
         ("", "SỐ LƯỢNG", "Quantity"),
         ("", "KG/ĐVT", "KgPerUnit"),
@@ -196,33 +198,34 @@ public sealed class PurchasePlanImportService(WarehouseDbContext? db = null) : I
             sheet.Cell(row, 4).Value = s.MaterialCode;
             sheet.Cell(row, 5).Value = s.ProductName;
             sheet.Cell(row, 6).Value = s.Spec;
-            sheet.Cell(row, 7).Value = s.Unit;
-            sheet.Cell(row, 8).Value = s.Qty;
-            sheet.Cell(row, 9).Value = s.KgPerUnit;
-            sheet.Cell(row, 10).Value = s.BudgetUnitPrice;
-            sheet.Cell(row, 11).Value = budgetAmount;
-            sheet.Cell(row, 12).Value = s.PurchaseStatus;
-            sheet.Cell(row, 13).Value = s.KgPerUnit;
-            sheet.Cell(row, 14).Value = s.ProposalUnitPrice;
-            sheet.Cell(row, 15).Value = proposalAmount;
-            sheet.Cell(row, 16).Value = s.ProposalSupplier;
-            sheet.Cell(row, 17).Value = s.ProposalNote;
-            sheet.Cell(row, 18).Value = new DateTime(2026, 5, 27);
-            sheet.Cell(row, 19).Value = new DateTime(2026, 5, 20);
-            sheet.Cell(row, 20).Value = new DateTime(2026, 5, 25);
+            sheet.Cell(row, 7).Value = "Phục vụ thi công dự án";
+            sheet.Cell(row, 8).Value = s.Unit;
+            sheet.Cell(row, 9).Value = s.Qty;
+            sheet.Cell(row, 10).Value = s.KgPerUnit;
+            sheet.Cell(row, 11).Value = s.BudgetUnitPrice;
+            sheet.Cell(row, 12).Value = budgetAmount;
+            sheet.Cell(row, 13).Value = s.PurchaseStatus;
+            sheet.Cell(row, 14).Value = s.KgPerUnit;
+            sheet.Cell(row, 15).Value = s.ProposalUnitPrice;
+            sheet.Cell(row, 16).Value = proposalAmount;
+            sheet.Cell(row, 17).Value = s.ProposalSupplier;
+            sheet.Cell(row, 18).Value = s.ProposalNote;
+            sheet.Cell(row, 19).Value = new DateTime(2026, 5, 27);
+            sheet.Cell(row, 20).Value = new DateTime(2026, 5, 20);
             sheet.Cell(row, 21).Value = new DateTime(2026, 5, 25);
-            sheet.Cell(row, 22).Value = string.Empty;
-            sheet.Cell(row, 23).Value = Math.Round(s.KgPerUnit * 0.995m, 2);
-            sheet.Cell(row, 24).Value = purchasePrice;
-            sheet.Cell(row, 25).Value = purchaseAmount;
-            sheet.Cell(row, 26).Value = s.PurchaseSupplier;
-            sheet.Cell(row, 27).Value = string.Empty;
-            sheet.Cell(row, 28).Value = s.ProposalUnitPrice;
-            sheet.Cell(row, 29).Value = proposalAmount;
-            sheet.Cell(row, 30).Value = s.SelectedSupplier;
-            sheet.Cell(row, 31).Value = s.SelectionReason;
+            sheet.Cell(row, 22).Value = new DateTime(2026, 5, 25);
+            sheet.Cell(row, 23).Value = string.Empty;
+            sheet.Cell(row, 24).Value = Math.Round(s.KgPerUnit * 0.995m, 2);
+            sheet.Cell(row, 25).Value = purchasePrice;
+            sheet.Cell(row, 26).Value = purchaseAmount;
+            sheet.Cell(row, 27).Value = s.PurchaseSupplier;
+            sheet.Cell(row, 28).Value = string.Empty;
+            sheet.Cell(row, 29).Value = s.ProposalUnitPrice;
+            sheet.Cell(row, 30).Value = proposalAmount;
+            sheet.Cell(row, 31).Value = s.SelectedSupplier;
+            sheet.Cell(row, 32).Value = s.SelectionReason;
 
-            for (var c = 18; c <= 21; c++)
+            for (var c = 19; c <= 22; c++)
                 sheet.Cell(row, c).Style.DateFormat.Format = "dd-mm-yyyy";
         }
     }
@@ -247,34 +250,34 @@ public sealed class PurchasePlanImportService(WarehouseDbContext? db = null) : I
         }
 
         ApplyColumnFill(sheet, firstRow, lastRow, 2, FillHe);
-        ApplyColumnFill(sheet, firstRow, lastRow, 10, FillBudget);
         ApplyColumnFill(sheet, firstRow, lastRow, 11, FillBudget);
-        ApplyColumnFill(sheet, firstRow, lastRow, 12, FillStatus);
-        for (var c = 13; c <= 17; c++)
+        ApplyColumnFill(sheet, firstRow, lastRow, 12, FillBudget);
+        ApplyColumnFill(sheet, firstRow, lastRow, 13, FillStatus);
+        for (var c = 14; c <= 18; c++)
             ApplyColumnFill(sheet, firstRow, lastRow, c, FillProposal);
-        for (var c = 18; c <= 22; c++)
+        for (var c = 19; c <= 23; c++)
             ApplyColumnFill(sheet, firstRow, lastRow, c, FillDelivery);
-        for (var c = 23; c <= 27; c++)
+        for (var c = 24; c <= 28; c++)
             ApplyColumnFill(sheet, firstRow, lastRow, c, FillPurchase);
-        for (var c = 28; c <= 31; c++)
+        for (var c = 29; c <= 32; c++)
             ApplyColumnFill(sheet, firstRow, lastRow, c, FillSelected);
 
         // Default: text left, money right. Center only columns from user screenshots.
-        var leftCols = new[] { 3, 5, 6, 17, 22, 27 }; // danh mục, tên SP, quy cách, ghi chú
-        var rightCols = new[] { 10, 11, 14, 15, 24, 25, 28, 29 }; // đơn giá / thành tiền
+        var leftCols = new[] { 3, 5, 6, 7, 18, 23, 28 }; // danh mục, tên SP, quy cách, diễn giải, ghi chú
+        var rightCols = new[] { 11, 12, 15, 16, 25, 26, 29, 30 }; // đơn giá / thành tiền
         var centerCols = new[]
         {
             1, 2, 4,       // STT, HỆ, MÃ VẬT TƯ
-            7, 8, 9,        // ĐVT, SỐ LƯỢNG, KG/ĐVT
-            12,             // TÌNH TRẠNG
-            13, 23,         // KG/ĐVT đề xuất / mua hàng
-            16, 26,         // NCC
-            18, 19, 20, 21, // ngày giao hàng
-            30, 31,         // NCC CHỌN, LÝ DO CHỌN
+            8, 9, 10,       // ĐVT, SỐ LƯỢNG, KG/ĐVT
+            13,            // TÌNH TRẠNG
+            14, 24,        // KG/ĐVT đề xuất / mua hàng
+            17, 27,        // NCC
+            19, 20, 21, 22, // ngày giao hàng
+            31, 32,        // NCC CHỌN, LÝ DO CHỌN
         };
 
-        var integerCols = new[] { 1, 8, 10, 11, 14, 15, 24, 25, 28, 29 };
-        var kgCols = new[] { 9, 13, 23 }; // KG/ĐVT — format per value (no trailing ".")
+        var integerCols = new[] { 1, 9, 11, 12, 15, 16, 25, 26, 29, 30 };
+        var kgCols = new[] { 10, 14, 24 }; // KG/ĐVT — format per value (no trailing ".")
 
         for (var row = firstRow; row <= lastRow; row++)
         {
@@ -293,18 +296,19 @@ public sealed class PurchasePlanImportService(WarehouseDbContext? db = null) : I
 
             sheet.Cell(row, 5).Style.Alignment.WrapText = true;
             sheet.Cell(row, 6).Style.Alignment.WrapText = true;
-            sheet.Cell(row, 17).Style.Alignment.WrapText = true;
-            sheet.Cell(row, 31).Style.Alignment.WrapText = true;
+            sheet.Cell(row, 7).Style.Alignment.WrapText = true;
+            sheet.Cell(row, 18).Style.Alignment.WrapText = true;
+            sheet.Cell(row, 32).Style.Alignment.WrapText = true;
 
-            sheet.Cell(row, 11).Style.Font.FontColor = AccentRed;
-            sheet.Cell(row, 11).Style.Font.Bold = true;
-            sheet.Cell(row, 16).Style.Font.FontColor = AccentRed;
-            sheet.Cell(row, 16).Style.Font.Bold = true;
-            sheet.Cell(row, 21).Style.Font.FontColor = AccentRed;
-            sheet.Cell(row, 26).Style.Font.FontColor = AccentRed;
-            sheet.Cell(row, 26).Style.Font.Bold = true;
-            sheet.Cell(row, 30).Style.Font.FontColor = AccentRed;
-            sheet.Cell(row, 30).Style.Font.Bold = true;
+            sheet.Cell(row, 12).Style.Font.FontColor = AccentRed;
+            sheet.Cell(row, 12).Style.Font.Bold = true;
+            sheet.Cell(row, 17).Style.Font.FontColor = AccentRed;
+            sheet.Cell(row, 17).Style.Font.Bold = true;
+            sheet.Cell(row, 22).Style.Font.FontColor = AccentRed;
+            sheet.Cell(row, 27).Style.Font.FontColor = AccentRed;
+            sheet.Cell(row, 27).Style.Font.Bold = true;
+            sheet.Cell(row, 31).Style.Font.FontColor = AccentRed;
+            sheet.Cell(row, 31).Style.Font.Bold = true;
         }
     }
 
@@ -1227,7 +1231,8 @@ public sealed class PurchasePlanImportService(WarehouseDbContext? db = null) : I
             NullIfEmpty(Get("SelectionReason")),
             quotes,
             isValid,
-            lineType);
+            lineType,
+            NullIfEmpty(Get("Description")));
     }
 
     private static bool IsBlankRow(

@@ -108,7 +108,8 @@ public record PurchasePlanLineDto(
     decimal RemainingOrderableQty,
     List<PurchasePlanLineQuoteDto> Quotes,
     List<PurchasePlanLinePoDto>? Pos = null,
-    string LineType = PurchasePlanLineTypes.Material);
+    string LineType = PurchasePlanLineTypes.Material,
+    string? Description = null);
 
 public record PurchasePlanLineQuoteDto(
     int Id,
@@ -171,7 +172,8 @@ public record CreatePurchasePlanLineRequest(
     decimal? SelectedAmount = null,
     string? SelectedSupplierName = null,
     string? SelectionReason = null,
-    List<CreatePurchasePlanLineQuoteRequest>? Quotes = null);
+    List<CreatePurchasePlanLineQuoteRequest>? Quotes = null,
+    string? Description = null);
 
 public record CreatePurchasePlanRequest(
     string ProjectCode,
@@ -236,7 +238,8 @@ public record PurchasePlanImportLinePreviewDto(
     string? SelectionReason,
     List<PurchasePlanImportQuotePreviewDto> Quotes,
     bool IsValid,
-    string LineType = PurchasePlanLineTypes.Material);
+    string LineType = PurchasePlanLineTypes.Material,
+    string? Description = null);
 
 public record PurchasePlanImportQuotePreviewDto(
     int SortOrder,
