@@ -195,6 +195,14 @@ public class OpeningStockAndSupplierImportTests : IDisposable
         ws.Cell(5, 3).Value = "Cây";
         ws.Cell(5, 4).Value = "-5";
 
+        // Row 6: Valid with qty = 0 (empty stock is a valid state)
+        ws.Cell(6, 1).Value = "VT-THEP-001";
+        ws.Cell(6, 2).Value = "Ống thép đúc DN100 SCH40";
+        ws.Cell(6, 3).Value = "Cây";
+        ws.Cell(6, 4).Value = "0";
+        ws.Cell(6, 5).Value = "850000";
+        ws.Cell(6, 6).Value = "Hết hàng";
+
         using var ms = new MemoryStream();
         workbook.SaveAs(ms);
         ms.Position = 0;
@@ -212,11 +220,141 @@ public class OpeningStockAndSupplierImportTests : IDisposable
         var okResult = Assert.IsType<OkObjectResult>(result.Result);
         var preview = Assert.IsType<OpeningStockPreviewResponseDto>(okResult.Value);
 
-        Assert.Equal(4, preview.TotalRows);
-        Assert.Equal(2, preview.ValidRows);
+        Assert.Equal(5, preview.TotalRows);
+        Assert.Equal(3, preview.ValidRows);
         Assert.Equal(2, preview.ErrorRows);
         Assert.Equal(70m, preview.TotalQty);
         Assert.Equal(50m * 850000m + 20m * 1250000m, preview.TotalAmount);
+
+        var zeroItem = preview.Items.FirstOrDefault(i => i.Qty == 0);
+        Assert.NotNull(zeroItem);
+        Assert.True(zeroItem.IsValid);
+        Assert.Null(zeroItem.Error);
+        Assert.Equal("Hết hàng (Tồn 0 - Bỏ qua)", zeroItem.Note);
+    }
+
+    [Fact]
+    public async Task PreviewOpeningBalance_WithZeroQuantity_IsValidAndSetsNote()
+    {
+        // Arrange
+        _db.Materials.Add(new Material { MaterialCode = "VT-ZERO-001", MaterialName = "Vật tư hết hàng", Unit = "Cái", IsActive = true });
+        await _db.SaveChangesAsync();
+
+        using var workbook = new XLWorkbook();
+        var ws = workbook.Worksheets.Add("TonKhoDauKy");
+        ws.Cell(1, 1).Value = "Mã vật tư";
+        ws.Cell(1, 2).Value = "Tên vật tư";
+        ws.Cell(1, 3).Value = "Đơn vị tính";
+        ws.Cell(1, 4).Value = "Số lượng tồn";
+        ws.Cell(1, 5).Value = "Đơn giá vốn";
+        ws.Cell(1, 6).Value = "Ghi chú";
+
+        // Row 2: Qty 0 without note
+        ws.Cell(2, 1).Value = "VT-ZERO-001";
+        ws.Cell(2, 2).Value = "Vật tư hết hàng";
+        ws.Cell(2, 3).Value = "Cái";
+        ws.Cell(2, 4).Value = "0";
+
+        // Row 3: Qty 0 with existing note
+        ws.Cell(3, 1).Value = "VT-ZERO-001";
+        ws.Cell(3, 2).Value = "Vật tư hết hàng";
+        ws.Cell(3, 3).Value = "Cái";
+        ws.Cell(3, 4).Value = "0";
+        ws.Cell(3, 6).Value = "Tạm hết";
+
+        using var ms = new MemoryStream();
+        workbook.SaveAs(ms);
+        ms.Position = 0;
+
+        var formFile = new FormFile(ms, 0, ms.Length, "file", "zero_test.xlsx")
+        {
+            Headers = new HeaderDictionary(),
+            ContentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        };
+
+        // Act
+        var result = await _stockController.PreviewOpeningBalance(formFile, null, CancellationToken.None);
+
+        // Assert
+        var okResult = Assert.IsType<OkObjectResult>(result.Result);
+        var preview = Assert.IsType<OpeningStockPreviewResponseDto>(okResult.Value);
+
+        Assert.Equal(2, preview.TotalRows);
+        Assert.Equal(2, preview.ValidRows);
+        Assert.Equal(0, preview.ErrorRows);
+        Assert.Equal(0m, preview.TotalQty);
+
+        Assert.Equal("Tồn 0 (Bỏ qua khi tạo phiếu)", preview.Items[0].Note);
+        Assert.True(preview.Items[0].IsValid);
+        Assert.Null(preview.Items[0].Error);
+
+        Assert.Equal("Tạm hết (Tồn 0 - Bỏ qua)", preview.Items[1].Note);
+        Assert.True(preview.Items[1].IsValid);
+        Assert.Null(preview.Items[1].Error);
+    }
+
+    [Fact]
+    public async Task ImportOpeningBalance_WithZeroQuantity_SkipsZeroQtyAndImportsOnlyPositiveQty()
+    {
+        // Arrange
+        _db.Materials.AddRange(
+            new Material { MaterialCode = "VT-ZERO-IMP-001", MaterialName = "Vật tư có tồn", Unit = "Cái", IsActive = true },
+            new Material { MaterialCode = "VT-ZERO-IMP-002", MaterialName = "Vật tư tồn 0", Unit = "Cây", IsActive = true }
+        );
+        await _db.SaveChangesAsync();
+
+        using var workbook = new XLWorkbook();
+        var ws = workbook.Worksheets.Add("TonKhoDauKy");
+        ws.Cell(1, 1).Value = "Mã vật tư";
+        ws.Cell(1, 2).Value = "Tên vật tư";
+        ws.Cell(1, 3).Value = "Đơn vị tính";
+        ws.Cell(1, 4).Value = "Số lượng tồn";
+        ws.Cell(1, 5).Value = "Đơn giá vốn";
+        ws.Cell(1, 6).Value = "Ghi chú";
+
+        // Row 2: Qty 10
+        ws.Cell(2, 1).Value = "VT-ZERO-IMP-001";
+        ws.Cell(2, 2).Value = "Vật tư có tồn";
+        ws.Cell(2, 3).Value = "Cái";
+        ws.Cell(2, 4).Value = "10";
+        ws.Cell(2, 5).Value = "100000";
+
+        // Row 3: Qty 0 -> Should be skipped
+        ws.Cell(3, 1).Value = "VT-ZERO-IMP-002";
+        ws.Cell(3, 2).Value = "Vật tư tồn 0";
+        ws.Cell(3, 3).Value = "Cây";
+        ws.Cell(3, 4).Value = "0";
+        ws.Cell(3, 5).Value = "200000";
+
+        using var ms = new MemoryStream();
+        workbook.SaveAs(ms);
+        ms.Position = 0;
+
+        var formFile = new FormFile(ms, 0, ms.Length, "file", "zero_import_test.xlsx")
+        {
+            Headers = new HeaderDictionary(),
+            ContentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        };
+
+        // Act
+        var result = await _stockController.ImportOpeningBalance(formFile, null, CancellationToken.None);
+
+        // Assert
+        var okResult = Assert.IsType<OkObjectResult>(result.Result);
+        var resDto = Assert.IsType<OpeningStockImportResultDto>(okResult.Value);
+
+        Assert.Equal(1, resDto.TotalItems);
+        Assert.Equal(10m, resDto.TotalQty);
+        Assert.Equal(1000000m, resDto.TotalAmount);
+
+        // VT-ZERO-IMP-001 has inventory 10
+        var inv1 = await _db.WarehouseInventories.FirstOrDefaultAsync(i => i.MaterialCode == "VT-ZERO-IMP-001");
+        Assert.NotNull(inv1);
+        Assert.Equal(10m, inv1.Qty);
+
+        // VT-ZERO-IMP-002 should NOT have any inventory record
+        var inv2 = await _db.WarehouseInventories.FirstOrDefaultAsync(i => i.MaterialCode == "VT-ZERO-IMP-002");
+        Assert.Null(inv2);
     }
 
     [Fact]

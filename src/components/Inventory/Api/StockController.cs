@@ -295,11 +295,16 @@ public class StockController(
                 if (string.IsNullOrWhiteSpace(unit)) unit = mat.Unit;
             }
 
-            var hasValidQty = TryParseDecimalFlex(qtyStr, out var qty) && qty > 0;
-            if (!hasValidQty)
+            if (!TryParseDecimalFlex(qtyStr, out var qty) || qty < 0)
             {
                 isValid = false;
-                errorList.Add("Số lượng tồn phải lớn hơn 0");
+                errorList.Add("Số lượng tồn không hợp lệ hoặc bị âm");
+            }
+            else if (qty == 0)
+            {
+                note = string.IsNullOrWhiteSpace(note)
+                    ? "Tồn 0 (Bỏ qua khi tạo phiếu)"
+                    : $"{note} (Tồn 0 - Bỏ qua)";
             }
 
             TryParseDecimalFlex(priceStr, out var price);
@@ -407,9 +412,15 @@ public class StockController(
                 continue;
             }
 
-            if (!TryParseDecimalFlex(qtyStr, out var qty) || qty <= 0)
+            if (!TryParseDecimalFlex(qtyStr, out var qty) || qty < 0)
             {
-                errors.Add($"Dòng {rowIdx}: Số lượng tồn '{qtyStr}' không hợp lệ (phải > 0).");
+                errors.Add($"Dòng {rowIdx}: Số lượng tồn '{qtyStr}' không hợp lệ hoặc bị âm.");
+                continue;
+            }
+
+            if (qty == 0)
+            {
+                // Bỏ qua dòng tồn kho bằng 0 (không tạo phiếu nhập với số lượng 0)
                 continue;
             }
 
