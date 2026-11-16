@@ -213,28 +213,43 @@ public sealed class PurchasePlanService(
 
             if (request.Lines is { Count: > 0 })
             {
+                var allCodes = request.Lines
+                    .Select(l => l.MaterialCode)
+                    .Where(c => !string.IsNullOrWhiteSpace(c));
+                var serviceItemsByCode = await LoadServiceExpenseItemsByCodesAsync(allCodes, ct);
+
                 var materialCodes = request.Lines
-                    .Where(l => (l.LineType ?? PurchasePlanLineTypes.Material) == PurchasePlanLineTypes.Material)
+                    .Where(l =>
+                    {
+                        var c = l.MaterialCode?.Trim();
+                        if (!string.IsNullOrEmpty(c) && serviceItemsByCode.ContainsKey(c)) return false;
+                        return (l.LineType ?? PurchasePlanLineTypes.Material) == PurchasePlanLineTypes.Material;
+                    })
                     .Select(l => l.MaterialCode);
                 var materialsByCode = await LoadMaterialsByCodesAsync(materialCodes, ct);
 
                 ValidateMissingMaterials(
                     request.Lines.Select((l, i) => (l.MaterialCode, l.LineType, i + 1)),
-                    materialsByCode);
+                    materialsByCode,
+                    serviceItemsByCode);
 
                 var lineNo = 0;
                 foreach (var src in request.Lines)
                 {
                     lineNo++;
-                    var lineType = PurchasePlanLineTypes.IsValid(src.LineType)
-                        ? src.LineType!
-                        : PurchasePlanLineTypes.Material;
+                    var rawCode = src.MaterialCode?.Trim();
+                    ServiceExpenseItem? serviceItem = null;
+                    var isServiceItem = !string.IsNullOrEmpty(rawCode) && serviceItemsByCode.TryGetValue(rawCode, out serviceItem);
+                    var lineType = isServiceItem
+                        ? (serviceItem!.Type == "expense" ? PurchasePlanLineTypes.Expense : PurchasePlanLineTypes.Service)
+                        : (PurchasePlanLineTypes.IsValid(src.LineType) ? src.LineType! : PurchasePlanLineTypes.Material);
+
                     Material? material = null;
-                    if (lineType == PurchasePlanLineTypes.Material)
+                    if (lineType == PurchasePlanLineTypes.Material && !isServiceItem)
                     {
                         material = RequireMaterial(src.MaterialCode, materialsByCode, lineNo);
                     }
-                    plan.Lines.Add(MapCreateLine(src, code, lineNo, material, lineType));
+                    plan.Lines.Add(MapCreateLine(src, code, lineNo, material, lineType, serviceItem));
                 }
 
                 RecalcTotals(plan);
@@ -286,28 +301,43 @@ public sealed class PurchasePlanService(
             db.PurchasePlanLines.RemoveRange(plan.Lines);
             plan.Lines.Clear();
 
+            var allCodes = request.Lines
+                .Select(l => l.MaterialCode)
+                .Where(c => !string.IsNullOrWhiteSpace(c));
+            var serviceItemsByCode = await LoadServiceExpenseItemsByCodesAsync(allCodes, ct);
+
             var materialCodes = request.Lines
-                .Where(l => (l.LineType ?? PurchasePlanLineTypes.Material) == PurchasePlanLineTypes.Material)
+                .Where(l =>
+                {
+                    var c = l.MaterialCode?.Trim();
+                    if (!string.IsNullOrEmpty(c) && serviceItemsByCode.ContainsKey(c)) return false;
+                    return (l.LineType ?? PurchasePlanLineTypes.Material) == PurchasePlanLineTypes.Material;
+                })
                 .Select(l => l.MaterialCode);
             var materialsByCode = await LoadMaterialsByCodesAsync(materialCodes, ct);
 
             ValidateMissingMaterials(
                 request.Lines.Select((l, i) => (l.MaterialCode, l.LineType, i + 1)),
-                materialsByCode);
+                materialsByCode,
+                serviceItemsByCode);
 
             var lineNo = 0;
             foreach (var src in request.Lines)
             {
                 lineNo++;
-                var lineType = PurchasePlanLineTypes.IsValid(src.LineType)
-                    ? src.LineType!
-                    : PurchasePlanLineTypes.Material;
+                var rawCode = src.MaterialCode?.Trim();
+                ServiceExpenseItem? serviceItem = null;
+                var isServiceItem = !string.IsNullOrEmpty(rawCode) && serviceItemsByCode.TryGetValue(rawCode, out serviceItem);
+                var lineType = isServiceItem
+                    ? (serviceItem!.Type == "expense" ? PurchasePlanLineTypes.Expense : PurchasePlanLineTypes.Service)
+                    : (PurchasePlanLineTypes.IsValid(src.LineType) ? src.LineType! : PurchasePlanLineTypes.Material);
+
                 Material? material = null;
-                if (lineType == PurchasePlanLineTypes.Material)
+                if (lineType == PurchasePlanLineTypes.Material && !isServiceItem)
                 {
                     material = RequireMaterial(src.MaterialCode, materialsByCode, lineNo);
                 }
-                plan.Lines.Add(MapCreateLine(src, code, lineNo, material, lineType));
+                plan.Lines.Add(MapCreateLine(src, code, lineNo, material, lineType, serviceItem));
             }
 
             RecalcTotals(plan);
@@ -391,14 +421,25 @@ public sealed class PurchasePlanService(
         if (validLines.Count == 0)
             throw new PurchasingConflictException("Không có dòng hợp lệ để import.");
 
+        var allCodes = validLines
+            .Select(l => l.MaterialCode)
+            .Where(c => !string.IsNullOrWhiteSpace(c));
+        var serviceItemsByCode = await LoadServiceExpenseItemsByCodesAsync(allCodes, ct);
+
         var materialCodes = validLines
-            .Where(l => (l.LineType ?? PurchasePlanLineTypes.Material) == PurchasePlanLineTypes.Material)
+            .Where(l =>
+            {
+                var c = l.MaterialCode?.Trim();
+                if (!string.IsNullOrEmpty(c) && serviceItemsByCode.ContainsKey(c)) return false;
+                return (l.LineType ?? PurchasePlanLineTypes.Material) == PurchasePlanLineTypes.Material;
+            })
             .Select(l => l.MaterialCode);
         var materialsByCode = await LoadMaterialsByCodesAsync(materialCodes, ct);
 
         ValidateMissingMaterials(
             validLines.Select((l, i) => (l.MaterialCode, l.LineType, l.LineNo > 0 ? l.LineNo : i + 1)),
-            materialsByCode);
+            materialsByCode,
+            serviceItemsByCode);
 
         await using var tx = await db.Database.BeginTransactionAsync(ct);
 
@@ -421,15 +462,19 @@ public sealed class PurchasePlanService(
         foreach (var src in validLines.OrderBy(l => l.LineNo))
         {
             lineNo++;
-            var lineType = PurchasePlanLineTypes.IsValid(src.LineType)
-                ? src.LineType!
-                : PurchasePlanLineTypes.Material;
+            var rawCode = src.MaterialCode?.Trim();
+            ServiceExpenseItem? serviceItem = null;
+            var isServiceItem = !string.IsNullOrEmpty(rawCode) && serviceItemsByCode.TryGetValue(rawCode, out serviceItem);
+            var lineType = isServiceItem
+                ? (serviceItem!.Type == "expense" ? PurchasePlanLineTypes.Expense : PurchasePlanLineTypes.Service)
+                : (PurchasePlanLineTypes.IsValid(src.LineType) ? src.LineType! : PurchasePlanLineTypes.Material);
+
             Material? material = null;
-            if (lineType == PurchasePlanLineTypes.Material)
+            if (lineType == PurchasePlanLineTypes.Material && !isServiceItem)
             {
                 material = RequireMaterial(src.MaterialCode, materialsByCode, lineNo);
             }
-            var line = MapImportLine(src, code, lineNo, material, lineType);
+            var line = MapImportLine(src, code, lineNo, material, lineType, serviceItem);
             plan.Lines.Add(line);
         }
 
@@ -864,19 +909,47 @@ public sealed class PurchasePlanService(
             .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
     }
 
+    private async Task<IReadOnlyDictionary<string, ServiceExpenseItem>> LoadServiceExpenseItemsByCodesAsync(
+        IEnumerable<string?> codes, CancellationToken ct)
+    {
+        var wanted = codes
+            .Where(c => !string.IsNullOrWhiteSpace(c))
+            .Select(c => c!.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (wanted.Count == 0)
+            return new Dictionary<string, ServiceExpenseItem>(StringComparer.OrdinalIgnoreCase);
+
+        var items = await db.ServiceExpenseItems.AsNoTracking()
+            .Where(s => s.DeletedAt == null && s.IsActive && wanted.Contains(s.Code))
+            .ToListAsync(ct);
+
+        return items
+            .GroupBy(s => s.Code.Trim(), StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
+    }
+
     private static void ValidateMissingMaterials(
         IEnumerable<(string? Code, string? LineType, int Index)> lines,
-        IReadOnlyDictionary<string, Material> materialsByCode)
+        IReadOnlyDictionary<string, Material> materialsByCode,
+        IReadOnlyDictionary<string, ServiceExpenseItem>? serviceItemsByCode = null)
     {
         var missingLines = new List<string>();
         foreach (var (rawCode, rawLineType, index) in lines)
         {
+            var code = rawCode?.Trim();
+            if (!string.IsNullOrEmpty(code) && serviceItemsByCode != null && serviceItemsByCode.ContainsKey(code))
+            {
+                // Hợp lệ theo Danh mục Dịch vụ & Chi phí ngoài
+                continue;
+            }
+
             var lineType = PurchasePlanLineTypes.IsValid(rawLineType)
                 ? rawLineType!
                 : PurchasePlanLineTypes.Material;
             if (lineType == PurchasePlanLineTypes.Material)
             {
-                var code = rawCode?.Trim();
                 if (string.IsNullOrWhiteSpace(code) || !materialsByCode.ContainsKey(code))
                 {
                     missingLines.Add($"Dòng {index} ('{code ?? "trống"}')");
@@ -908,17 +981,28 @@ public sealed class PurchasePlanService(
     }
 
     private static PurchasePlanLine MapCreateLine(
-        CreatePurchasePlanLineRequest src, string planCode, int lineNo, Material? material, string lineType)
+        CreatePurchasePlanLineRequest src,
+        string planCode,
+        int lineNo,
+        Material? material,
+        string lineType,
+        ServiceExpenseItem? serviceItem = null)
     {
         var materialCode = string.IsNullOrWhiteSpace(src.MaterialCode) ? null : src.MaterialCode.Trim();
 
         var productName = src.ProductName?.Trim();
-        if (string.IsNullOrWhiteSpace(productName) && material != null)
-            productName = material.MaterialName;
+        if (string.IsNullOrWhiteSpace(productName))
+        {
+            if (material != null) productName = material.MaterialName;
+            else if (serviceItem != null) productName = serviceItem.Name;
+        }
 
         var unit = src.Unit?.Trim();
-        if (string.IsNullOrWhiteSpace(unit) && material != null)
-            unit = material.Unit;
+        if (string.IsNullOrWhiteSpace(unit))
+        {
+            if (material != null) unit = material.Unit;
+            else if (serviceItem != null) unit = serviceItem.Unit;
+        }
 
         if (string.IsNullOrWhiteSpace(productName))
             throw new PurchasingConflictException($"Dòng {lineNo}: ProductName là bắt buộc.");
@@ -1022,16 +1106,28 @@ public sealed class PurchasePlanService(
     }
 
     private static PurchasePlanLine MapImportLine(
-        PurchasePlanImportLinePreviewDto src, string planCode, int lineNo, Material? material, string lineType)
+        PurchasePlanImportLinePreviewDto src,
+        string planCode,
+        int lineNo,
+        Material? material,
+        string lineType,
+        ServiceExpenseItem? serviceItem = null)
     {
         var materialCode = string.IsNullOrWhiteSpace(src.MaterialCode) ? null : src.MaterialCode.Trim();
 
         var productName = src.ProductName?.Trim();
-        if (string.IsNullOrWhiteSpace(productName) && material != null)
-            productName = material.MaterialName;
+        if (string.IsNullOrWhiteSpace(productName))
+        {
+            if (material != null) productName = material.MaterialName;
+            else if (serviceItem != null) productName = serviceItem.Name;
+        }
 
         var unit = src.Unit?.Trim();
-        if (string.IsNullOrWhiteSpace(unit) && material != null)
+        if (string.IsNullOrWhiteSpace(unit))
+        {
+            if (material != null) unit = material.Unit;
+            else if (serviceItem != null) unit = serviceItem.Unit;
+        }
             unit = material.Unit;
 
         if (string.IsNullOrWhiteSpace(unit))

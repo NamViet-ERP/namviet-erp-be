@@ -78,6 +78,7 @@ public class WarehouseDbContext(DbContextOptions<WarehouseDbContext> options) : 
     public DbSet<PurchasePlan> PurchasePlans => Set<PurchasePlan>();
     public DbSet<PurchasePlanLine> PurchasePlanLines => Set<PurchasePlanLine>();
     public DbSet<ServiceExpenseCategory> ServiceExpenseCategories => Set<ServiceExpenseCategory>();
+    public DbSet<ServiceExpenseItem> ServiceExpenseItems => Set<ServiceExpenseItem>();
     public DbSet<PurchasePlanLineQuote> PurchasePlanLineQuotes => Set<PurchasePlanLineQuote>();
     public DbSet<PurchaseOrder> PurchaseOrders => Set<PurchaseOrder>();
     public DbSet<PurchaseOrderItem> PurchaseOrderItems => Set<PurchaseOrderItem>();
@@ -1153,6 +1154,21 @@ public class WarehouseDbContext(DbContextOptions<WarehouseDbContext> options) : 
             e.Property(c => c.Code).HasMaxLength(50).IsRequired();
             e.Property(c => c.Name).HasMaxLength(255).IsRequired();
             e.Property(c => c.Description).HasMaxLength(500);
+            e.Property(c => c.IsActive).HasDefaultValue(true);
+            e.Property(c => c.SortOrder).HasDefaultValue(0);
+            e.HasIndex(c => c.Code).IsUnique();
+        });
+
+        model.Entity<ServiceExpenseItem>(e =>
+        {
+            e.ToTable("service_expense_items");
+            e.HasKey(c => c.Id);
+            e.Property(c => c.Code).HasMaxLength(50).IsRequired();
+            e.Property(c => c.Name).HasMaxLength(255).IsRequired();
+            e.Property(c => c.Type).HasMaxLength(20).IsRequired();
+            e.Property(c => c.Unit).HasMaxLength(50).IsRequired();
+            e.Property(c => c.ReferencePrice).HasPrecision(18, 2);
+            e.Property(c => c.Description).HasMaxLength(1000);
             e.Property(c => c.IsActive).HasDefaultValue(true);
             e.Property(c => c.SortOrder).HasDefaultValue(0);
             e.HasIndex(c => c.Code).IsUnique();

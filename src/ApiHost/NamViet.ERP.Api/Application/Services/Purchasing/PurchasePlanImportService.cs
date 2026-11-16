@@ -405,6 +405,14 @@ public sealed class PurchasePlanImportService(WarehouseDbContext? db = null) : I
                 .ToHashSet(StringComparer.OrdinalIgnoreCase);
         }
 
+        IReadOnlyDictionary<string, string>? activeServiceItemTypes = null;
+        if (db != null)
+        {
+            activeServiceItemTypes = db.ServiceExpenseItems.AsNoTracking()
+                .Where(s => s.DeletedAt == null && s.IsActive)
+                .ToDictionary(s => s.Code.Trim(), s => s.Type, StringComparer.OrdinalIgnoreCase);
+        }
+
         using var workbook = new XLWorkbook(excelStream);
         var sheet = FindKhmhSheet(workbook)
             ?? throw new PurchasingConflictException(
@@ -433,7 +441,7 @@ public sealed class PurchasePlanImportService(WarehouseDbContext? db = null) : I
                 continue;
 
             lineNo++;
-            var preview = ParseRow(sheet, row, lineNo, fieldMap, quoteGroups, errors, activeMaterialCodes);
+            var preview = ParseRow(sheet, row, lineNo, fieldMap, quoteGroups, errors, activeMaterialCodes, activeServiceItemTypes);
             lines.Add(preview);
         }
 
@@ -915,8 +923,27 @@ public sealed class PurchasePlanImportService(WarehouseDbContext? db = null) : I
         bool hasPriceOrMoney = false,
         decimal? qty = null)
     {
+        return ClassifyLineType(materialCode, productName, category, systemName, unit, hasPriceOrMoney, qty, null);
+    }
+
+    public static string ClassifyLineType(
+        string? materialCode,
+        string? productName,
+        string? category,
+        string? systemName,
+        string? unit,
+        bool hasPriceOrMoney,
+        decimal? qty,
+        IReadOnlyDictionary<string, string>? activeServiceItemTypes)
+    {
         if (!string.IsNullOrWhiteSpace(materialCode))
+        {
+            if (activeServiceItemTypes != null && activeServiceItemTypes.TryGetValue(materialCode.Trim(), out var stype))
+            {
+                return stype == "expense" ? PurchasePlanLineTypes.Expense : PurchasePlanLineTypes.Service;
+            }
             return PurchasePlanLineTypes.Material;
+        }
 
         var textCombined = $"{productName} {category} {systemName}".ToLowerInvariant();
         var normCombined = Normalize(textCombined);
@@ -1054,7 +1081,8 @@ public sealed class PurchasePlanImportService(WarehouseDbContext? db = null) : I
         Dictionary<string, int> fieldMap,
         List<QuoteGroupColumns> quoteGroups,
         List<PurchasePlanImportErrorDto> errors,
-        IReadOnlySet<string>? activeMaterialCodes = null)
+        IReadOnlySet<string>? activeMaterialCodes = null,
+        IReadOnlyDictionary<string, string>? activeServiceItemTypes = null)
     {
         string? Get(string field) =>
             fieldMap.TryGetValue(field, out var col) ? CellText(sheet.Cell(row, col)) : null;
@@ -1109,7 +1137,7 @@ public sealed class PurchasePlanImportService(WarehouseDbContext? db = null) : I
         var category = NullIfEmpty(Get("Category"));
         var systemName = NullIfEmpty(Get("SystemName"));
 
-        var lineType = ClassifyLineType(materialCode, productName, category, systemName, unit, hasPriceOrMoney, qty);
+        var lineType = ClassifyLineType(materialCode, productName, category, systemName, unit, hasPriceOrMoney, qty, activeServiceItemTypes);
         var isValid = true;
 
         if (lineType == PurchasePlanLineTypes.Material)
@@ -1121,11 +1149,18 @@ public sealed class PurchasePlanImportService(WarehouseDbContext? db = null) : I
             }
             else if (activeMaterialCodes != null && !activeMaterialCodes.Contains(materialCode.Trim()))
             {
-                errors.Add(new PurchasePlanImportErrorDto(
-                    row,
-                    "MaterialCode",
-                    $"Dòng Excel {row}: Mã vật tư '{materialCode}' chưa có trong danh mục hệ thống."));
-                isValid = false;
+                if (activeServiceItemTypes != null && activeServiceItemTypes.TryGetValue(materialCode.Trim(), out var stype))
+                {
+                    lineType = stype == "expense" ? PurchasePlanLineTypes.Expense : PurchasePlanLineTypes.Service;
+                }
+                else
+                {
+                    errors.Add(new PurchasePlanImportErrorDto(
+                        row,
+                        "MaterialCode",
+                        $"Dòng Excel {row}: Mã vật tư '{materialCode}' chưa có trong danh mục hệ thống."));
+                    isValid = false;
+                }
             }
 
             if (qty is null or <= 0)
