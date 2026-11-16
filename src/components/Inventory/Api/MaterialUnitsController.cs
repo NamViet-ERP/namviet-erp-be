@@ -1,19 +1,24 @@
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using NamViet.ERP.Api.Application.Dtos.Wms;
+using NamViet.ERP.Api.Application.Services.Wms;
 using NamViet.ERP.Api.Infrastructure.Authorization;
 using NamViet.ERP.Modules.Warehouse.Application.DTOs;
 using NamViet.ERP.Modules.Warehouse.Application.Helpers;
 using NamViet.ERP.Modules.Warehouse.Domain.Entities;
 using NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence;
+using NamViet.ERP.SharedKernel.Common;
 
 namespace NamViet.ERP.Api.Controllers.Wms;
 
 [ApiController]
 [Route("api/material-units")]
 [Authorize]
-public class MaterialUnitsController(WarehouseDbContext db) : ControllerBase
+public class MaterialUnitsController(WarehouseDbContext db, IMaterialUnitImportExcelService? excelService = null) : ControllerBase
 {
+    private IMaterialUnitImportExcelService ExcelService => excelService ?? new MaterialUnitImportExcelService(db);
     [HttpGet]
     [RequirePermission("wms.material_units.view:all")]
     public async Task<ActionResult<List<MaterialUnitDto>>> List(
@@ -107,5 +112,70 @@ public class MaterialUnitsController(WarehouseDbContext db) : ControllerBase
         db.MaterialUnits.Remove(entity);
         await db.SaveChangesAsync(ct);
         return NoContent();
+    }
+
+    [HttpGet("import-template")]
+    [AllowAnonymous]
+    public async Task<IActionResult> DownloadImportTemplate(CancellationToken ct)
+    {
+        var bytes = await ExcelService.GenerateTemplateAsync(ct);
+        return File(
+            bytes,
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "mau-import-don-vi-tinh.xlsx");
+    }
+
+    [HttpPost("parse-import-file")]
+    [RequestSizeLimit(5 * 1024 * 1024 + 1024)]
+    [RequirePermission("wms.material_units.create")]
+    public async Task<ActionResult<MaterialUnitImportParseResultDto>> ParseImportFile(IFormFile? file, CancellationToken ct)
+    {
+        if (file is null || file.Length == 0)
+            return BadRequest("Vui lòng chọn file import.");
+        if (file.Length > 5 * 1024 * 1024)
+            return BadRequest("Kích thước file vượt quá 5MB.");
+
+        var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
+        if (ext is not (".xlsx" or ".xls" or ".csv"))
+            return BadRequest("Chỉ chấp nhận file .xlsx, .xls hoặc .csv.");
+
+        try
+        {
+            await using var stream = file.OpenReadStream();
+            var result = await ExcelService.ParseImportFileAsync(stream, file.FileName, ct);
+            return Ok(result);
+        }
+        catch (DomainRuleException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+        catch (Exception ex)
+        {
+            return BadRequest($"Không thể đọc dữ liệu file: {ex.Message}");
+        }
+    }
+
+    [HttpPost("import-batch")]
+    [RequirePermission("wms.material_units.create")]
+    public async Task<ActionResult<MaterialUnitImportResultDto>> ImportBatch(
+        [FromBody] MaterialUnitImportBatchRequest request,
+        CancellationToken ct)
+    {
+        if (request is null || request.Rows.Count == 0)
+            return BadRequest("Không có dữ liệu đơn vị tính để import.");
+
+        try
+        {
+            var result = await ExcelService.ImportBatchAsync(request, ct);
+            return Ok(result);
+        }
+        catch (DomainRuleException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+        catch (Exception ex)
+        {
+            return BadRequest($"Lỗi trong quá trình import: {ex.Message}");
+        }
     }
 }
