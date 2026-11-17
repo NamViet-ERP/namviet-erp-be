@@ -56,10 +56,10 @@ public class MaterialImportExcelServiceTests : IDisposable
 
         using var ms = new MemoryStream(bytes);
         using var workbook = new XLWorkbook(ms);
-        Assert.Contains("Danh muc vat tu", workbook.Worksheets.Select(w => w.Name));
+        Assert.Contains("KHMH", workbook.Worksheets.Select(w => w.Name));
         Assert.Contains("Huong dan & Tra cuu", workbook.Worksheets.Select(w => w.Name));
 
-        var sheet = workbook.Worksheet("Danh muc vat tu");
+        var sheet = workbook.Worksheet("KHMH");
         Assert.Equal("Mã vật tư (*)", sheet.Cell(1, 1).GetString());
         Assert.Equal("Tên vật tư (*)", sheet.Cell(1, 2).GetString());
         Assert.Equal("Đơn vị tính (*)", sheet.Cell(1, 3).GetString());
@@ -470,6 +470,98 @@ public class MaterialImportExcelServiceTests : IDisposable
         // Economizer should NOT have kW or Pa
         var boHamRow = result.Rows.First(r => r.MaterialCode == "BH-BHN-HT20-120 tubex3000");
         Assert.True(string.IsNullOrEmpty(boHamRow.GeneralTechnicalSpec));
+    }
+
+    [Fact]
+    public async Task GenerateTemplateAsync_CreatesPrimarySheetNamedKHMH()
+    {
+        var bytes = await _service.GenerateTemplateAsync(CancellationToken.None);
+        Assert.NotNull(bytes);
+        Assert.NotEmpty(bytes);
+
+        using var ms = new MemoryStream(bytes);
+        using var wb = new XLWorkbook(ms);
+
+        var firstSheet = wb.Worksheets.First();
+        Assert.Equal("KHMH", firstSheet.Name);
+        Assert.True(wb.Worksheets.Count >= 2);
+    }
+
+    [Fact]
+    public async Task ParseImportFileAsync_MultiSheet_AutoSelectsKHMHSheet()
+    {
+        using var wb = new XLWorkbook();
+        
+        // Sheet 1: Cover / Summary (should be skipped because KHMH has priority #1)
+        var wsCover = wb.Worksheets.Add("Tong Hop Du An");
+        wsCover.Cell(1, 1).Value = "Mã vật tư";
+        wsCover.Cell(1, 2).Value = "Tên vật tư";
+        wsCover.Cell(1, 3).Value = "Đơn vị tính";
+        wsCover.Cell(2, 1).Value = "VT-COVER-001";
+        wsCover.Cell(2, 2).Value = "Vật tư bìa";
+        wsCover.Cell(2, 3).Value = "Cái";
+
+        // Sheet 2: KHMH (Priority #1 target sheet)
+        var wsKhmh = wb.Worksheets.Add("KHMH");
+        wsKhmh.Cell(1, 1).Value = "Mã vật tư";
+        wsKhmh.Cell(1, 2).Value = "Tên vật tư";
+        wsKhmh.Cell(1, 3).Value = "Đơn vị tính";
+        wsKhmh.Cell(2, 1).Value = "VT-KHMH-001";
+        wsKhmh.Cell(2, 2).Value = "Ống Inox KHMH";
+        wsKhmh.Cell(2, 3).Value = "Cây";
+
+        // Sheet 3: Ghi chu
+        var wsNote = wb.Worksheets.Add("Ghi Chu");
+        wsNote.Cell(1, 1).Value = "Ghi chú bổ sung";
+
+        using var ms = new MemoryStream();
+        wb.SaveAs(ms);
+        ms.Position = 0;
+
+        var result = await _service.ParseImportFileAsync(ms, "ke-hoach-mua-hang.xlsx", targetSheet: null, CancellationToken.None);
+
+        Assert.Equal("KHMH", result.SelectedSheet);
+        Assert.NotNull(result.AvailableSheets);
+        Assert.Equal(3, result.AvailableSheets.Count);
+        Assert.Contains("KHMH", result.AvailableSheets);
+        Assert.Contains("Tong Hop Du An", result.AvailableSheets);
+        Assert.Contains("Ghi Chu", result.AvailableSheets);
+        Assert.Single(result.Rows);
+        Assert.Equal("VT-KHMH-001", result.Rows[0].MaterialCode);
+    }
+
+    [Fact]
+    public async Task ParseImportFileAsync_ExplicitTargetSheet_SelectsRequestedSheet()
+    {
+        using var wb = new XLWorkbook();
+
+        var ws1 = wb.Worksheets.Add("KHMH");
+        ws1.Cell(1, 1).Value = "Mã vật tư";
+        ws1.Cell(1, 2).Value = "Tên vật tư";
+        ws1.Cell(1, 3).Value = "Đơn vị tính";
+        ws1.Cell(2, 1).Value = "VT-KHMH-111";
+        ws1.Cell(2, 2).Value = "Vật tư KHMH";
+        ws1.Cell(2, 3).Value = "Cái";
+
+        var ws2 = wb.Worksheets.Add("Du An Phu Luc B");
+        ws2.Cell(1, 1).Value = "Mã vật tư";
+        ws2.Cell(1, 2).Value = "Tên vật tư";
+        ws2.Cell(1, 3).Value = "Đơn vị tính";
+        ws2.Cell(2, 1).Value = "VT-PHULUC-222";
+        ws2.Cell(2, 2).Value = "Vật tư phụ lục B";
+        ws2.Cell(2, 3).Value = "Bộ";
+
+        using var ms = new MemoryStream();
+        wb.SaveAs(ms);
+        ms.Position = 0;
+
+        var result = await _service.ParseImportFileAsync(ms, "vat-tu.xlsx", targetSheet: "Du An Phu Luc B", CancellationToken.None);
+
+        Assert.Equal("Du An Phu Luc B", result.SelectedSheet);
+        Assert.NotNull(result.AvailableSheets);
+        Assert.Equal(2, result.AvailableSheets.Count);
+        Assert.Single(result.Rows);
+        Assert.Equal("VT-PHULUC-222", result.Rows[0].MaterialCode);
     }
 
     private static byte[] BuildWorkbookBytes(string[] headers, params string[][] rows)

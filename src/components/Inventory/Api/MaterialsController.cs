@@ -227,7 +227,10 @@ public class MaterialsController(
     [HttpPost("parse-import-file")]
     [RequirePermission("wms.materials.create")]
     [RequestSizeLimit(5 * 1024 * 1024 + 1024)]
-    public async Task<ActionResult<MaterialImportParseResultDto>> ParseImportFile(IFormFile file, CancellationToken ct)
+    public async Task<ActionResult<MaterialImportParseResultDto>> ParseImportFile(
+        IFormFile file,
+        [FromQuery] string? sheetName = null,
+        CancellationToken ct = default)
     {
         if (file is null || file.Length == 0)
             return BadRequest("Vui lòng chọn file import.");
@@ -238,10 +241,13 @@ public class MaterialsController(
         if (ext is not (".xlsx" or ".xls" or ".csv"))
             return BadRequest("Chỉ chấp nhận file .xlsx, .xls hoặc .csv.");
 
+        sheetName ??= Request.Form["sheetName"].ToString();
+        if (string.IsNullOrWhiteSpace(sheetName)) sheetName = null;
+
         try
         {
             await using var stream = file.OpenReadStream();
-            var result = await materialExcel.ParseImportFileAsync(stream, file.FileName, ct);
+            var result = await materialExcel.ParseImportFileAsync(stream, file.FileName, sheetName, ct);
             return Ok(result);
         }
         catch (DomainRuleException ex)

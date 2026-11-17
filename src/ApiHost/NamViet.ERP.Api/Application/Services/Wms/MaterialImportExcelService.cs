@@ -13,7 +13,7 @@ namespace NamViet.ERP.Api.Application.Services.Wms;
 public interface IMaterialImportExcelService
 {
     Task<byte[]> GenerateTemplateAsync(CancellationToken ct = default);
-    Task<MaterialImportParseResultDto> ParseImportFileAsync(Stream stream, string fileName, CancellationToken ct = default);
+    Task<MaterialImportParseResultDto> ParseImportFileAsync(Stream stream, string fileName, string? targetSheet = null, CancellationToken ct = default);
     Task<MaterialImportResultDto> ImportBatchAsync(MaterialImportBatchRequest request, CancellationToken ct = default);
 }
 
@@ -43,8 +43,8 @@ public sealed class MaterialImportExcelService(WarehouseDbContext db) : IMateria
     {
         using var workbook = new XLWorkbook();
         
-        // ── Sheet 1: Danh mục vật tư mẫu ──────────────────────────────────────
-        var sheet = workbook.Worksheets.Add("Danh muc vat tu");
+        // ── Sheet 1: Danh mục vật tư mẫu (KHMH) ───────────────────────────────
+        var sheet = workbook.Worksheets.Add("KHMH");
 
         for (var col = 0; col < TemplateHeaders.Length; col++)
         {
@@ -130,18 +130,31 @@ public sealed class MaterialImportExcelService(WarehouseDbContext db) : IMateria
     }
 
     public async Task<MaterialImportParseResultDto> ParseImportFileAsync(
-        Stream stream, string fileName, CancellationToken ct = default)
+        Stream stream, string fileName, string? targetSheet = null, CancellationToken ct = default)
     {
         if (stream.CanSeek && stream.Length > MaxFileBytes)
             throw new DomainRuleException("File vượt quá kích thước cho phép (5MB).");
 
         var extension = Path.GetExtension(fileName).ToLowerInvariant();
-        var rows = extension switch
+        List<RawExcelRow> rows;
+        IReadOnlyList<string>? availableSheets = null;
+        string? selectedSheet = null;
+
+        if (extension is ".xlsx" or ".xls")
         {
-            ".xlsx" or ".xls" => ReadExcelRows(stream),
-            ".csv" => ReadCsvRows(stream),
-            _ => throw new DomainRuleException("Chỉ chấp nhận file .xlsx, .xls hoặc .csv."),
-        };
+            var (excelRows, sheets, currentSheet) = ReadExcelRows(stream, targetSheet);
+            rows = excelRows;
+            availableSheets = sheets;
+            selectedSheet = currentSheet;
+        }
+        else if (extension == ".csv")
+        {
+            rows = ReadCsvRows(stream);
+        }
+        else
+        {
+            throw new DomainRuleException("Chỉ chấp nhận file .xlsx, .xls hoặc .csv.");
+        }
 
         if (rows.Count == 0)
             throw new DomainRuleException("File không có dữ liệu.");
@@ -494,7 +507,9 @@ public sealed class MaterialImportExcelService(WarehouseDbContext db) : IMateria
             existingCount,
             errorCount,
             parsedRows,
-            globalErrors);
+            globalErrors,
+            availableSheets,
+            selectedSheet);
     }
 
     public async Task<MaterialImportResultDto> ImportBatchAsync(
@@ -1002,17 +1017,44 @@ public sealed class MaterialImportExcelService(WarehouseDbContext db) : IMateria
         return sb.ToString().Normalize(NormalizationForm.FormC);
     }
 
-    private static List<RawExcelRow> ReadExcelRows(Stream stream)
+    private static (List<RawExcelRow> Rows, IReadOnlyList<string> AvailableSheets, string SelectedSheet) ReadExcelRows(
+        Stream stream, string? targetSheet = null)
     {
         using var workbook = new XLWorkbook(stream);
-        var sheet = workbook.Worksheets.FirstOrDefault(w => w.Name.Trim().Equals("FINAL", StringComparison.OrdinalIgnoreCase))
-            ?? workbook.Worksheets.FirstOrDefault(w => w.Name.Trim().Equals("THÉP", StringComparison.OrdinalIgnoreCase))
-            ?? workbook.Worksheets.FirstOrDefault(w => w.Name.Contains("danh muc", StringComparison.OrdinalIgnoreCase))
-            ?? workbook.Worksheets.FirstOrDefault(w => w.RangeUsed() != null && w.RangeUsed().RowCount() > 1)
-            ?? workbook.Worksheets.First();
+        var availableSheets = workbook.Worksheets.Select(w => w.Name).ToList();
+        if (availableSheets.Count == 0)
+            return ([], availableSheets, string.Empty);
 
+        IXLWorksheet? sheet = null;
+
+        if (!string.IsNullOrWhiteSpace(targetSheet))
+        {
+            var targetTrimmed = targetSheet.Trim();
+            sheet = workbook.Worksheets.FirstOrDefault(w =>
+                string.Equals(w.Name.Trim(), targetTrimmed, StringComparison.OrdinalIgnoreCase))
+                ?? workbook.Worksheets.FirstOrDefault(w =>
+                w.Name.Contains(targetTrimmed, StringComparison.OrdinalIgnoreCase));
+        }
+
+        if (sheet is null)
+        {
+            sheet = workbook.Worksheets.FirstOrDefault(w => w.Name.Trim().Equals("KHMH", StringComparison.OrdinalIgnoreCase))
+                ?? workbook.Worksheets.FirstOrDefault(w => w.Name.Contains("KHMH", StringComparison.OrdinalIgnoreCase))
+                ?? workbook.Worksheets.FirstOrDefault(w => w.Name.Contains("kế hoạch mua hàng", StringComparison.OrdinalIgnoreCase))
+                ?? workbook.Worksheets.FirstOrDefault(w => w.Name.Contains("ke hoach mua hang", StringComparison.OrdinalIgnoreCase))
+                ?? workbook.Worksheets.FirstOrDefault(w => w.Name.Trim().Equals("FINAL", StringComparison.OrdinalIgnoreCase))
+                ?? workbook.Worksheets.FirstOrDefault(w => w.Name.Trim().Equals("MÃ VẬT TƯ", StringComparison.OrdinalIgnoreCase))
+                ?? workbook.Worksheets.FirstOrDefault(w => w.Name.Trim().Equals("MA VAT TU", StringComparison.OrdinalIgnoreCase))
+                ?? workbook.Worksheets.FirstOrDefault(w => w.Name.Trim().Equals("THÉP", StringComparison.OrdinalIgnoreCase))
+                ?? workbook.Worksheets.FirstOrDefault(w => w.Name.Contains("danh muc", StringComparison.OrdinalIgnoreCase))
+                ?? workbook.Worksheets.FirstOrDefault(w => w.Name.Contains("vat tu", StringComparison.OrdinalIgnoreCase))
+                ?? workbook.Worksheets.FirstOrDefault(w => w.RangeUsed() != null && w.RangeUsed().RowCount() > 1)
+                ?? workbook.Worksheets.First();
+        }
+
+        var selectedSheet = sheet.Name;
         var used = sheet.RangeUsed();
-        if (used is null) return [];
+        if (used is null) return ([], availableSheets, selectedSheet);
 
         var result = new List<RawExcelRow>();
         foreach (var row in used.Rows())
@@ -1022,7 +1064,7 @@ public sealed class MaterialImportExcelService(WarehouseDbContext db) : IMateria
                 cells[c] = row.Cell(c + 1).GetFormattedString().Trim();
             result.Add(new RawExcelRow(row.RowNumber(), cells));
         }
-        return result;
+        return (result, availableSheets, selectedSheet);
     }
 
     private static List<RawExcelRow> ReadCsvRows(Stream stream)

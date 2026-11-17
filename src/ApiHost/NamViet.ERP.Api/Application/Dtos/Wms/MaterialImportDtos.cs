@@ -31,7 +31,9 @@ public record MaterialImportParseResultDto(
     int ExistingRowCount,
     int ErrorRowCount,
     List<MaterialImportRowDto> Rows,
-    List<MaterialImportErrorDto> Errors);
+    List<MaterialImportErrorDto> Errors,
+    IReadOnlyList<string>? AvailableSheets = null,
+    string? SelectedSheet = null);
 
 public record MaterialImportBatchRequest(
     List<MaterialImportRowDto> Rows,

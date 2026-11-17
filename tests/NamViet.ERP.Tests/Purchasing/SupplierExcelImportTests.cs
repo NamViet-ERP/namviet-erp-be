@@ -49,18 +49,68 @@ public class SupplierExcelImportTests : IDisposable
     private static string? FindTestExcelPath(string fileName)
     {
         var current = AppContext.BaseDirectory;
+        // 1. Prioritize Fixtures directory first (hermetic test data)
         for (int i = 0; i < 10; i++)
         {
-            var candidate = Path.Combine(current, "Test", fileName);
-            if (File.Exists(candidate)) return candidate;
+            var candidate = Path.Combine(current, "Fixtures", fileName);
+            if (File.Exists(candidate) && ValidateSupplierFile(candidate)) return candidate;
+
+            var candidateInTests = Path.Combine(current, "tests", "NamViet.ERP.Tests", "Fixtures", fileName);
+            if (File.Exists(candidateInTests) && ValidateSupplierFile(candidateInTests)) return candidateInTests;
+
+            var candidateInBeTests = Path.Combine(current, "WareHouse_Management_BE", "tests", "NamViet.ERP.Tests", "Fixtures", fileName);
+            if (File.Exists(candidateInBeTests) && ValidateSupplierFile(candidateInBeTests)) return candidateInBeTests;
+
             var parent = Directory.GetParent(current);
             if (parent == null) break;
             current = parent.FullName;
         }
+
+        // 2. Fallback to Test directory if valid and not locked/single-sheet
+        current = AppContext.BaseDirectory;
+        for (int i = 0; i < 10; i++)
+        {
+            var candidate = Path.Combine(current, "Test", fileName);
+            if (File.Exists(candidate) && ValidateSupplierFile(candidate)) return candidate;
+
+            var parent = Directory.GetParent(current);
+            if (parent == null) break;
+            current = parent.FullName;
+        }
+
+        // 3. Fallback to any Fixtures file found regardless of validation
+        current = AppContext.BaseDirectory;
+        for (int i = 0; i < 10; i++)
+        {
+            var candidate = Path.Combine(current, "Fixtures", fileName);
+            if (File.Exists(candidate)) return candidate;
+
+            var candidateInTests = Path.Combine(current, "tests", "NamViet.ERP.Tests", "Fixtures", fileName);
+            if (File.Exists(candidateInTests)) return candidateInTests;
+
+            var parent = Directory.GetParent(current);
+            if (parent == null) break;
+            current = parent.FullName;
+        }
+
         return null;
     }
 
-    private static IFormFile CreateFormFileFromDisk(string path)
+    private static bool ValidateSupplierFile(string path)
+    {
+        try
+        {
+            using var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+            using var wb = new XLWorkbook(fs);
+            return wb.Worksheets.Any(w => string.Equals(w.Name.Trim(), "SC-MÃ NCC-OPTION 3", StringComparison.OrdinalIgnoreCase));
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static FormFile CreateFormFileFromDisk(string path)
     {
         var ms = new MemoryStream();
         using (var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
