@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -8,15 +9,23 @@ using NamViet.ERP.Modules.Warehouse.Application.DTOs;
 using NamViet.ERP.Modules.Warehouse.Application.Helpers;
 using NamViet.ERP.Modules.Warehouse.Infrastructure.Helpers;
 using NamViet.ERP.Modules.Warehouse.Domain.Entities;
+using NamViet.ERP.Modules.Warehouse.Domain.Enums;
 using NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence;
+using NamViet.ERP.SharedKernel.Authorization;
 using NamViet.ERP.SharedKernel.Common;
+using NamViet.ERP.SharedKernel.Interfaces;
 
 namespace NamViet.ERP.Api.Controllers;
+
+public record ClearAllMaterialsResultDto(int TotalProcessed, int HardDeleted, int SoftDeleted, string Message);
 
 [ApiController]
 [Route("api/warehouse/materials")]
 [Authorize]
-public class MaterialsController(WarehouseDbContext db, IMaterialImportExcelService materialExcel) : ControllerBase
+public class MaterialsController(
+    WarehouseDbContext db,
+    IMaterialImportExcelService materialExcel,
+    ICurrentUser? currentUser = null) : ControllerBase
 {
     [HttpGet]
     [RequirePermission("wms.materials.view:all")]
@@ -383,6 +392,162 @@ public class MaterialsController(WarehouseDbContext db, IMaterialImportExcelServ
         return NoContent();
     }
 
+    [HttpDelete("clear-all")]
+    [RequirePermission("wms.materials.delete")]
+    public async Task<ActionResult<ClearAllMaterialsResultDto>> ClearAll(CancellationToken ct = default)
+    {
+        if (!CheckIsAdmin())
+        {
+            return Forbid();
+        }
+
+        var activeMaterials = await db.Materials
+            .IgnoreQueryFilters()
+            .Where(m => m.DeletedAt == null)
+            .ToListAsync(ct);
+
+        if (activeMaterials.Count == 0)
+        {
+            return Ok(new ClearAllMaterialsResultDto(0, 0, 0, "Danh mục vật tư hiện tại đang trống."));
+        }
+
+        var usedInTx = await db.WarehouseTransactionItems
+            .Where(x => x.MaterialCode != null)
+            .Select(x => x.MaterialCode)
+            .Distinct()
+            .ToListAsync(ct);
+
+        var usedInPo = await db.PurchaseOrderItems
+            .Where(x => x.MaterialCode != null)
+            .Select(x => x.MaterialCode!)
+            .Distinct()
+            .ToListAsync(ct);
+
+        var usedInStocktake = await db.StocktakeItems
+            .Where(x => x.MaterialCode != null)
+            .Select(x => x.MaterialCode)
+            .Distinct()
+            .ToListAsync(ct);
+
+        var usedInConversion = await db.ConversionItems
+            .Where(x => x.MaterialCode != null)
+            .Select(x => x.MaterialCode)
+            .Distinct()
+            .ToListAsync(ct);
+
+        var usedInLoans = await db.ProjectMaterialLoans
+            .Where(x => x.MaterialCode != null)
+            .Select(x => x.MaterialCode)
+            .Distinct()
+            .ToListAsync(ct);
+
+        var usedInWhInv = await db.WarehouseInventories
+            .Where(x => x.Qty != 0)
+            .Select(x => x.MaterialCode)
+            .Distinct()
+            .ToListAsync(ct);
+
+        var usedInProjInv = await db.ProjectInventories
+            .Where(x => x.ActualImportQty != 0 || x.ActualExportQty != 0 || x.PlannedImportQty != 0 || x.PlannedExportQty != 0 || x.ReservedQty != 0)
+            .Select(x => x.MaterialCode)
+            .Distinct()
+            .ToListAsync(ct);
+
+        var usedInRes = await db.InventoryReservations
+            .Where(x => x.Status == ReservationStatus.Holding)
+            .Select(x => x.MaterialCode)
+            .Distinct()
+            .ToListAsync(ct);
+
+        var usedCodes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        usedCodes.UnionWith(usedInTx);
+        usedCodes.UnionWith(usedInPo);
+        usedCodes.UnionWith(usedInStocktake);
+        usedCodes.UnionWith(usedInConversion);
+        usedCodes.UnionWith(usedInLoans);
+        usedCodes.UnionWith(usedInWhInv);
+        usedCodes.UnionWith(usedInProjInv);
+        usedCodes.UnionWith(usedInRes);
+
+        var unusedMaterials = new List<Material>();
+        var softDeletedCount = 0;
+        var now = DateTime.UtcNow;
+
+        foreach (var m in activeMaterials)
+        {
+            if (usedCodes.Contains(m.MaterialCode))
+            {
+                m.DeletedAt = now;
+                m.IsActive = false;
+                m.UpdatedAt = now;
+                softDeletedCount++;
+            }
+            else
+            {
+                unusedMaterials.Add(m);
+            }
+        }
+
+        try
+        {
+            if (unusedMaterials.Count > 0)
+            {
+                var unusedCodes = unusedMaterials.Select(m => m.MaterialCode).ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+                var barcodes = await db.ProductBarcodes
+                    .Where(b => unusedCodes.Contains(b.MaterialCode))
+                    .ToListAsync(ct);
+                if (barcodes.Count > 0)
+                    db.ProductBarcodes.RemoveRange(barcodes);
+
+                var zeroWhInv = await db.WarehouseInventories
+                    .Where(wi => unusedCodes.Contains(wi.MaterialCode))
+                    .ToListAsync(ct);
+                if (zeroWhInv.Count > 0)
+                    db.WarehouseInventories.RemoveRange(zeroWhInv);
+
+                var zeroProjInv = await db.ProjectInventories
+                    .Where(pi => unusedCodes.Contains(pi.MaterialCode))
+                    .ToListAsync(ct);
+                if (zeroProjInv.Count > 0)
+                    db.ProjectInventories.RemoveRange(zeroProjInv);
+
+                var nonHoldingRes = await db.InventoryReservations
+                    .Where(r => unusedCodes.Contains(r.MaterialCode))
+                    .ToListAsync(ct);
+                if (nonHoldingRes.Count > 0)
+                    db.InventoryReservations.RemoveRange(nonHoldingRes);
+
+                db.Materials.RemoveRange(unusedMaterials);
+            }
+
+            await db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException)
+        {
+            db.ChangeTracker.Clear();
+            var remaining = await db.Materials
+                .IgnoreQueryFilters()
+                .Where(m => m.DeletedAt == null)
+                .ToListAsync(ct);
+            foreach (var m in remaining)
+            {
+                m.DeletedAt = now;
+                m.IsActive = false;
+                m.UpdatedAt = now;
+            }
+            await db.SaveChangesAsync(ct);
+            return Ok(new ClearAllMaterialsResultDto(activeMaterials.Count, 0, activeMaterials.Count,
+                $"Đã lưu trữ toàn bộ {activeMaterials.Count} vật tư do có ràng buộc dữ liệu liên kết."));
+        }
+
+        var hardDeletedCount = unusedMaterials.Count;
+        var totalProcessed = hardDeletedCount + softDeletedCount;
+        var message = $"Đã dọn sạch {totalProcessed} vật tư ({hardDeletedCount} xóa vĩnh viễn, {softDeletedCount} lưu trữ do có dữ liệu liên kết).";
+
+        return Ok(new ClearAllMaterialsResultDto(totalProcessed, hardDeletedCount, softDeletedCount, message));
+    }
+
     [HttpDelete("by-code")]
     [RequirePermission("wms.materials.delete")]
     public async Task<IActionResult> DeleteByCodeQuery([FromQuery] string code, CancellationToken ct)
@@ -395,6 +560,17 @@ public class MaterialsController(WarehouseDbContext db, IMaterialImportExcelServ
     public async Task<IActionResult> Delete(string code, CancellationToken ct)
     {
         return await DeleteInternal(code, ct);
+    }
+
+    private bool CheckIsAdmin()
+    {
+        return (currentUser != null && (currentUser.IsInRole("Admin")
+                || currentUser.IsInRole(RolePermissionTemplates.AdminRole)
+                || currentUser.Roles.Any(r => r.Equals("admin", StringComparison.OrdinalIgnoreCase))
+                || currentUser.Roles.Any(r => r.Equals("administrator", StringComparison.OrdinalIgnoreCase))))
+            || (User != null && (User.IsInRole("Admin")
+                || User.IsInRole(RolePermissionTemplates.AdminRole)
+                || User.FindAll(ClaimTypes.Role).Any(c => c.Value.Equals("admin", StringComparison.OrdinalIgnoreCase) || c.Value.Equals("administrator", StringComparison.OrdinalIgnoreCase))));
     }
 
     private async Task<IActionResult> DeleteInternal(string? code, CancellationToken ct)

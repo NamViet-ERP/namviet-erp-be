@@ -113,7 +113,9 @@ public record SupplierImportPreviewResponseDto(
     int TotalRows,
     int ValidRows,
     int ErrorRows,
-    IReadOnlyList<SupplierImportRowPreviewDto> Rows);
+    IReadOnlyList<SupplierImportRowPreviewDto> Rows,
+    IReadOnlyList<string>? AvailableSheets = null,
+    string? SelectedSheet = null);
 
 public record SupplierImportResultDto(
     int TotalRows,

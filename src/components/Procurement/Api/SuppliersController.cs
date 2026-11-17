@@ -1,3 +1,4 @@
+using ClosedXML.Excel;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -426,19 +427,32 @@ public class SuppliersController(
 
     [HttpPost("preview-excel")]
     [RequirePermission("wms.suppliers.create")]
-    public async Task<ActionResult<SupplierImportPreviewResponseDto>> PreviewExcel(IFormFile file, CancellationToken ct)
+    public async Task<ActionResult<SupplierImportPreviewResponseDto>> PreviewExcel(
+        IFormFile file,
+        [FromQuery] string? sheetName = null,
+        CancellationToken ct = default)
     {
         if (file == null || file.Length == 0)
             return BadRequest("Vui lòng chọn file Excel danh sách NCC.");
 
+        if (string.IsNullOrWhiteSpace(sheetName) && Request?.HasFormContentType == true && Request.Form.TryGetValue("sheetName", out var formSheet))
+        {
+            sheetName = formSheet.ToString();
+        }
+
         using var stream = file.OpenReadStream();
-        using var workbook = new ClosedXML.Excel.XLWorkbook(stream);
-        var ws = workbook.Worksheets.FirstOrDefault();
-        if (ws is null)
+        using var workbook = new XLWorkbook(stream);
+
+        var (rawRows, availableSheets, selectedSheet) = ExtractSupplierRowsFromExcel(workbook, sheetName);
+        if (availableSheets.Count == 0)
             return BadRequest("File Excel không có sheet nào.");
 
         var existingNames = await db.Suppliers.AsNoTracking()
             .Select(s => s.SupplierName)
+            .ToListAsync(ct);
+
+        var existingCodes = await db.Suppliers.AsNoTracking()
+            .Select(s => s.SupplierCode)
             .ToListAsync(ct);
 
         var existingTaxCodes = await db.Suppliers.AsNoTracking()
@@ -448,75 +462,72 @@ public class SuppliersController(
 
         var previewRows = new List<SupplierImportRowPreviewDto>();
         var seenNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var seenCodes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var seenTaxCodes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        var rowsUsed = ws.RowsUsed().Skip(1);
-        foreach (var row in rowsUsed)
+        foreach (var raw in rawRows)
         {
-            var code = row.Cell(1).GetString().Trim();
-            var name = row.Cell(2).GetString().Trim();
-            var taxCode = row.Cell(3).GetString().Trim();
-            var phone = row.Cell(4).GetString().Trim();
-            var website = row.Cell(5).GetString().Trim();
-            var supplierType = row.Cell(6).GetString().Trim();
-            var scope = row.Cell(7).GetString().Trim();
-
-            var debtStr = row.Cell(8).GetString().Trim();
-            int.TryParse(debtStr, out var debt);
-            if (debt <= 0) debt = 30;
-
-            var limitStr = row.Cell(9).GetString().Trim();
-            decimal? creditLimit = decimal.TryParse(limitStr, out var lim) && lim > 0 ? lim : null;
-
-            var terms = row.Cell(10).GetString().Trim();
-            var groups = row.Cell(11).GetString().Trim();
-
-            if (string.IsNullOrWhiteSpace(name) && string.IsNullOrWhiteSpace(taxCode) && string.IsNullOrWhiteSpace(phone))
-                continue;
-
             var isValid = true;
             var errorMsg = new List<string>();
 
-            if (string.IsNullOrWhiteSpace(name))
+            if (string.IsNullOrWhiteSpace(raw.Name))
             {
                 isValid = false;
                 errorMsg.Add("Tên NCC là bắt buộc");
             }
-            else if (existingNames.Any(n => Supplier.SameFoldedName(n, name)) || seenNames.Contains(name))
+            else if (existingNames.Any(n => Supplier.SameFoldedName(n, raw.Name)) || seenNames.Contains(raw.Name))
             {
                 isValid = false;
                 errorMsg.Add("Tên NCC đã tồn tại hoặc bị trùng trong file");
             }
             else
             {
-                seenNames.Add(name);
+                seenNames.Add(raw.Name);
             }
 
-            if (!string.IsNullOrWhiteSpace(taxCode))
+            if (!string.IsNullOrWhiteSpace(raw.Code) && !raw.Code.Equals("(Tự sinh)", StringComparison.OrdinalIgnoreCase))
             {
-                if (taxCode.Length > 50)
+                if (existingCodes.Any(c => c.Equals(raw.Code, StringComparison.OrdinalIgnoreCase)) || seenCodes.Contains(raw.Code))
+                {
+                    isValid = false;
+                    errorMsg.Add($"Mã NCC '{raw.Code}' đã tồn tại trên hệ thống hoặc bị trùng trong file");
+                }
+                else
+                {
+                    seenCodes.Add(raw.Code);
+                }
+            }
+
+            if (!string.IsNullOrWhiteSpace(raw.TaxCode))
+            {
+                if (raw.TaxCode.Length > 50)
                 {
                     isValid = false;
                     errorMsg.Add("Mã số thuế tối đa 50 ký tự");
                 }
-                else if (existingTaxCodes.Any(t => t.Equals(taxCode, StringComparison.OrdinalIgnoreCase)))
+                else if (existingTaxCodes.Any(t => t.Equals(raw.TaxCode, StringComparison.OrdinalIgnoreCase)) || seenTaxCodes.Contains(raw.TaxCode))
                 {
                     isValid = false;
-                    errorMsg.Add($"MST '{taxCode}' đã tồn tại trên hệ thống");
+                    errorMsg.Add($"MST '{raw.TaxCode}' đã tồn tại trên hệ thống hoặc bị trùng trong file");
+                }
+                else
+                {
+                    seenTaxCodes.Add(raw.TaxCode);
                 }
             }
 
             previewRows.Add(new SupplierImportRowPreviewDto(
-                SupplierCode: string.IsNullOrWhiteSpace(code) ? "(Tự sinh)" : code,
-                SupplierName: name,
-                TaxCode: string.IsNullOrWhiteSpace(taxCode) ? null : taxCode,
-                ContactPhone: string.IsNullOrWhiteSpace(phone) ? null : phone,
-                Website: string.IsNullOrWhiteSpace(website) ? null : website,
-                SupplierType: string.IsNullOrWhiteSpace(supplierType) ? null : supplierType,
-                Scope: string.IsNullOrWhiteSpace(scope) ? null : scope,
-                MaxDebtDays: debt,
-                CreditLimit: creditLimit,
-                PaymentTerms: string.IsNullOrWhiteSpace(terms) ? null : terms,
-                IndustryGroups: string.IsNullOrWhiteSpace(groups) ? null : groups,
+                SupplierCode: string.IsNullOrWhiteSpace(raw.Code) ? "(Tự sinh)" : raw.Code,
+                SupplierName: raw.Name,
+                TaxCode: string.IsNullOrWhiteSpace(raw.TaxCode) ? null : raw.TaxCode,
+                ContactPhone: string.IsNullOrWhiteSpace(raw.Phone) ? null : raw.Phone,
+                Website: string.IsNullOrWhiteSpace(raw.Website) ? null : raw.Website,
+                SupplierType: string.IsNullOrWhiteSpace(raw.SupplierType) ? null : raw.SupplierType,
+                Scope: string.IsNullOrWhiteSpace(raw.Scope) ? null : raw.Scope,
+                MaxDebtDays: raw.Debt,
+                CreditLimit: raw.CreditLimit,
+                PaymentTerms: string.IsNullOrWhiteSpace(raw.Terms) ? null : raw.Terms,
+                IndustryGroups: string.IsNullOrWhiteSpace(raw.Groups) ? null : raw.Groups,
                 IsValid: isValid,
                 Error: errorMsg.Count > 0 ? string.Join("; ", errorMsg) : null));
         }
@@ -525,24 +536,37 @@ public class SuppliersController(
         var valid = previewRows.Count(r => r.IsValid);
         var errors = total - valid;
 
-        return Ok(new SupplierImportPreviewResponseDto(total, valid, errors, previewRows));
+        return Ok(new SupplierImportPreviewResponseDto(total, valid, errors, previewRows, availableSheets, selectedSheet));
     }
 
     [HttpPost("import-excel")]
     [RequirePermission("wms.suppliers.create")]
-    public async Task<ActionResult<SupplierImportResultDto>> ImportExcel(IFormFile file, CancellationToken ct)
+    public async Task<ActionResult<SupplierImportResultDto>> ImportExcel(
+        IFormFile file,
+        [FromQuery] string? sheetName = null,
+        CancellationToken ct = default)
     {
         if (file == null || file.Length == 0)
             return BadRequest("Vui lòng chọn file Excel danh sách NCC.");
 
+        if (string.IsNullOrWhiteSpace(sheetName) && Request?.HasFormContentType == true && Request.Form.TryGetValue("sheetName", out var formSheet))
+        {
+            sheetName = formSheet.ToString();
+        }
+
         using var stream = file.OpenReadStream();
-        using var workbook = new ClosedXML.Excel.XLWorkbook(stream);
-        var ws = workbook.Worksheets.FirstOrDefault();
-        if (ws is null)
+        using var workbook = new XLWorkbook(stream);
+
+        var (rawRows, availableSheets, selectedSheet) = ExtractSupplierRowsFromExcel(workbook, sheetName);
+        if (availableSheets.Count == 0)
             return BadRequest("File Excel không có sheet nào.");
 
         var existingNames = await db.Suppliers.AsNoTracking()
             .Select(s => s.SupplierName)
+            .ToListAsync(ct);
+
+        var existingCodes = await db.Suppliers.AsNoTracking()
+            .Select(s => s.SupplierCode)
             .ToListAsync(ct);
 
         var existingTaxCodes = await db.Suppliers.AsNoTracking()
@@ -557,95 +581,86 @@ public class SuppliersController(
         var failedCount = 0;
         var errors = new List<string>();
         var seenNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var seenCodes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var seenTaxCodes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        var rowsUsed = ws.RowsUsed().Skip(1);
-        var rowIndex = 1;
-
-        foreach (var row in rowsUsed)
+        foreach (var raw in rawRows)
         {
-            rowIndex++;
-            var code = row.Cell(1).GetString().Trim();
-            var name = row.Cell(2).GetString().Trim();
-            var taxCode = row.Cell(3).GetString().Trim();
-            var phone = row.Cell(4).GetString().Trim();
-            var website = row.Cell(5).GetString().Trim();
-            var supplierType = row.Cell(6).GetString().Trim();
-            var scope = row.Cell(7).GetString().Trim();
-
-            var debtStr = row.Cell(8).GetString().Trim();
-            int.TryParse(debtStr, out var debt);
-            if (debt <= 0) debt = 30;
-
-            var limitStr = row.Cell(9).GetString().Trim();
-            decimal? creditLimit = decimal.TryParse(limitStr, out var lim) && lim > 0 ? lim : null;
-
-            var terms = row.Cell(10).GetString().Trim();
-            var groups = row.Cell(11).GetString().Trim();
-
-            if (string.IsNullOrWhiteSpace(name) && string.IsNullOrWhiteSpace(taxCode) && string.IsNullOrWhiteSpace(phone))
-                continue;
-
-            if (string.IsNullOrWhiteSpace(name))
+            if (string.IsNullOrWhiteSpace(raw.Name))
             {
                 failedCount++;
-                errors.Add($"Dòng {rowIndex}: Tên nhà cung cấp không được để trống.");
+                errors.Add($"Dòng {raw.RowIndex}: Tên nhà cung cấp không được để trống.");
                 continue;
             }
 
-            if (existingNames.Any(n => Supplier.SameFoldedName(n, name)) || seenNames.Contains(name))
+            if (existingNames.Any(n => Supplier.SameFoldedName(n, raw.Name)) || seenNames.Contains(raw.Name))
             {
                 failedCount++;
-                errors.Add($"Dòng {rowIndex}: Tên nhà cung cấp '{name}' đã tồn tại hoặc bị trùng trong file.");
+                errors.Add($"Dòng {raw.RowIndex}: Tên nhà cung cấp '{raw.Name}' đã tồn tại hoặc bị trùng trong file.");
                 continue;
             }
 
-            if (!string.IsNullOrWhiteSpace(taxCode))
+            if (!string.IsNullOrWhiteSpace(raw.Code) && !raw.Code.Equals("(Tự sinh)", StringComparison.OrdinalIgnoreCase))
             {
-                if (taxCode.Length > 50)
+                if (existingCodes.Any(c => c.Equals(raw.Code, StringComparison.OrdinalIgnoreCase)) || seenCodes.Contains(raw.Code))
                 {
                     failedCount++;
-                    errors.Add($"Dòng {rowIndex}: Mã số thuế tối đa 50 ký tự.");
-                    continue;
-                }
-                if (existingTaxCodes.Any(t => t.Equals(taxCode, StringComparison.OrdinalIgnoreCase)))
-                {
-                    failedCount++;
-                    errors.Add($"Dòng {rowIndex}: MST '{taxCode}' đã tồn tại trên hệ thống.");
+                    errors.Add($"Dòng {raw.RowIndex}: Mã NCC '{raw.Code}' đã tồn tại trên hệ thống hoặc bị trùng trong file.");
                     continue;
                 }
             }
 
-            seenNames.Add(name);
+            if (!string.IsNullOrWhiteSpace(raw.TaxCode))
+            {
+                if (raw.TaxCode.Length > 50)
+                {
+                    failedCount++;
+                    errors.Add($"Dòng {raw.RowIndex}: Mã số thuế tối đa 50 ký tự.");
+                    continue;
+                }
+                if (existingTaxCodes.Any(t => t.Equals(raw.TaxCode, StringComparison.OrdinalIgnoreCase)) || seenTaxCodes.Contains(raw.TaxCode))
+                {
+                    failedCount++;
+                    errors.Add($"Dòng {raw.RowIndex}: MST '{raw.TaxCode}' đã tồn tại trên hệ thống hoặc bị trùng trong file.");
+                    continue;
+                }
+            }
+
+            seenNames.Add(raw.Name);
+            if (!string.IsNullOrWhiteSpace(raw.Code) && !raw.Code.Equals("(Tự sinh)", StringComparison.OrdinalIgnoreCase))
+                seenCodes.Add(raw.Code);
+            if (!string.IsNullOrWhiteSpace(raw.TaxCode))
+                seenTaxCodes.Add(raw.TaxCode);
 
             string? normalizedPhone = null;
-            if (!string.IsNullOrWhiteSpace(phone))
+            if (!string.IsNullOrWhiteSpace(raw.Phone))
             {
                 try
                 {
-                    normalizedPhone = VietnamPhoneRules.NormalizeOptional(phone);
+                    normalizedPhone = VietnamPhoneRules.NormalizeOptional(raw.Phone);
                 }
                 catch
                 {
-                    normalizedPhone = phone.Length <= 50 ? phone : phone[..50];
+                    normalizedPhone = raw.Phone.Length <= 50 ? raw.Phone : raw.Phone[..50];
                 }
             }
 
-            var finalCode = !string.IsNullOrWhiteSpace(code)
-                ? code
+            var finalCode = !string.IsNullOrWhiteSpace(raw.Code) && !raw.Code.Equals("(Tự sinh)", StringComparison.OrdinalIgnoreCase)
+                ? raw.Code
                 : await NextSupplierCodeAsync(ct);
 
             var supplier = new Supplier
             {
                 SupplierCode = finalCode,
-                SupplierName = name,
-                TaxCode = string.IsNullOrWhiteSpace(taxCode) ? null : taxCode,
+                SupplierName = raw.Name,
+                TaxCode = string.IsNullOrWhiteSpace(raw.TaxCode) ? null : raw.TaxCode,
                 ContactPhone = normalizedPhone,
-                Website = string.IsNullOrWhiteSpace(website) ? null : (website.Length <= 255 ? website : website[..255]),
-                SupplierType = string.IsNullOrWhiteSpace(supplierType) ? null : (supplierType.Length <= 50 ? supplierType : supplierType[..50]),
-                Scope = string.IsNullOrWhiteSpace(scope) ? null : (scope.Length <= 50 ? scope : scope[..50]),
-                MaxDebtDays = debt,
-                CreditLimit = creditLimit,
-                PaymentTerms = string.IsNullOrWhiteSpace(terms) ? null : terms,
+                Website = string.IsNullOrWhiteSpace(raw.Website) ? null : (raw.Website.Length <= 255 ? raw.Website : raw.Website[..255]),
+                SupplierType = string.IsNullOrWhiteSpace(raw.SupplierType) ? null : (raw.SupplierType.Length <= 50 ? raw.SupplierType : raw.SupplierType[..50]),
+                Scope = string.IsNullOrWhiteSpace(raw.Scope) ? null : (raw.Scope.Length <= 50 ? raw.Scope : raw.Scope[..50]),
+                MaxDebtDays = raw.Debt,
+                CreditLimit = raw.CreditLimit,
+                PaymentTerms = string.IsNullOrWhiteSpace(raw.Terms) ? null : raw.Terms,
                 Rating = SupplierGrades.D,
                 ApprovalStatus = SupplierApprovalStatuses.New,
                 CreatedAt = DateTime.UtcNow,
@@ -653,12 +668,13 @@ public class SuppliersController(
 
             db.Suppliers.Add(supplier);
             await db.SaveChangesAsync(ct);
-            existingNames.Add(name);
+            existingNames.Add(raw.Name);
+            existingCodes.Add(finalCode);
             if (!string.IsNullOrEmpty(supplier.TaxCode)) existingTaxCodes.Add(supplier.TaxCode);
 
-            if (!string.IsNullOrWhiteSpace(groups))
+            if (!string.IsNullOrWhiteSpace(raw.Groups))
             {
-                var groupNames = groups.Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                var groupNames = raw.Groups.Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
                 foreach (var gn in groupNames)
                 {
                     if (groupMap.TryGetValue(gn.ToLower(), out var gId))
@@ -678,6 +694,324 @@ public class SuppliersController(
 
         var totalRows = importedCount + failedCount;
         return Ok(new SupplierImportResultDto(totalRows, importedCount, failedCount, errors));
+    }
+
+    private sealed record RawSupplierRow(
+        int RowIndex,
+        string? Code,
+        string Name,
+        string? TaxCode,
+        string? Phone,
+        string? Website,
+        string? SupplierType,
+        string? Scope,
+        int Debt,
+        decimal? CreditLimit,
+        string? Terms,
+        string? Groups);
+
+    private static (List<RawSupplierRow> Rows, List<string> AvailableSheets, string SelectedSheet)
+        ExtractSupplierRowsFromExcel(XLWorkbook workbook, string? requestedSheetName)
+    {
+        var availableSheets = workbook.Worksheets.Select(w => w.Name).ToList();
+        IXLWorksheet? ws = null;
+
+        if (!string.IsNullOrWhiteSpace(requestedSheetName))
+        {
+            ws = workbook.Worksheets.FirstOrDefault(w =>
+                string.Equals(w.Name.Trim(), requestedSheetName.Trim(), StringComparison.OrdinalIgnoreCase));
+        }
+
+        if (ws is null)
+        {
+            var priorityNames = new[] { "OPTION 3", "OPTION", "MÃ NCC", "MA NCC", "NHÀ CUNG CẤP", "SUPPLIER", "FINAL" };
+            foreach (var p in priorityNames)
+            {
+                ws = workbook.Worksheets.FirstOrDefault(w => w.Name.Contains(p, StringComparison.OrdinalIgnoreCase));
+                if (ws != null) break;
+            }
+        }
+
+        ws ??= workbook.Worksheets.FirstOrDefault(w => w.RowsUsed().Any()) ?? workbook.Worksheets.FirstOrDefault();
+        if (ws is null)
+            return ([], availableSheets, string.Empty);
+
+        var selectedSheet = ws.Name;
+        var rows = new List<RawSupplierRow>();
+        if (!ws.RowsUsed().Any())
+            return (rows, availableSheets, selectedSheet);
+
+        var maxRow = ws.LastRowUsed()?.RowNumber() ?? 0;
+        var maxCol = ws.LastColumnUsed()?.ColumnNumber() ?? 0;
+
+        // Sample header cells in rows 1..6
+        var headerCells = new Dictionary<(int Row, int Col), string>();
+        for (int r = 1; r <= Math.Min(6, maxRow); r++)
+        {
+            var row = ws.Row(r);
+            for (int c = 1; c <= Math.Min(40, maxCol); c++)
+            {
+                var val = row.Cell(c).GetString().Trim();
+                if (!string.IsNullOrWhiteSpace(val))
+                    headerCells[(r, c)] = val;
+            }
+        }
+
+        bool isOptionSheet = headerCells.Values.Any(v =>
+            v.Contains("F0-F1-F2", StringComparison.OrdinalIgnoreCase) ||
+            v.Contains("F0-F1-F2-F3", StringComparison.OrdinalIgnoreCase))
+            || (headerCells.Values.Any(v => v.Contains("HẠNG MỤC", StringComparison.OrdinalIgnoreCase) || v.Contains("HANG MUC", StringComparison.OrdinalIgnoreCase))
+                && headerCells.Values.Any(v => v.Contains("F0", StringComparison.OrdinalIgnoreCase) || v.Contains("F1", StringComparison.OrdinalIgnoreCase)));
+
+        bool isSummarySheet = !isOptionSheet && headerCells.Values.Any(v =>
+            v.Contains("MÃ NCC VER", StringComparison.OrdinalIgnoreCase) ||
+            v.Contains("MA NCC VER", StringComparison.OrdinalIgnoreCase) ||
+            (v.Contains("Tên NCC", StringComparison.OrdinalIgnoreCase) && headerCells.Values.Any(x => x.Contains("VER.", StringComparison.OrdinalIgnoreCase))));
+
+        if (isOptionSheet)
+        {
+            int codeCol = 0;
+            int nameCol = 0;
+            int hmCol = 0;
+            int hhCol = 0;
+
+            for (int c = 1; c <= Math.Min(40, maxCol); c++)
+            {
+                var c1 = headerCells.TryGetValue((1, c), out var h1) ? h1 : "";
+                var c2 = headerCells.TryGetValue((2, c), out var h2) ? h2 : "";
+                var combined = $"{c1} {c2}".ToUpperInvariant();
+
+                if (codeCol == 0 && (combined.Contains("F0-F1-F2") || combined.Contains("F0-F1-F2-F3") || c1.Contains("MÃ NCC", StringComparison.OrdinalIgnoreCase) || c1.Contains("MA NCC", StringComparison.OrdinalIgnoreCase)))
+                {
+                    codeCol = c;
+                }
+
+                if (nameCol == 0 && (c1.Contains("TÊN NCC", StringComparison.OrdinalIgnoreCase) || c1.Contains("TEN NCC", StringComparison.OrdinalIgnoreCase)))
+                {
+                    nameCol = c;
+                }
+
+                if (hmCol == 0 && (c1.Contains("HẠNG MỤC", StringComparison.OrdinalIgnoreCase) || c1.Contains("HANG MUC", StringComparison.OrdinalIgnoreCase)))
+                {
+                    hmCol = c;
+                }
+
+                if (hhCol == 0 && (c1.Contains("TÊN HÀNG HÓA", StringComparison.OrdinalIgnoreCase) || c1.Contains("TEN HANG HOA", StringComparison.OrdinalIgnoreCase) || c1.Contains("LOẠI HÀNG CHỦ YẾU", StringComparison.OrdinalIgnoreCase) || c1.Contains("LOẠI", StringComparison.OrdinalIgnoreCase)))
+                {
+                    hhCol = c;
+                }
+            }
+
+            for (int r = 4; r <= maxRow; r++)
+            {
+                var row = ws.Row(r);
+                var shortName = nameCol > 0 ? row.Cell(nameCol).GetString().Trim() : "";
+                var fullName = nameCol > 0 ? row.Cell(nameCol + 1).GetString().Trim() : "";
+                var name = !string.IsNullOrWhiteSpace(fullName) ? fullName : shortName;
+
+                if (string.IsNullOrWhiteSpace(name))
+                    continue;
+
+                var code = codeCol > 0 ? row.Cell(codeCol).GetString().Trim() : "";
+
+                string? hmVal = hmCol > 0 ? (!string.IsNullOrWhiteSpace(row.Cell(hmCol + 1).GetString().Trim()) ? row.Cell(hmCol + 1).GetString().Trim() : row.Cell(hmCol).GetString().Trim()) : null;
+                string? hhVal = hhCol > 0 ? (!string.IsNullOrWhiteSpace(row.Cell(hhCol + 1).GetString().Trim()) ? row.Cell(hhCol + 1).GetString().Trim() : row.Cell(hhCol).GetString().Trim()) : null;
+
+                var groupsList = new List<string>();
+                if (!string.IsNullOrWhiteSpace(hmVal)) groupsList.Add(hmVal);
+                if (!string.IsNullOrWhiteSpace(hhVal)) groupsList.Add(hhVal);
+                var groups = groupsList.Count > 0 ? string.Join(" - ", groupsList) : null;
+
+                rows.Add(new RawSupplierRow(
+                    RowIndex: r,
+                    Code: string.IsNullOrWhiteSpace(code) ? null : code,
+                    Name: name,
+                    TaxCode: null,
+                    Phone: null,
+                    Website: null,
+                    SupplierType: "Nhà phân phối",
+                    Scope: "Trong nước",
+                    Debt: 30,
+                    CreditLimit: null,
+                    Terms: null,
+                    Groups: groups));
+            }
+        }
+        else if (isSummarySheet)
+        {
+            int nameCol = 0;
+            int ver3Col = 0;
+            int ver2Col = 0;
+            int ver1Col = 0;
+
+            for (int c = 1; c <= Math.Min(40, maxCol); c++)
+            {
+                var val = headerCells.TryGetValue((1, c), out var h) ? h.ToUpperInvariant() : "";
+                if (val.Contains("TÊN NCC") || val.Contains("TEN NCC")) nameCol = c;
+                else if (val.Contains("VER.3") || val.Contains("VER 3")) ver3Col = c;
+                else if (val.Contains("VER.2") || val.Contains("VER 2")) ver2Col = c;
+                else if (val.Contains("VER.1") || val.Contains("VER 1")) ver1Col = c;
+            }
+            if (nameCol == 0) nameCol = 2;
+
+            for (int r = 2; r <= maxRow; r++)
+            {
+                var row = ws.Row(r);
+                var name = nameCol > 0 ? row.Cell(nameCol).GetString().Trim() : "";
+                if (string.IsNullOrWhiteSpace(name))
+                    continue;
+
+                var v3 = ver3Col > 0 ? row.Cell(ver3Col).GetString().Trim() : "";
+                var v2 = ver2Col > 0 ? row.Cell(ver2Col).GetString().Trim() : "";
+                var v1 = ver1Col > 0 ? row.Cell(ver1Col).GetString().Trim() : "";
+                var code = !string.IsNullOrWhiteSpace(v3) ? v3 : (!string.IsNullOrWhiteSpace(v2) ? v2 : v1);
+
+                rows.Add(new RawSupplierRow(
+                    RowIndex: r,
+                    Code: string.IsNullOrWhiteSpace(code) ? null : code,
+                    Name: name,
+                    TaxCode: null,
+                    Phone: null,
+                    Website: null,
+                    SupplierType: "Nhà phân phối",
+                    Scope: "Trong nước",
+                    Debt: 30,
+                    CreditLimit: null,
+                    Terms: null,
+                    Groups: null));
+            }
+        }
+        else
+        {
+            // Standard Template or Generic Sheet
+            int bestHeaderRow = 1;
+            int bestMatchCount = 0;
+
+            for (int r = 1; r <= Math.Min(5, maxRow); r++)
+            {
+                var row = ws.Row(r);
+                int matches = 0;
+                for (int c = 1; c <= Math.Min(30, maxCol); c++)
+                {
+                    var txt = row.Cell(c).GetString().Trim().ToLowerInvariant();
+                    if (string.IsNullOrWhiteSpace(txt)) continue;
+                    if (txt.Contains("mã ncc") || txt.Contains("ma ncc") || txt.Contains("supplier code")) matches++;
+                    else if (txt.Contains("tên ncc") || txt.Contains("tên nhà cung cấp") || txt.Contains("ten nha cung cap") || txt.Contains("supplier name") || (txt.Contains("nhà cung cấp") && !txt.Contains("loại"))) matches++;
+                    else if (txt.Contains("mã số thuế") || txt.Contains("mst") || txt.Contains("tax code")) matches++;
+                    else if (txt.Contains("số điện thoại") || txt.Contains("sđt") || txt.Contains("sdt") || txt.Contains("phone")) matches++;
+                    else if (txt.Contains("website") || txt == "web") matches++;
+                    else if (txt.Contains("loại hình") || txt.Contains("loại ncc")) matches++;
+                    else if (txt.Contains("phạm vi") || txt.Contains("scope")) matches++;
+                    else if (txt.Contains("hạn nợ") || txt.Contains("ngày nợ")) matches++;
+                    else if (txt.Contains("hạn mức")) matches++;
+                    else if (txt.Contains("điều khoản") || txt.Contains("thanh toán")) matches++;
+                    else if (txt.Contains("ngành hàng") || txt.Contains("nhóm")) matches++;
+                }
+                if (matches > bestMatchCount)
+                {
+                    bestMatchCount = matches;
+                    bestHeaderRow = r;
+                }
+            }
+
+            int colCode = 0, colName = 0, colTax = 0, colPhone = 0, colWebsite = 0;
+            int colType = 0, colScope = 0, colDebt = 0, colLimit = 0, colTerms = 0, colGroups = 0;
+
+            if (bestMatchCount > 0)
+            {
+                var hRow = ws.Row(bestHeaderRow);
+                for (int c = 1; c <= Math.Min(30, maxCol); c++)
+                {
+                    var txt = hRow.Cell(c).GetString().Trim().ToLowerInvariant();
+                    if (string.IsNullOrWhiteSpace(txt)) continue;
+
+                    if (colCode == 0 && (txt.Contains("mã ncc") || txt.Contains("ma ncc") || txt.Contains("supplier code")) && !txt.Contains("thuế"))
+                        colCode = c;
+                    else if (colName == 0 && (txt.Contains("tên nhà cung cấp") || txt.Contains("ten nha cung cap") || txt.Contains("tên ncc") || txt.Contains("ten ncc") || txt.Contains("supplier name") || (txt.Contains("nhà cung cấp") && !txt.Contains("loại")) || txt == "tên"))
+                        colName = c;
+                    else if (colTax == 0 && (txt.Contains("mã số thuế") || txt.Contains("mst") || txt.Contains("tax code") || txt.Contains("tax")))
+                        colTax = c;
+                    else if (colPhone == 0 && (txt.Contains("số điện thoại") || txt.Contains("sđt") || txt.Contains("sdt") || txt.Contains("phone") || txt.Contains("điện thoại")))
+                        colPhone = c;
+                    else if (colWebsite == 0 && (txt.Contains("website") || txt == "web" || txt.Contains("url")))
+                        colWebsite = c;
+                    else if (colType == 0 && (txt.Contains("loại hình") || txt.Contains("loại ncc") || txt.Contains("loại")))
+                        colType = c;
+                    else if (colScope == 0 && (txt.Contains("phạm vi") || txt.Contains("scope")))
+                        colScope = c;
+                    else if (colDebt == 0 && (txt.Contains("hạn nợ") || txt.Contains("ngày nợ") || txt.Contains("debt")))
+                        colDebt = c;
+                    else if (colLimit == 0 && (txt.Contains("hạn mức") || txt.Contains("credit limit")))
+                        colLimit = c;
+                    else if (colTerms == 0 && (txt.Contains("điều khoản") || txt.Contains("thanh toán") || txt.Contains("terms")))
+                        colTerms = c;
+                    else if (colGroups == 0 && (txt.Contains("ngành hàng") || txt.Contains("nhóm")))
+                        colGroups = c;
+                }
+            }
+
+            if (colName == 0)
+            {
+                colCode = 1;
+                colName = 2;
+                colTax = 3;
+                colPhone = 4;
+                colWebsite = 5;
+                colType = 6;
+                colScope = 7;
+                colDebt = 8;
+                colLimit = 9;
+                colTerms = 10;
+                colGroups = 11;
+            }
+
+            int dataStartRow = bestMatchCount > 0 ? bestHeaderRow + 1 : 2;
+
+            for (int r = dataStartRow; r <= maxRow; r++)
+            {
+                var row = ws.Row(r);
+                var name = colName > 0 ? row.Cell(colName).GetString().Trim() : "";
+                var code = colCode > 0 ? row.Cell(colCode).GetString().Trim() : "";
+                var taxCode = colTax > 0 ? row.Cell(colTax).GetString().Trim() : "";
+                var phone = colPhone > 0 ? row.Cell(colPhone).GetString().Trim() : "";
+                var website = colWebsite > 0 ? row.Cell(colWebsite).GetString().Trim() : "";
+                var supplierType = colType > 0 ? row.Cell(colType).GetString().Trim() : "";
+                var scope = colScope > 0 ? row.Cell(colScope).GetString().Trim() : "";
+                var debtStr = colDebt > 0 ? row.Cell(colDebt).GetString().Trim() : "";
+                var limitStr = colLimit > 0 ? row.Cell(colLimit).GetString().Trim() : "";
+                var terms = colTerms > 0 ? row.Cell(colTerms).GetString().Trim() : "";
+                var groups = colGroups > 0 ? row.Cell(colGroups).GetString().Trim() : "";
+
+                if (string.IsNullOrWhiteSpace(name) && string.IsNullOrWhiteSpace(taxCode) && string.IsNullOrWhiteSpace(phone) && string.IsNullOrWhiteSpace(code))
+                    continue;
+
+                if (colCode == 1 && int.TryParse(code, out var sttNum) && sttNum == r - dataStartRow + 1)
+                {
+                    code = "";
+                }
+
+                int.TryParse(debtStr, out var debt);
+                if (debt <= 0) debt = 30;
+
+                decimal? creditLimit = decimal.TryParse(limitStr, out var lim) && lim > 0 ? lim : null;
+
+                rows.Add(new RawSupplierRow(
+                    RowIndex: r,
+                    Code: string.IsNullOrWhiteSpace(code) ? null : code,
+                    Name: name,
+                    TaxCode: string.IsNullOrWhiteSpace(taxCode) ? null : taxCode,
+                    Phone: string.IsNullOrWhiteSpace(phone) ? null : phone,
+                    Website: string.IsNullOrWhiteSpace(website) ? null : website,
+                    SupplierType: string.IsNullOrWhiteSpace(supplierType) ? null : supplierType,
+                    Scope: string.IsNullOrWhiteSpace(scope) ? null : scope,
+                    Debt: debt,
+                    CreditLimit: creditLimit,
+                    Terms: string.IsNullOrWhiteSpace(terms) ? null : terms,
+                    Groups: string.IsNullOrWhiteSpace(groups) ? null : groups));
+            }
+        }
+
+        return (rows, availableSheets, selectedSheet);
     }
 
     [HttpGet("blacklist")]
