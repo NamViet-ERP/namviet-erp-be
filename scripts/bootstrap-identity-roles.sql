@@ -10,5 +10,7 @@ VALUES
   ('11111111-1111-1111-1111-111111111104', 'Warehouse_Keeper',  'WAREHOUSE_KEEPER',  gen_random_uuid()::text, 'Thủ kho (Storekeeper)',      'General', true),
   ('11111111-1111-1111-1111-111111111105', 'Accountant',        'ACCOUNTANT',        gen_random_uuid()::text, 'Kế toán trưởng',             'General', true),
   ('11111111-1111-1111-1111-111111111106', 'Procurement',       'PROCUREMENT',       gen_random_uuid()::text, 'Phòng mua hàng',             'General', true),
-  ('11111111-1111-1111-1111-111111111107', 'Employee',          'EMPLOYEE',          gen_random_uuid()::text, 'Nhân viên',                  'General', true)
+  ('11111111-1111-1111-1111-111111111107', 'Employee',          'EMPLOYEE',          gen_random_uuid()::text, 'Nhân viên',                  'General', true),
+  ('11111111-1111-1111-1111-111111111108', 'BOD',               'BOD',               gen_random_uuid()::text, 'Ban Giám Đốc (Giám đốc)',     'General', true),
+  ('11111111-1111-1111-1111-111111111109', 'Department_Manager', 'DEPARTMENT_MANAGER', gen_random_uuid()::text, 'Trưởng phòng',              'General', true)
 ON CONFLICT ("Id") DO NOTHING;

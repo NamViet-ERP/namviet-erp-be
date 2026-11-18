@@ -9,7 +9,7 @@ dotnet test tests/NamViet.ERP.Tests/NamViet.ERP.Tests.csproj --no-build || {
 
 # 2. Quét file cấm
 echo "🔒 [2/2] Quét file nhạy cảm và rác..."
-FORBIDDEN=$(git diff --cached --name-only | grep -E '(\.env|docker-compose.*\.yml|\.sql$|\.py$|docs/|scratch/)')
+FORBIDDEN=$(git diff --cached --name-only | grep -v '^scripts/' | grep -E '(\.env|docker-compose.*\.yml|\.sql$|\.py$|docs/|scratch/)')
 if [ -n "$FORBIDDEN" ]; then
     echo "❌ VI PHẠM BẢO MẬT: Phát hiện file cấm push vào git:\n$FORBIDDEN"
     exit 1

@@ -49,6 +49,8 @@ public static class WmsMapper
         "Staff" => "staff",
         "Project" => "project",
         "Production" => "production",
+        "BOD" => "bod",
+        "Department_Manager" => "department_manager",
         _ => role.ToLowerInvariant()
     };
 
@@ -63,6 +65,8 @@ public static class WmsMapper
         "Staff" => "Nhân viên",
         "Project" => "Phòng Dự án",
         "Production" => "Phòng Sản xuất",
+        "BOD" => "Ban Giám Đốc (Giám đốc)",
+        "Department_Manager" => "Trưởng phòng",
         _ => role
     };
 
@@ -77,6 +81,8 @@ public static class WmsMapper
         "staff" => "Staff",
         "project" => "Project",
         "production" => "Production",
+        "bod" => "BOD",
+        "department_manager" => "Department_Manager",
         _ => clientRole
     };
 

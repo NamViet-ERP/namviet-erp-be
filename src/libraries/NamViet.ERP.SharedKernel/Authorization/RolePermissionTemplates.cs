@@ -18,6 +18,8 @@ public static class RolePermissionTemplates
     public const string ProjectRole = "Project";
     /** Người phòng Sản xuất — lập dự toán vật tư. */
     public const string ProductionRole = "Production";
+    /** Trưởng phòng — duyệt cấp 1 KHMH / dự toán, duyệt nghỉ phép, quản lý phòng ban. */
+    public const string DepartmentManagerRole = "Department_Manager";
 
     private static readonly string[] CorePermissions =
     [
@@ -62,6 +64,25 @@ public static class RolePermissionTemplates
         "hrm.attendance.manage",
         "hrm.kpi.view",
         "hrm.kpi.manage",
+    ];
+
+    /** Xem HRM — không CUD. */
+    private static readonly string[] HrmViewOnlyPermissions =
+    [
+        "hrm.employees.view:all",
+        "hrm.employees.view:own",
+        "hrm.members.settings.view",
+        "hrm.candidates.view:all",
+        "hrm.recruitment.positions.view",
+        "hrm.recruitment.plans.view",
+        "hrm.recruitment.costs.view",
+        "hrm.recruitment.reports.view",
+        "hrm.recruitment.reports.export",
+        "hrm.birthdays.view",
+        "hrm.insurance.view",
+        "hrm.leaves.view",
+        "hrm.attendance.view",
+        "hrm.kpi.view",
     ];
 
     /** Xem toàn bộ phân hệ kho — không CUD. */
@@ -268,11 +289,33 @@ public static class RolePermissionTemplates
     private static readonly string[] BodPermissions =
     [
         ..CorePermissions,
-        "hrm.leaves.view",
+        ..WmsViewOnlyPermissions,
+        ..PurchasingViewOnlyPermissions,
+        ..HrmViewOnlyPermissions,
+        "purchasing.plans.approve_l2",
+        "purchasing.plans.reject",
+        "purchasing.estimates.approve_l2",
+        "wms.suppliers.approve",
+        "purchasing.orders.approve",
+        "purchasing.payments.pay",
         "hrm.leaves.approve",
-        "wms.transactions.view:all",
         "wms.transactions.approve",
-        "wms.prices.view",
+    ];
+
+    private static readonly string[] DepartmentManagerPermissions =
+    [
+        ..CorePermissions,
+        ..WmsViewOnlyPermissions,
+        ..PurchasingViewOnlyPermissions,
+        "hrm.employees.view:all",
+        "hrm.leaves.view",
+        "hrm.leaves.create",
+        "hrm.leaves.approve",
+        "purchasing.plans.approve_l1",
+        "purchasing.plans.reject",
+        "purchasing.estimates.approve_l1",
+        "wms.projects.create",
+        "wms.projects.update",
     ];
 
     /** Kế toán: chỉ xem mua hàng + kho (có giá). */
@@ -341,6 +384,7 @@ public static class RolePermissionTemplates
                 "purchasing.estimates.approve_l1",
             ],
             [ProductionRole] = ProjectProductionPermissions,
+            [DepartmentManagerRole] = DepartmentManagerPermissions,
         };
 
     public static IReadOnlyList<string> ForIdentityRole(string? roleName) =>
@@ -359,5 +403,7 @@ public static class RolePermissionTemplates
         PmRole,
         ProjectRole,
         ProductionRole,
+        BodRole,
+        DepartmentManagerRole,
     ];
 }
