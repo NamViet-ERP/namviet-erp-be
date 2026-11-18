@@ -424,6 +424,152 @@ public class OpeningStockAndSupplierImportTests : IDisposable
         Assert.Equal(25m, inv2.Qty);
     }
 
+    [Fact]
+    public async Task PreviewOpeningBalance_WithCommaInMaterialCode_NormalizesToDotAndMatchesMasterData()
+    {
+        // Arrange: Material code in DB uses dot notation "THEP-8.18-X"
+        _db.Materials.Add(new Material
+        {
+            MaterialCode = "THEP-8.18-X",
+            MaterialName = "Thép dày 8.18mm",
+            Unit = "Kg",
+            IsActive = true
+        });
+        await _db.SaveChangesAsync();
+
+        using var workbook = new XLWorkbook();
+        var ws = workbook.Worksheets.Add("TonKho");
+        ws.Cell(1, 1).Value = "Mã VT";
+        ws.Cell(1, 2).Value = "Tên VT";
+        ws.Cell(1, 3).Value = "ĐVT";
+        ws.Cell(1, 4).Value = "Số lượng";
+        ws.Cell(1, 5).Value = "Đơn giá";
+
+        // Row in Excel uses comma: "THEP-8,18-X"
+        ws.Cell(2, 1).Value = "THEP-8,18-X";
+        ws.Cell(2, 2).Value = "";
+        ws.Cell(2, 3).Value = "";
+        ws.Cell(2, 4).Value = "100";
+        ws.Cell(2, 5).Value = "50000";
+
+        using var ms = new MemoryStream();
+        workbook.SaveAs(ms);
+        ms.Position = 0;
+
+        var formFile = new FormFile(ms, 0, ms.Length, "file", "preview_comma.xlsx")
+        {
+            Headers = new HeaderDictionary(),
+            ContentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        };
+
+        // Act
+        var result = await _stockController.PreviewOpeningBalance(formFile, null, CancellationToken.None);
+
+        // Assert
+        var okResult = Assert.IsType<OkObjectResult>(result.Result);
+        var preview = Assert.IsType<OpeningStockPreviewResponseDto>(okResult.Value);
+
+        Assert.Equal(1, preview.TotalRows);
+        Assert.Equal(1, preview.ValidRows);
+        Assert.Equal(0, preview.ErrorRows);
+        var item = Assert.Single(preview.Items);
+        Assert.True(item.IsValid);
+        Assert.Equal("THEP-8.18-X", item.MaterialCode);
+        Assert.Equal("Thép dày 8.18mm", item.MaterialName);
+    }
+
+    [Fact]
+    public async Task ImportOpeningBalance_WithPartialErrors_ImportsValidRowsAndSkipsErrors()
+    {
+        // Arrange
+        _db.Materials.Add(new Material
+        {
+            MaterialCode = "VT-VALID-001",
+            MaterialName = "Vật tư chuẩn",
+            Unit = "Bộ",
+            IsActive = true
+        });
+        await _db.SaveChangesAsync();
+
+        using var workbook = new XLWorkbook();
+        var ws = workbook.Worksheets.Add("TonKho");
+        ws.Cell(1, 1).Value = "Mã hàng hóa";
+        ws.Cell(1, 2).Value = "Tên hàng hóa";
+        ws.Cell(1, 3).Value = "Đơn vị";
+        ws.Cell(1, 4).Value = "Số lượng";
+        ws.Cell(1, 5).Value = "Đơn giá";
+
+        // Row 2: Valid
+        ws.Cell(2, 1).Value = "VT-VALID-001";
+        ws.Cell(2, 2).Value = "Vật tư chuẩn";
+        ws.Cell(2, 3).Value = "Bộ";
+        ws.Cell(2, 4).Value = "50";
+        ws.Cell(2, 5).Value = "10000";
+
+        // Row 3: Invalid material code (not in DB)
+        ws.Cell(3, 1).Value = "VT-NON-EXISTENT";
+        ws.Cell(3, 2).Value = "Vật tư ma";
+        ws.Cell(3, 3).Value = "Cái";
+        ws.Cell(3, 4).Value = "20";
+        ws.Cell(3, 5).Value = "5000";
+
+        using var ms = new MemoryStream();
+        workbook.SaveAs(ms);
+        ms.Position = 0;
+
+        var formFile = new FormFile(ms, 0, ms.Length, "file", "partial_import.xlsx")
+        {
+            Headers = new HeaderDictionary(),
+            ContentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        };
+
+        // Act
+        var result = await _stockController.ImportOpeningBalance(formFile, null, CancellationToken.None);
+
+        // Assert: Sẽ cho phép import dòng hợp lệ, bỏ qua dòng lỗi
+        var okResult = Assert.IsType<OkObjectResult>(result.Result);
+        var resDto = Assert.IsType<OpeningStockImportResultDto>(okResult.Value);
+
+        Assert.Equal(1, resDto.TotalItems);
+        Assert.Equal(50m, resDto.TotalQty);
+        Assert.Equal(1, resDto.SkippedCount);
+        Assert.Contains("bỏ qua 1 dòng lỗi", resDto.Message);
+
+        // Đảm bảo dòng hợp lệ được nạp vào DB
+        var inv = await _db.WarehouseInventories.FirstOrDefaultAsync(i => i.MaterialCode == "VT-VALID-001");
+        Assert.NotNull(inv);
+        Assert.Equal(50m, inv.Qty);
+    }
+
+    [Fact]
+    public async Task ImportOpeningBalance_WithOnlyInvalidRows_ReturnsBadRequest()
+    {
+        // Arrange: Không có material nào khớp
+        using var workbook = new XLWorkbook();
+        var ws = workbook.Worksheets.Add("TonKho");
+        ws.Cell(1, 1).Value = "Mã hàng hóa";
+        ws.Cell(1, 2).Value = "Số lượng";
+
+        ws.Cell(2, 1).Value = "MA-KHONG-CO";
+        ws.Cell(2, 2).Value = "10";
+
+        using var ms = new MemoryStream();
+        workbook.SaveAs(ms);
+        ms.Position = 0;
+
+        var formFile = new FormFile(ms, 0, ms.Length, "file", "all_invalid.xlsx")
+        {
+            Headers = new HeaderDictionary(),
+            ContentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        };
+
+        // Act
+        var result = await _stockController.ImportOpeningBalance(formFile, null, CancellationToken.None);
+
+        // Assert
+        Assert.IsType<BadRequestObjectResult>(result.Result);
+    }
+
     private class FakeInventoryDomainService : IInventoryDomainService
     {
         public Task<string> GetGeneralWarehouseIdAsync(CancellationToken ct = default) => Task.FromResult("KHO-TONG");

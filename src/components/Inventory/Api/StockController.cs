@@ -279,12 +279,13 @@ public class StockController(
             var isValid = true;
             var errorList = new List<string>();
 
+            Material? mat = null;
             if (string.IsNullOrWhiteSpace(code))
             {
                 isValid = false;
                 errorList.Add("Mã vật tư không được để trống");
             }
-            else if (!materials.TryGetValue(code.ToUpperInvariant(), out var mat))
+            else if (!TryLookupMaterial(materials, code, out mat))
             {
                 isValid = false;
                 errorList.Add($"Mã vật tư '{code}' chưa tồn tại trong danh mục hệ thống");
@@ -316,7 +317,7 @@ public class StockController(
             }
 
             previewItems.Add(new OpeningStockItemPreviewDto(
-                MaterialCode: code,
+                MaterialCode: mat != null ? mat.MaterialCode : code,
                 MaterialName: name,
                 Unit: unit,
                 Qty: qty,
@@ -406,7 +407,7 @@ public class StockController(
                 continue;
             }
 
-            if (!materials.TryGetValue(code.ToUpperInvariant(), out var mat))
+            if (!TryLookupMaterial(materials, code, out var mat))
             {
                 errors.Add($"Dòng {rowIdx}: Mã vật tư '{code}' chưa tồn tại trong danh mục vật tư.");
                 continue;
@@ -430,11 +431,19 @@ public class StockController(
             parsedItems.Add((mat, qty, price, string.IsNullOrWhiteSpace(note) ? null : note));
         }
 
-        if (errors.Count > 0)
-            return BadRequest(new { message = "File Excel có lỗi dữ liệu, vui lòng kiểm tra lại.", errors });
-
         if (parsedItems.Count == 0)
-            return BadRequest("Không tìm thấy dòng dữ liệu nào hợp lệ trong file Excel.");
+        {
+            if (errors.Count > 0)
+            {
+                return BadRequest(new
+                {
+                    message = "File Excel không có dòng nào hợp lệ để nhập kho.",
+                    errors
+                });
+            }
+
+            return BadRequest("Không tìm thấy dòng dữ liệu nào hợp lệ trong file Excel để nhập kho.");
+        }
 
         var ticketCode = await TicketCodeAllocator.NextAsync(db, TransactionType.Import, ct);
         var userName = !string.IsNullOrWhiteSpace(currentUser.Name) ? currentUser.Name : "Admin";
@@ -531,15 +540,43 @@ public class StockController(
         var totalQty = parsedItems.Sum(i => i.Qty);
         var totalAmount = parsedItems.Sum(i => i.Qty * i.Price);
 
+        var destination = project != null ? $"kho dự án {project.ProjectCode}" : "kho tổng";
+        var message = errors.Count > 0
+            ? $"Đã nạp thành công {parsedItems.Count} mặt hàng hợp lệ vào {destination} (bỏ qua {errors.Count} dòng lỗi). Mã phiếu: {ticketCode}"
+            : $"Đã nạp thành công toàn bộ {parsedItems.Count} mặt hàng vào {destination}. Mã phiếu: {ticketCode}";
+
         return Ok(new OpeningStockImportResultDto(
             ticketCode,
             parsedItems.Count,
             totalQty,
             totalAmount,
-            $"Nạp thành công {parsedItems.Count} mục vật tư vào {(project != null ? $"kho dự án {project.ProjectCode}" : "kho tổng")}. Mã phiếu: {ticketCode}"));
+            message,
+            errors.Count));
     }
 
     #region Helper Methods for Smart Opening Balance Import
+
+    private static bool TryLookupMaterial(
+        IReadOnlyDictionary<string, Material> materials,
+        string? code,
+        [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out Material? mat)
+    {
+        mat = null;
+        if (string.IsNullOrWhiteSpace(code)) return false;
+
+        var trimmed = code.Trim().ToUpperInvariant();
+        if (materials.TryGetValue(trimmed, out mat))
+            return true;
+
+        if (trimmed.Contains(','))
+        {
+            var normalized = trimmed.Replace(',', '.');
+            if (materials.TryGetValue(normalized, out mat))
+                return true;
+        }
+
+        return false;
+    }
 
     private record OpeningStockColumnMapping(
         int HeaderRow,

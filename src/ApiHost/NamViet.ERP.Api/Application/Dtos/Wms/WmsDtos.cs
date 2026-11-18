@@ -187,4 +187,5 @@ public record OpeningStockImportResultDto(
     int TotalItems,
     decimal TotalQty,
     decimal TotalAmount,
-    string Message);
+    string Message,
+    int SkippedCount = 0);
