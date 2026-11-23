@@ -13,7 +13,11 @@ public record ServiceExpenseImportRowDto(
     string? Description,
     bool IsValid,
     string? ErrorMessage,
-    bool IsExisting);
+    bool IsExisting)
+{
+    public IReadOnlyList<string> Errors => string.IsNullOrWhiteSpace(ErrorMessage) ? [] : [ErrorMessage];
+    public IReadOnlyList<string> Warnings => [];
+}
 
 /// <summary>
 /// DTO kết quả đọc và phân tích file Excel import Dịch vụ & Chi phí ngoài.
@@ -23,7 +27,12 @@ public record ServiceExpenseImportParseResultDto(
     int ValidRows,
     int ErrorRows,
     int ExistingRows,
-    IReadOnlyList<ServiceExpenseImportRowDto> Rows);
+    IReadOnlyList<ServiceExpenseImportRowDto> Rows)
+{
+    public int ValidRowCount => ValidRows;
+    public int ErrorRowCount => ErrorRows;
+    public int ExistingRowCount => ExistingRows;
+}
 
 /// <summary>
 /// Yêu cầu import hàng loạt Dịch vụ & Chi phí ngoài đã được người dùng xác nhận trên UI.
@@ -46,4 +55,7 @@ public record ServiceExpenseImportResultDto(
     int InsertedCount,
     int UpdatedCount,
     int SkippedCount,
-    IReadOnlyList<string> Errors);
+    IReadOnlyList<string> Errors)
+{
+    public int CreatedCount => InsertedCount;
+}
