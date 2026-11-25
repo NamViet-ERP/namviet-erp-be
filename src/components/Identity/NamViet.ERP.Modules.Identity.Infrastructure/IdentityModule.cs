@@ -8,6 +8,7 @@ using NamViet.ERP.Modules.Identity.Domain.Entities;
 using NamViet.ERP.Modules.Identity.Application.Abstractions;
 using NamViet.ERP.Modules.Identity.Infrastructure.Persistence;
 using NamViet.ERP.Modules.Identity.Infrastructure.Services;
+using Npgsql;
 using System.Text;
 
 namespace NamViet.ERP.Modules.Identity.Infrastructure;
@@ -19,8 +20,13 @@ public static class IdentityModule
         var connectionString = configuration.GetConnectionString("Default")
             ?? throw new InvalidOperationException("ConnectionStrings:Default is required.");
 
+        var normalized = NormalizeConnectionString(connectionString);
         services.AddDbContext<IdentityDbContext>(opt =>
-            opt.UseNpgsql(connectionString, b => b.MigrationsHistoryTable("__ef_migrations_identity", "identity")));
+            opt.UseNpgsql(normalized, b =>
+            {
+                b.MigrationsHistoryTable("__ef_migrations_identity", "identity");
+                b.CommandTimeout(60);
+            }));
 
         services.AddIdentity<ApplicationUser, ApplicationRole>(opt =>
         {
@@ -92,5 +98,20 @@ public static class IdentityModule
         });
 
         return services;
+    }
+
+    private static string NormalizeConnectionString(string connectionString)
+    {
+        try
+        {
+            var csb = new NpgsqlConnectionStringBuilder(connectionString);
+            if (csb.KeepAlive == 0)
+                csb.KeepAlive = 30;
+            return csb.ConnectionString;
+        }
+        catch (Exception ex) when (ex is ArgumentException or FormatException)
+        {
+            return connectionString;
+        }
     }
 }

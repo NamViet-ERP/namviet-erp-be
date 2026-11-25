@@ -355,9 +355,22 @@ public sealed class PurchaseWarrantyService(
             .FirstOrDefaultAsync(o => o.Code == poCode, ct);
         if (order is null) return;
 
+        var poItemIds = order.Items
+            .Where(i => i.WarrantyMonths > 0)
+            .Select(i => i.Id)
+            .ToList();
+        if (poItemIds.Count == 0)
+            return;
+
+        var existingByPoItemId = await db.PurchaseWarranties
+            .Where(w => poItemIds.Contains(w.PoItemId))
+            .ToDictionaryAsync(w => w.PoItemId, ct);
+
+        var baseSeq = await db.PurchaseWarranties.IgnoreQueryFilters().CountAsync(ct);
+        var createdCount = 0;
+
         var deliveryDate = VietnamClock.Today;
         var today = deliveryDate;
-        var created = false;
 
         foreach (var item in import.Items)
         {
@@ -368,15 +381,12 @@ public sealed class PurchaseWarrantyService(
             var qty = item.Quantity;
             if (qty <= 0) continue;
 
-            var existing = await db.PurchaseWarranties
-                .FirstOrDefaultAsync(w => w.PoItemId == poItem.Id, ct);
-
-            if (existing is null)
+            if (!existingByPoItemId.TryGetValue(poItem.Id, out var existing))
             {
-                var seq = await db.PurchaseWarranties.IgnoreQueryFilters().CountAsync(ct) + 1;
+                createdCount++;
                 existing = new PurchaseWarranty
                 {
-                    Code = PurchaseWarranty.GenerateCode(seq),
+                    Code = PurchaseWarranty.GenerateCode(baseSeq + createdCount),
                     PoCode = order.Code,
                     PoItemId = poItem.Id,
                     ProjectCode = order.ProjectCode,
@@ -393,7 +403,7 @@ public sealed class PurchaseWarrantyService(
                     ImportTicketCode = import.TicketCode,
                 };
                 db.PurchaseWarranties.Add(existing);
-                created = true;
+                existingByPoItemId[poItem.Id] = existing;
             }
             else
             {
@@ -411,7 +421,6 @@ public sealed class PurchaseWarrantyService(
         }
 
         // Caller (import approve transaction) persists.
-        _ = created;
     }
 
     public async Task<SyncPurchaseWarrantiesResult> SyncFromReceivedPoLinesAsync(CancellationToken ct = default)
@@ -423,21 +432,33 @@ public sealed class PurchaseWarrantyService(
             .Where(i => i.WarrantyMonths > 0 && i.Received > 0 && i.PurchaseOrder != null)
             .ToListAsync(ct);
 
+        if (lines.Count == 0)
+            return new SyncPurchaseWarrantiesResult(0, 0);
+
+        var poItemIds = lines.Select(i => i.Id).Distinct().ToList();
+        var existingByPoItemId = await db.PurchaseWarranties
+            .Where(w => poItemIds.Contains(w.PoItemId))
+            .ToDictionaryAsync(w => w.PoItemId, ct);
+
+        var baseSeq = await db.PurchaseWarranties.IgnoreQueryFilters().CountAsync(ct);
         var created = 0;
         var updated = 0;
 
         foreach (var poItem in lines)
         {
             var order = poItem.PurchaseOrder!;
-            var existing = await db.PurchaseWarranties
-                .FirstOrDefaultAsync(w => w.PoItemId == poItem.Id, ct);
+            existingByPoItemId.TryGetValue(poItem.Id, out var existing);
 
+            var sourceTimestamp = order.PlacedAt ?? order.CreatedAt;
+            var utcTimestamp = sourceTimestamp.Kind == DateTimeKind.Utc
+                ? sourceTimestamp
+                : DateTime.SpecifyKind(sourceTimestamp, DateTimeKind.Utc);
             var deliveryDate = poItem.ExpectedDeliveryDate
-                ?? DateOnly.FromDateTime(order.PlacedAt?.ToLocalTime() ?? order.CreatedAt.ToLocalTime());
+                ?? DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(utcTimestamp, VietnamClock.TimeZone));
 
             if (existing is null)
             {
-                var seq = await db.PurchaseWarranties.IgnoreQueryFilters().CountAsync(ct) + 1 + created;
+                var seq = baseSeq + (++created);
                 existing = new PurchaseWarranty
                 {
                     Code = PurchaseWarranty.GenerateCode(seq),
@@ -457,7 +478,7 @@ public sealed class PurchaseWarrantyService(
                 };
                 existing.Recalculate(today);
                 db.PurchaseWarranties.Add(existing);
-                created++;
+                existingByPoItemId[poItem.Id] = existing;
             }
             else
             {

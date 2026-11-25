@@ -18,9 +18,9 @@ jobs:
         with:
           dotnet-version: '8.0.x'
 
-      - run: dotnet restore
-      - run: dotnet build --no-restore -c Release
-      - run: dotnet test --no-build -c Release
+      - run: dotnet restore NamViet.ERP.sln
+      - run: dotnet build NamViet.ERP.sln --no-restore -c Release
+      - run: dotnet test NamViet.ERP.sln --no-build -c Release
 
       - name: Publish API
         run: dotnet publish src/ApiHost/NamViet.ERP.Api -c Release -o ./publish

@@ -432,6 +432,80 @@ public class InventoryDomainServiceTests : IDisposable
         Assert.Contains("khả dụng", ex.Message, StringComparison.OrdinalIgnoreCase);
     }
 
+    [Fact]
+    public async Task EnsureGeneralWarehouseAsync_CreatesWarehouseNamedKhoTrungTam()
+    {
+        await _service.EnsureGeneralWarehouseAsync("KHO-NEW-01");
+
+        var warehouse = await _db.WmsWarehouses.SingleAsync(w => w.Id == "KHO-NEW-01");
+        Assert.Equal("Kho trung tâm", warehouse.Name);
+        Assert.Equal("Kho trung tâm", warehouse.Group);
+    }
+
+    [Fact]
+    public async Task CancelProjectImportAndExportPlannedAsync_ReleasesMultipleItemsInBatch()
+    {
+        _db.Materials.Add(new Material
+        {
+            MaterialCode = "MAT-002",
+            MaterialName = "Van bích thép DN80",
+            CategoryId = 1,
+            Unit = "Cái",
+        });
+        _db.ProjectInventories.AddRange(
+            new ProjectInventory
+            {
+                ProjectCode = "DA-TEST",
+                MaterialCode = "MAT-001",
+                ActualImportQty = 50m,
+                PlannedImportQty = 20m,
+                PlannedExportQty = 15m,
+            },
+            new ProjectInventory
+            {
+                ProjectCode = "DA-TEST",
+                MaterialCode = "MAT-002",
+                ActualImportQty = 40m,
+                PlannedImportQty = 10m,
+                PlannedExportQty = 8m,
+            });
+        await _db.SaveChangesAsync();
+
+        var importTx = new WarehouseTransaction
+        {
+            TicketCode = "NK-CANCEL-BATCH",
+            TransactionType = TransactionType.Import,
+            BeneficiaryProjectCode = "DA-TEST",
+            Items =
+            [
+                new WarehouseTransactionItem { MaterialCode = "MAT-001", Quantity = 12m },
+                new WarehouseTransactionItem { MaterialCode = "MAT-002", Quantity = 6m },
+            ],
+        };
+        await _service.CancelProjectImportPlannedAsync(importTx);
+
+        var exportTx = new WarehouseTransaction
+        {
+            TicketCode = "XK-CANCEL-BATCH",
+            TransactionType = TransactionType.Export,
+            ProjectCode = "DA-TEST",
+            Items =
+            [
+                new WarehouseTransactionItem { MaterialCode = "MAT-001", Quantity = 5m },
+                new WarehouseTransactionItem { MaterialCode = "MAT-002", Quantity = 3m },
+            ],
+        };
+        await _service.CancelProjectExportPlannedAsync(exportTx);
+        await _db.SaveChangesAsync();
+
+        var pi1 = await _db.ProjectInventories.SingleAsync(p => p.ProjectCode == "DA-TEST" && p.MaterialCode == "MAT-001");
+        var pi2 = await _db.ProjectInventories.SingleAsync(p => p.ProjectCode == "DA-TEST" && p.MaterialCode == "MAT-002");
+        Assert.Equal(8m, pi1.PlannedImportQty);
+        Assert.Equal(10m, pi1.PlannedExportQty);
+        Assert.Equal(4m, pi2.PlannedImportQty);
+        Assert.Equal(5m, pi2.PlannedExportQty);
+    }
+
     private static WarehouseTransaction ExportTx(string ticket, decimal qty) =>
         new()
         {

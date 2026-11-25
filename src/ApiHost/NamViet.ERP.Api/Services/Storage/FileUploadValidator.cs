@@ -41,6 +41,12 @@ public static class FileUploadValidator
             ".jpg", ".jpeg", ".png", ".webp",
         };
 
+    public static readonly IReadOnlySet<string> MaterialImageExtensions =
+        new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ".jpg", ".jpeg", ".png", ".webp", ".gif",
+        };
+
     public static readonly IReadOnlySet<string> ProjectDocumentExtensions =
         new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
@@ -131,31 +137,70 @@ public static class FileUploadValidator
         }
     }
 
-    public static async Task<(bool IsValid, string? ErrorMessage)> ValidateProjectDocumentAsync(
+    public static Task<(bool IsValid, string? ErrorMessage)> ValidateProjectDocumentAsync(
         string? fileName,
         string? contentType,
         Stream stream,
-        CancellationToken ct = default)
+        CancellationToken ct = default) =>
+        ValidateStreamAsync(fileName, contentType, stream, ProjectDocumentExtensions, ct);
+
+    public static (bool IsValid, string? ErrorMessage) ValidateProjectDocumentBytes(
+        string? fileName,
+        string? contentType,
+        ReadOnlySpan<byte> bytes) =>
+        ValidateBytes(fileName, contentType, bytes, ProjectDocumentExtensions);
+
+    public static Task<(bool IsValid, string? ErrorMessage)> ValidateMaterialImageAsync(
+        string? fileName,
+        string? contentType,
+        Stream stream,
+        CancellationToken ct = default) =>
+        ValidateStreamAsync(fileName, contentType, stream, MaterialImageExtensions, ct);
+
+    public static (bool IsValid, string? ErrorMessage) ValidateMaterialImageBytes(
+        string? fileName,
+        string? contentType,
+        ReadOnlySpan<byte> bytes) =>
+        ValidateBytes(fileName, contentType, bytes, MaterialImageExtensions);
+
+    private static (bool IsValid, string? ErrorMessage, string Ext) ValidateMetadata(
+        string? fileName,
+        string? contentType,
+        IReadOnlySet<string> allowedExtensions)
     {
         if (string.IsNullOrWhiteSpace(fileName))
-            return (false, "Tên file không hợp lệ.");
+            return (false, "Tên file không hợp lệ.", string.Empty);
 
         var ext = Path.GetExtension(fileName).ToLowerInvariant();
-        if (string.IsNullOrEmpty(ext) || ForbiddenExtensions.Contains(ext) || !ProjectDocumentExtensions.Contains(ext))
-            return (false, $"Định dạng file không được phép tải lên: '{ext}'.");
+        if (string.IsNullOrEmpty(ext) || ForbiddenExtensions.Contains(ext) || !allowedExtensions.Contains(ext))
+            return (false, $"Định dạng file không được phép tải lên: '{ext}'.", ext);
 
         var normalizedMime = NormalizeContentType(contentType);
         if (!string.IsNullOrEmpty(normalizedMime))
         {
             if (ForbiddenMimeTypes.Contains(normalizedMime))
-                return (false, $"Loại nội dung '{normalizedMime}' không được phép tải lên.");
+                return (false, $"Loại nội dung '{normalizedMime}' không được phép tải lên.", ext);
 
             if (AllowedMimeTypesByExtension.TryGetValue(ext, out var allowedMimes)
                 && !allowedMimes.Contains(normalizedMime, StringComparer.OrdinalIgnoreCase))
             {
-                return (false, $"Content-Type '{normalizedMime}' không khớp với định dạng '{ext}'.");
+                return (false, $"Content-Type '{normalizedMime}' không khớp với định dạng '{ext}'.", ext);
             }
         }
+
+        return (true, null, ext);
+    }
+
+    private static async Task<(bool IsValid, string? ErrorMessage)> ValidateStreamAsync(
+        string? fileName,
+        string? contentType,
+        Stream stream,
+        IReadOnlySet<string> allowedExtensions,
+        CancellationToken ct)
+    {
+        var (metaValid, metaError, ext) = ValidateMetadata(fileName, contentType, allowedExtensions);
+        if (!metaValid)
+            return (false, metaError);
 
         var buffer = new byte[Math.Max(64, ext is ".txt" or ".csv" ? 512 : 64)];
         var totalRead = 0;
@@ -178,30 +223,15 @@ public static class FileUploadValidator
         return (true, null);
     }
 
-    public static (bool IsValid, string? ErrorMessage) ValidateProjectDocumentBytes(
+    private static (bool IsValid, string? ErrorMessage) ValidateBytes(
         string? fileName,
         string? contentType,
-        ReadOnlySpan<byte> bytes)
+        ReadOnlySpan<byte> bytes,
+        IReadOnlySet<string> allowedExtensions)
     {
-        if (string.IsNullOrWhiteSpace(fileName))
-            return (false, "Tên file không hợp lệ.");
-
-        var ext = Path.GetExtension(fileName).ToLowerInvariant();
-        if (string.IsNullOrEmpty(ext) || ForbiddenExtensions.Contains(ext) || !ProjectDocumentExtensions.Contains(ext))
-            return (false, $"Định dạng file không được phép tải lên: '{ext}'.");
-
-        var normalizedMime = NormalizeContentType(contentType);
-        if (!string.IsNullOrEmpty(normalizedMime))
-        {
-            if (ForbiddenMimeTypes.Contains(normalizedMime))
-                return (false, $"Loại nội dung '{normalizedMime}' không được phép tải lên.");
-
-            if (AllowedMimeTypesByExtension.TryGetValue(ext, out var allowedMimes)
-                && !allowedMimes.Contains(normalizedMime, StringComparer.OrdinalIgnoreCase))
-            {
-                return (false, $"Content-Type '{normalizedMime}' không khớp với định dạng '{ext}'.");
-            }
-        }
+        var (metaValid, metaError, ext) = ValidateMetadata(fileName, contentType, allowedExtensions);
+        if (!metaValid)
+            return (false, metaError);
 
         if (bytes.IsEmpty)
             return (false, "File rỗng.");

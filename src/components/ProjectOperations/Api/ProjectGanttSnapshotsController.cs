@@ -23,13 +23,16 @@ public class ProjectGanttSnapshotsController : ControllerBase
 
     [HttpGet]
     [RequirePermission("wms.projects.view:all")]
-    public async Task<ActionResult<List<ProjectGanttSnapshotDto>>> GetSnapshots(string code)
+    public async Task<ActionResult<List<ProjectGanttSnapshotDto>>> GetSnapshots(
+        string code,
+        CancellationToken ct = default)
     {
         var snaps = await _dbContext.ProjectGanttSnapshots
+            .AsNoTracking()
             .Where(x => x.ProjectCode == code)
             .Include(x => x.Items)
             .OrderByDescending(x => x.CreatedAt)
-            .ToListAsync();
+            .ToListAsync(ct);
 
         var dtos = snaps.Select(s => new ProjectGanttSnapshotDto(
             s.Id,
@@ -52,9 +55,15 @@ public class ProjectGanttSnapshotsController : ControllerBase
 
     [HttpPost]
     [RequirePermission("wms.projects.update")]
-    public async Task<ActionResult<ProjectGanttSnapshotDto>> TakeSnapshot(string code, [FromBody] CreateProjectGanttSnapshotRequest request)
+    public async Task<ActionResult<ProjectGanttSnapshotDto>> TakeSnapshot(
+        string code,
+        [FromBody] CreateProjectGanttSnapshotRequest request,
+        CancellationToken ct = default)
     {
-        var project = await _dbContext.Projects.FirstOrDefaultAsync(p => p.ProjectCode == code);
+        if (request?.Items is null || request.Items.Count > 2000)
+            return BadRequest("Số lượng hạng mục snapshot không hợp lệ (tối đa 2000).");
+
+        var project = await _dbContext.Projects.FirstOrDefaultAsync(p => p.ProjectCode == code, ct);
         if (project == null) return NotFound("Project not found");
 
         var snapshot = new ProjectGanttSnapshot
@@ -78,7 +87,7 @@ public class ProjectGanttSnapshotsController : ControllerBase
         }
 
         _dbContext.ProjectGanttSnapshots.Add(snapshot);
-        await _dbContext.SaveChangesAsync();
+        await _dbContext.SaveChangesAsync(ct);
 
         var dto = new ProjectGanttSnapshotDto(
             snapshot.Id,

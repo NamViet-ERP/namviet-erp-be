@@ -1,10 +1,12 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using NamViet.ERP.Api.Application.Dtos.Wms;
 using NamViet.ERP.Api.Application.Services.Wms;
 using NamViet.ERP.Api.Infrastructure.Authorization;
+using NamViet.ERP.Api.Infrastructure.RateLimiting;
 using NamViet.ERP.Modules.Warehouse.Application.DTOs;
 using NamViet.ERP.Modules.Warehouse.Application.Helpers;
 using NamViet.ERP.Modules.Warehouse.Domain.Entities;
@@ -116,6 +118,7 @@ public class MaterialUnitsController(WarehouseDbContext db, IMaterialUnitImportE
 
     [HttpGet("import-template")]
     [AllowAnonymous]
+    [EnableRateLimiting(RateLimitPolicies.PublicRead)]
     public async Task<IActionResult> DownloadImportTemplate(CancellationToken ct)
     {
         var bytes = await ExcelService.GenerateTemplateAsync(ct);

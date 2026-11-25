@@ -1,10 +1,12 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using NamViet.ERP.Api.Application.Dtos.Wms;
 using NamViet.ERP.Api.Application.Services.Wms;
 using NamViet.ERP.Api.Infrastructure.Authorization;
+using NamViet.ERP.Api.Infrastructure.RateLimiting;
 using NamViet.ERP.Modules.Warehouse.Application.DTOs;
 using NamViet.ERP.Modules.Warehouse.Application.Helpers;
 using NamViet.ERP.Modules.Warehouse.Infrastructure.Helpers;
@@ -179,22 +181,40 @@ public class MaterialsController(
         [FromServices] NamViet.ERP.Api.Services.Storage.IFileStorage storage,
         CancellationToken ct)
     {
+        const int maxBytes = 10 * 1024 * 1024;
         if (file is null || file.Length == 0)
             return BadRequest("File ảnh không hợp lệ hoặc rỗng.");
 
-        if (file.Length > 10 * 1024 * 1024)
+        if (file.Length > maxBytes)
             return BadRequest("Kích thước ảnh tối đa là 10MB.");
 
+        await using var buffer = new MemoryStream((int)Math.Min(file.Length, maxBytes));
+        await using (var source = file.OpenReadStream())
+            await source.CopyToAsync(buffer, ct);
+
+        if (buffer.Length == 0)
+            return BadRequest("File ảnh không hợp lệ hoặc rỗng.");
+        if (buffer.Length > maxBytes)
+            return BadRequest("Kích thước ảnh tối đa là 10MB.");
+
+        var (isValid, validationError) = NamViet.ERP.Api.Services.Storage.FileUploadValidator
+            .ValidateMaterialImageBytes(
+                file.FileName,
+                file.ContentType,
+                buffer.GetBuffer().AsSpan(0, (int)buffer.Length));
+        if (!isValid)
+            return BadRequest(validationError);
+
         var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
-        if (ext is not (".jpg" or ".jpeg" or ".png" or ".webp" or ".gif"))
-            return BadRequest("Định dạng file không hỗ trợ. Vui lòng chọn ảnh JPG, PNG, WEBP hoặc GIF.");
+        var contentType = string.IsNullOrWhiteSpace(file.ContentType) ? "image/jpeg" : file.ContentType;
+        var rawCode = string.IsNullOrWhiteSpace(materialCode)
+            ? "mat"
+            : System.Text.RegularExpressions.Regex.Replace(materialCode.Trim(), @"[^a-zA-Z0-9_-]", "_");
+        if (string.IsNullOrWhiteSpace(rawCode)) rawCode = "mat";
+        var relativePath = $"materials/{rawCode}_{Guid.NewGuid():N}{ext}";
 
-        var contentType = file.ContentType ?? "image/jpeg";
-        var safeCode = string.IsNullOrWhiteSpace(materialCode) ? "mat" : materialCode.Trim().Replace('/', '_').Replace('\\', '_');
-        var relativePath = $"materials/{safeCode}_{Guid.NewGuid():N}{ext}";
-
-        await using var stream = file.OpenReadStream();
-        var stored = await storage.SaveAsync(stream, relativePath, contentType, ct);
+        buffer.Position = 0;
+        var stored = await storage.SaveAsync(buffer, relativePath, contentType, ct);
 
         var imageUrl = $"/api/warehouse/materials/images/{stored.StorageKey}";
         return Ok(new { imageUrl, storageKey = stored.StorageKey });
@@ -215,6 +235,7 @@ public class MaterialsController(
 
     [HttpGet("import-template")]
     [AllowAnonymous]
+    [EnableRateLimiting(RateLimitPolicies.PublicRead)]
     public async Task<IActionResult> DownloadImportTemplate(CancellationToken ct)
     {
         var bytes = await materialExcel.GenerateTemplateAsync(ct);

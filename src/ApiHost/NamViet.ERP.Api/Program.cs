@@ -162,6 +162,7 @@ builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Wms.IStocktakeFr
 builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Wms.IImportApplicationService, NamViet.ERP.Api.Application.Services.Wms.ImportApplicationService>();
 builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Wms.IImportExcelService, NamViet.ERP.Api.Application.Services.Wms.ImportExcelService>();
 builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Wms.IMaterialImportExcelService, NamViet.ERP.Api.Application.Services.Wms.MaterialImportExcelService>();
+builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Wms.IOpeningStockImportService, NamViet.ERP.Api.Application.Services.Wms.OpeningStockImportService>();
 builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Wms.IExportApplicationService, NamViet.ERP.Api.Application.Services.Wms.ExportApplicationService>();
 builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Wms.ITransferApplicationService, NamViet.ERP.Api.Application.Services.Wms.TransferApplicationService>();
 builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Wms.IExportReturnApplicationService, NamViet.ERP.Api.Application.Services.Wms.ExportReturnApplicationService>();
@@ -281,7 +282,7 @@ if (app.Environment.IsDevelopment())
     app.UseSwagger();
     app.UseSwaggerUI(c =>
     {
-        c.SwaggerEndpoint("/swagger/v1/swagger.json", "NamViet ERP v1");
+        c.SwaggerEndpoint("/swagger/v1/swagger.json", "Mayzer ERP API v1");
         c.RoutePrefix = "swagger";
     });
 }

@@ -217,12 +217,11 @@ public class InventoryDomainService(WarehouseDbContext db) : IInventoryDomainSer
         if (string.IsNullOrWhiteSpace(projectCode))
             return;
 
+        var inventories = await LoadProjectInventoriesMapAsync(projectCode, transaction.Items, ct);
         foreach (var item in transaction.Items)
         {
-            var projectInventory = await db.ProjectInventories
-                .FirstOrDefaultAsync(
-                    pi => pi.ProjectCode == projectCode && pi.MaterialCode == item.MaterialCode, ct);
-            projectInventory?.RemovePlannedImport(item.Quantity);
+            if (inventories.TryGetValue(item.MaterialCode, out var projectInventory))
+                projectInventory.RemovePlannedImport(item.Quantity);
         }
     }
 
@@ -255,13 +254,32 @@ public class InventoryDomainService(WarehouseDbContext db) : IInventoryDomainSer
         if (string.IsNullOrWhiteSpace(projectCode))
             return;
 
+        var inventories = await LoadProjectInventoriesMapAsync(projectCode, transaction.Items, ct);
         foreach (var item in transaction.Items)
         {
-            var projectInventory = await db.ProjectInventories
-                .FirstOrDefaultAsync(
-                    pi => pi.ProjectCode == projectCode && pi.MaterialCode == item.MaterialCode, ct);
-            projectInventory?.RemovePlannedExport(item.Quantity);
+            if (inventories.TryGetValue(item.MaterialCode, out var projectInventory))
+                projectInventory.RemovePlannedExport(item.Quantity);
         }
+    }
+
+    private async Task<Dictionary<string, ProjectInventory>> LoadProjectInventoriesMapAsync(
+        string projectCode,
+        IEnumerable<WarehouseTransactionItem> items,
+        CancellationToken ct)
+    {
+        var codes = items
+            .Select(i => i.MaterialCode)
+            .Where(c => !string.IsNullOrWhiteSpace(c))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        if (codes.Count == 0)
+            return new Dictionary<string, ProjectInventory>(StringComparer.OrdinalIgnoreCase);
+
+        var rows = await db.ProjectInventories
+            .Where(pi => pi.ProjectCode == projectCode && codes.Contains(pi.MaterialCode))
+            .ToListAsync(ct);
+
+        return rows.ToDictionary(pi => pi.MaterialCode, StringComparer.OrdinalIgnoreCase);
     }
 
     public async Task ApplyApprovedImportAsync(
@@ -691,7 +709,7 @@ public class InventoryDomainService(WarehouseDbContext db) : IInventoryDomainSer
         {
             Id = targetId,
             Code = targetId,
-            Name = "Kho Tổng",
+            Name = "Kho trung tâm",
             Group = "Kho trung tâm",
             Address = "",
             Branch = "",
