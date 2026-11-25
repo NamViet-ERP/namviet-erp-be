@@ -1,14 +1,10 @@
-using ClosedXML.Excel;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 using NamViet.ERP.Api.Application.Dtos.Purchasing;
 using NamViet.ERP.Api.Application.Services.Purchasing;
 using NamViet.ERP.Api.Infrastructure.Authorization;
 using NamViet.ERP.Api.Services.Storage;
 using NamViet.ERP.Modules.Warehouse.Application.DTOs;
-using NamViet.ERP.Modules.Warehouse.Domain.Entities;
-using NamViet.ERP.Modules.Warehouse.Domain.SupplierEvaluation;
 using NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence;
 using NamViet.ERP.SharedKernel.Common;
 using NamViet.ERP.SharedKernel.Interfaces;
@@ -22,8 +18,15 @@ public class SuppliersController(
     WarehouseDbContext db,
     ISupplierGroupService groups,
     ICurrentUser currentUser,
-    IFileStorage? fileStorage = null) : ControllerBase
+    IFileStorage? fileStorage = null,
+    ISupplierExcelService? supplierExcel = null,
+    ISupplierTierEvaluationService? tierEvaluation = null,
+    ISupplierDirectoryService? directoryService = null) : ControllerBase
 {
+    private ISupplierExcelService ExcelService => supplierExcel ?? new SupplierExcelService(db);
+    private ISupplierTierEvaluationService TierService => tierEvaluation ?? new SupplierTierEvaluationService(db, currentUser);
+    private ISupplierDirectoryService Directory => directoryService ?? new SupplierDirectoryService(db, currentUser, fileStorage);
+
     [HttpGet("{id:int}/groups")]
     [RequirePermission("wms.suppliers.view:all")]
     public async Task<ActionResult<IReadOnlyList<SupplierGroupRefDto>>> GetGroups(
@@ -38,125 +41,20 @@ public class SuppliersController(
 
     [HttpGet("sourcing-kpi")]
     [RequirePermission("wms.suppliers.view:all")]
-    public async Task<ActionResult<SourcingKpiSummaryDto>> GetSourcingKpi(CancellationToken ct)
-    {
-        var now = DateTime.UtcNow;
-        var startOfMonth = new DateTime(now.Year, now.Month, 1, 0, 0, 0, DateTimeKind.Utc);
-
-        var suppliers = await db.Suppliers.AsNoTracking().ToListAsync(ct);
-        var totalSuppliers = suppliers.Count;
-        var totalNewThisMonth = suppliers.Count(s => s.CreatedAt >= startOfMonth);
-
-        var gradeACount = suppliers.Count(s => s.Rating == SupplierGrades.A);
-        var gradeBCount = suppliers.Count(s => s.Rating == SupplierGrades.B);
-        var gradeCCount = suppliers.Count(s => s.Rating == SupplierGrades.C);
-        var gradeDCount = suppliers.Count(s => s.Rating == SupplierGrades.D);
-        var otherCount = totalSuppliers - (gradeACount + gradeBCount + gradeCCount + gradeDCount);
-
-        var promotionsThisMonth = await db.SupplierTierEvaluations
-            .AsNoTracking()
-            .Where(e => e.CreatedAt >= startOfMonth && e.OldGrade != e.NewGrade)
-            .CountAsync(ct);
-
-        var promotionRate = totalNewThisMonth > 0
-            ? Math.Round((decimal)promotionsThisMonth / totalNewThisMonth * 100m, 1)
-            : 0m;
-
-        return Ok(new SourcingKpiSummaryDto(
-            totalSuppliers,
-            totalNewThisMonth,
-            promotionsThisMonth,
-            gradeACount,
-            gradeBCount,
-            gradeCCount,
-            gradeDCount,
-            otherCount,
-            promotionRate
-        ));
-    }
+    public async Task<ActionResult<SourcingKpiSummaryDto>> GetSourcingKpi(CancellationToken ct) =>
+        Ok(await TierService.GetSourcingKpiAsync(ct));
 
     [HttpPost("{id:int}/tier-evaluation")]
     [RequirePermission("wms.suppliers.update")]
     public async Task<ActionResult<SupplierTierEvaluationDto>> SubmitTierEvaluation(
         int id, [FromBody] SubmitTierEvaluationRequest request, CancellationToken ct)
     {
-        var supplier = await db.Suppliers.FirstOrDefaultAsync(s => s.Id == id, ct);
-        if (supplier == null)
-            return NotFound(new { message = $"Không tìm thấy nhà cung cấp id={id}." });
-
-        var price = Math.Clamp(request.PriceScore, 0m, 50m);
-        var profile = Math.Clamp(request.ProfileScore, 0m, 20m);
-        var payment = Math.Clamp(request.PaymentScore, 0m, 20m);
-        var service = Math.Clamp(request.ServiceScore, 0m, 10m);
-        var total = price + profile + payment + service;
-
-        var oldGrade = supplier.Rating;
-        string newGrade;
-
-        if (total >= 80m)
-        {
-            if (!string.IsNullOrWhiteSpace(request.TargetGrade))
-            {
-                newGrade = request.TargetGrade.Trim().ToUpperInvariant();
-            }
-            else
-            {
-                newGrade = oldGrade switch
-                {
-                    SupplierGrades.D => SupplierGrades.C,
-                    SupplierGrades.C => SupplierGrades.B,
-                    SupplierGrades.B => SupplierGrades.A,
-                    _ => SupplierGrades.C
-                };
-            }
-            supplier.Rating = newGrade;
-            supplier.UpdatedAt = DateTime.UtcNow;
-        }
-        else
-        {
-            if (!string.IsNullOrWhiteSpace(request.TargetGrade) && request.TargetGrade.Trim().ToUpperInvariant() != oldGrade)
-            {
-                return BadRequest(new { message = $"Tổng điểm đánh giá là {total}/100, chưa đạt mức tối thiểu 80 điểm để thăng hạng lên {request.TargetGrade}." });
-            }
-            newGrade = oldGrade;
-        }
-
-        var eval = new SupplierTierEvaluation
-        {
-            SupplierId = supplier.Id,
-            OldGrade = oldGrade,
-            NewGrade = newGrade,
-            TotalScore = total,
-            PriceScore = price,
-            ProfileScore = profile,
-            PaymentScore = payment,
-            ServiceScore = service,
-            EvaluationDetailsJson = request.DetailsJson,
-            Reason = request.Reason?.Trim(),
-            EvaluatedById = currentUser.Id.ToString(),
-            EvaluatedByName = !string.IsNullOrWhiteSpace(currentUser.Name) ? currentUser.Name : currentUser.Email,
-            CreatedAt = DateTime.UtcNow
-        };
-
-        db.SupplierTierEvaluations.Add(eval);
-        await db.SaveChangesAsync(ct);
-
-        return Ok(new SupplierTierEvaluationDto(
-            eval.Id,
-            eval.SupplierId,
-            eval.OldGrade,
-            eval.NewGrade,
-            eval.TotalScore,
-            eval.PriceScore,
-            eval.ProfileScore,
-            eval.PaymentScore,
-            eval.ServiceScore,
-            eval.EvaluationDetailsJson,
-            eval.Reason,
-            eval.EvaluatedById,
-            eval.EvaluatedByName,
-            eval.CreatedAt
-        ));
+        var outcome = await TierService.SubmitTierEvaluationAsync(id, request, ct);
+        if (outcome.NotFound)
+            return NotFound(new { message = outcome.ErrorMessage });
+        if (outcome.ErrorMessage is not null)
+            return BadRequest(new { message = outcome.ErrorMessage });
+        return Ok(outcome.Evaluation);
     }
 
     [HttpGet("{id:int}/grade-history")]
@@ -164,33 +62,10 @@ public class SuppliersController(
     public async Task<ActionResult<IReadOnlyList<SupplierTierEvaluationDto>>> GetGradeHistory(
         int id, CancellationToken ct)
     {
-        var exists = await db.Suppliers.AnyAsync(s => s.Id == id, ct);
-        if (!exists)
-            return NotFound(new { message = $"Không tìm thấy nhà cung cấp id={id}." });
-
-        var items = await db.SupplierTierEvaluations
-            .AsNoTracking()
-            .Where(e => e.SupplierId == id)
-            .OrderByDescending(e => e.CreatedAt)
-            .Select(e => new SupplierTierEvaluationDto(
-                e.Id,
-                e.SupplierId,
-                e.OldGrade,
-                e.NewGrade,
-                e.TotalScore,
-                e.PriceScore,
-                e.ProfileScore,
-                e.PaymentScore,
-                e.ServiceScore,
-                e.EvaluationDetailsJson,
-                e.Reason,
-                e.EvaluatedById,
-                e.EvaluatedByName,
-                e.CreatedAt
-            ))
-            .ToListAsync(ct);
-
-        return Ok(items);
+        var items = await TierService.GetGradeHistoryAsync(id, ct);
+        return items is null
+            ? NotFound(new { message = $"Không tìm thấy nhà cung cấp id={id}." })
+            : Ok(items);
     }
 
     [HttpGet]
@@ -203,227 +78,21 @@ public class SuppliersController(
         [FromQuery] int? groupId = null,
         [FromQuery] bool? isBlacklisted = null,
         [FromQuery] string? approvalStatus = null,
-        CancellationToken ct = default)
-    {
-        (page, pageSize) = Paging.Normalize(page, pageSize);
-        var query = db.Suppliers.AsQueryable();
-        if (!string.IsNullOrWhiteSpace(search))
-            query = query.Where(s => s.SupplierName.Contains(search) || s.SupplierCode.Contains(search) || (s.TaxCode != null && s.TaxCode.Contains(search)));
-        if (!string.IsNullOrWhiteSpace(rating))
-            query = query.Where(s => s.Rating == rating);
-        if (isBlacklisted is bool bl)
-            query = query.Where(s => s.IsBlacklisted == bl);
-        if (!string.IsNullOrWhiteSpace(approvalStatus))
-            query = query.Where(s => s.ApprovalStatus == approvalStatus);
-        if (groupId is int gid)
-        {
-            query = query.Where(s => s.GroupMemberships.Any(m => m.SupplierGroupId == gid));
-        }
-
-        var total = await query.CountAsync(ct);
-        var suppliers = await query
-            .OrderBy(s => s.SupplierCode)
-            .Skip((page - 1) * pageSize)
-            .Take(pageSize)
-            .Select(s => new
-            {
-                s.Id,
-                s.SupplierCode,
-                s.SupplierName,
-                s.TaxCode,
-                s.SupplierType,
-                s.Scope,
-                s.Website,
-                s.ContactPhone,
-                s.MaxDebtDays,
-                s.CreditLimit,
-                s.PaymentTerms,
-                s.Rating,
-                s.ApprovalStatus,
-                s.IsBlacklisted,
-                s.BlacklistReason,
-                s.BlacklistedAt,
-                s.BlacklistedByName,
-            })
-            .ToListAsync(ct);
-
-        var supplierIds = suppliers.Select(s => s.Id).ToArray();
-        var industryGroups = await db.SupplierGroupMembers
-            .AsNoTracking()
-            .Where(m => supplierIds.Contains(m.SupplierId))
-            .Select(m => new { m.SupplierId, GroupName = m.Group!.Name })
-            .ToListAsync(ct);
-        var industryGroupMap = industryGroups
-            .GroupBy(x => x.SupplierId)
-            .ToDictionary(
-                g => g.Key,
-                g => (IReadOnlyList<string>)g
-                    .Select(x => x.GroupName)
-                    .Distinct()
-                    .OrderBy(n => n)
-                    .ToList());
-
-        var revenueRows = await db.PurchaseOrders
-            .AsNoTracking()
-            .Where(o => o.SupplierId != null
-                        && supplierIds.Contains(o.SupplierId.Value)
-                        && o.DeliveryStatus == PurchaseOrderDeliveryStatuses.Complete)
-            .GroupBy(o => o.SupplierId!.Value)
-            .Select(g => new { SupplierId = g.Key, PurchasedRevenue = g.Sum(o => o.TotalAmount) })
-            .ToListAsync(ct);
-        var revenueMap = revenueRows.ToDictionary(x => x.SupplierId, x => Math.Round(x.PurchasedRevenue, 2));
-
-        var latestEvaluations = await db.SupplierEvaluations
-            .AsNoTracking()
-            .Where(v => supplierIds.Contains(v.SupplierId))
-            .GroupBy(v => v.SupplierId)
-            .Select(g => g
-                .OrderByDescending(v => v.EvaluatedAt)
-                .ThenByDescending(v => v.Id)
-                .Select(v => new
-                {
-                    v.SupplierId,
-                    v.Period,
-                    v.Score,
-                    v.Grade,
-                    v.EvaluatedAt,
-                })
-                .FirstOrDefault()!)
-            .ToListAsync(ct);
-        var latestEvaluationMap = latestEvaluations
-            .Where(x => x != null)
-            .ToDictionary(
-                x => x.SupplierId,
-                x => (SupplierLatestEvaluationDto?)new SupplierLatestEvaluationDto(
-                    x.Period,
-                    x.Score,
-                    x.Grade,
-                    SupplierGradeMapper.KpiGradeLabel(x.Grade),
-                    x.EvaluatedAt));
-
-        var supplierContacts = await db.SupplierContacts
-            .AsNoTracking()
-            .Where(c => supplierIds.Contains(c.SupplierId))
-            .OrderBy(c => c.Role == SupplierContactRoles.Primary ? 0 : 1)
-            .ThenBy(c => c.Id)
-            .ToListAsync(ct);
-
-        var contactCountMap = supplierContacts
-            .GroupBy(c => c.SupplierId)
-            .ToDictionary(g => g.Key, g => g.Count());
-
-        var primaryContactMap = supplierContacts
-            .GroupBy(c => c.SupplierId)
-            .ToDictionary(
-                g => g.Key,
-                g =>
-                {
-                    var pc = g.FirstOrDefault(c => c.Role == SupplierContactRoles.Primary) ?? g.FirstOrDefault();
-                    return pc == null ? null : new SupplierPrimaryContactDto(
-                        pc.Id,
-                        pc.FullName,
-                        pc.Position,
-                        pc.Phone,
-                        pc.Email,
-                        pc.Role);
-                });
-
-        var items = suppliers.Select(s => new SupplierDto(
-            s.Id,
-            s.SupplierCode,
-            s.SupplierName,
-            s.ContactPhone,
-            s.MaxDebtDays,
-            s.CreditLimit,
-            s.PaymentTerms,
-            s.Rating,
-            s.ApprovalStatus,
-            s.IsBlacklisted,
-            s.BlacklistReason,
-            s.BlacklistedAt,
-            s.BlacklistedByName,
-            revenueMap.GetValueOrDefault(s.Id, 0m),
-            industryGroupMap.GetValueOrDefault(s.Id, Array.Empty<string>()),
-            latestEvaluationMap.GetValueOrDefault(s.Id),
-            s.TaxCode,
-            s.SupplierType,
-            s.Scope,
-            s.Website,
-            primaryContactMap.GetValueOrDefault(s.Id),
-            null,
-            contactCountMap.GetValueOrDefault(s.Id, 0))).ToList();
-        return Ok(PagedResult<SupplierDto>.Create(items, total, page, pageSize));
-    }
+        CancellationToken ct = default) =>
+        Ok(await Directory.GetAllAsync(page, pageSize, search, rating, groupId, isBlacklisted, approvalStatus, ct));
 
     [HttpGet("next-code")]
     [RequirePermission("wms.suppliers.create")]
     public async Task<ActionResult<SupplierNextCodeDto>> NextCode(CancellationToken ct) =>
-        Ok(new SupplierNextCodeDto(await NextSupplierCodeAsync(ct)));
+        Ok(new SupplierNextCodeDto(await Directory.NextSupplierCodeAsync(ct)));
 
     [HttpGet("template-excel")]
     [RequirePermission("wms.suppliers.view:all")]
-    public IActionResult DownloadExcelTemplate()
-    {
-        using var workbook = new ClosedXML.Excel.XLWorkbook();
-        var ws = workbook.Worksheets.Add("DanhSachNCC");
-
-        string[] headers =
-        [
-            "Mã NCC (để trống tự sinh)",
-            "Tên nhà cung cấp",
-            "Mã số thuế",
-            "Số điện thoại",
-            "Website",
-            "Loại hình (Nhà sản xuất / Nhà phân phối / Đại lý)",
-            "Phạm vi (Trong nước / Nhập khẩu)",
-            "Hạn nợ (ngày)",
-            "Hạn mức nợ (tiền)",
-            "Điều khoản thanh toán",
-            "Nhóm ngành hàng"
-        ];
-
-        for (var col = 0; col < headers.Length; col++)
-        {
-            var cell = ws.Cell(1, col + 1);
-            cell.Value = headers[col];
-            cell.Style.Font.Bold = true;
-            cell.Style.Fill.BackgroundColor = ClosedXML.Excel.XLColor.FromHtml("#1E40AF");
-            cell.Style.Font.FontColor = ClosedXML.Excel.XLColor.White;
-        }
-
-        ws.Cell(2, 1).Value = "";
-        ws.Cell(2, 2).Value = "Công ty TNHH Thép Hòa Phát Hưng Yên";
-        ws.Cell(2, 3).Value = "0100123456";
-        ws.Cell(2, 4).Value = "0987654321";
-        ws.Cell(2, 5).Value = "https://hoaphat.com.vn";
-        ws.Cell(2, 6).Value = "Nhà sản xuất";
-        ws.Cell(2, 7).Value = "Trong nước";
-        ws.Cell(2, 8).Value = 45;
-        ws.Cell(2, 9).Value = 500000000;
-        ws.Cell(2, 10).Value = "Thanh toán trong vòng 45 ngày";
-        ws.Cell(2, 11).Value = "Hệ ống thép & phụ kiện hàn";
-
-        ws.Cell(3, 1).Value = "";
-        ws.Cell(3, 2).Value = "Công ty Cổ phần Van Kitz Nhật Bản";
-        ws.Cell(3, 3).Value = "0309988776";
-        ws.Cell(3, 4).Value = "0903123456";
-        ws.Cell(3, 5).Value = "https://kitz.co.jp";
-        ws.Cell(3, 6).Value = "Nhà phân phối";
-        ws.Cell(3, 7).Value = "Nhập khẩu";
-        ws.Cell(3, 8).Value = 30;
-        ws.Cell(3, 9).Value = 300000000;
-        ws.Cell(3, 10).Value = "Net 30 kể từ ngày giao hàng";
-        ws.Cell(3, 11).Value = "Hệ van công nghiệp & phụ kiện mặt bích";
-
-        ws.Columns().AdjustToContents();
-
-        using var ms = new MemoryStream();
-        workbook.SaveAs(ms);
-        return File(
-            ms.ToArray(),
+    public IActionResult DownloadExcelTemplate() =>
+        File(
+            ExcelService.BuildExcelTemplate(),
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             "Mau_Nhap_NhaCungCap.xlsx");
-    }
 
     [HttpPost("preview-excel")]
     [RequirePermission("wms.suppliers.create")]
@@ -435,108 +104,10 @@ public class SuppliersController(
         if (file == null || file.Length == 0)
             return BadRequest("Vui lòng chọn file Excel danh sách NCC.");
 
-        if (string.IsNullOrWhiteSpace(sheetName) && Request?.HasFormContentType == true && Request.Form.TryGetValue("sheetName", out var formSheet))
-        {
-            sheetName = formSheet.ToString();
-        }
-
+        sheetName = ResolveSheetName(sheetName);
         using var stream = file.OpenReadStream();
-        using var workbook = new XLWorkbook(stream);
-
-        var (rawRows, availableSheets, selectedSheet) = ExtractSupplierRowsFromExcel(workbook, sheetName);
-        if (availableSheets.Count == 0)
-            return BadRequest("File Excel không có sheet nào.");
-
-        var existingNames = await db.Suppliers.AsNoTracking()
-            .Select(s => s.SupplierName)
-            .ToListAsync(ct);
-
-        var existingCodes = await db.Suppliers.AsNoTracking()
-            .Select(s => s.SupplierCode)
-            .ToListAsync(ct);
-
-        var existingTaxCodes = await db.Suppliers.AsNoTracking()
-            .Where(s => !string.IsNullOrEmpty(s.TaxCode))
-            .Select(s => s.TaxCode!)
-            .ToListAsync(ct);
-
-        var previewRows = new List<SupplierImportRowPreviewDto>();
-        var seenNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var seenCodes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var seenTaxCodes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-        foreach (var raw in rawRows)
-        {
-            var isValid = true;
-            var errorMsg = new List<string>();
-
-            if (string.IsNullOrWhiteSpace(raw.Name))
-            {
-                isValid = false;
-                errorMsg.Add("Tên NCC là bắt buộc");
-            }
-            else if (existingNames.Any(n => Supplier.SameFoldedName(n, raw.Name)) || seenNames.Contains(raw.Name))
-            {
-                isValid = false;
-                errorMsg.Add("Tên NCC đã tồn tại hoặc bị trùng trong file");
-            }
-            else
-            {
-                seenNames.Add(raw.Name);
-            }
-
-            if (!string.IsNullOrWhiteSpace(raw.Code) && !raw.Code.Equals("(Tự sinh)", StringComparison.OrdinalIgnoreCase))
-            {
-                if (existingCodes.Any(c => c.Equals(raw.Code, StringComparison.OrdinalIgnoreCase)) || seenCodes.Contains(raw.Code))
-                {
-                    isValid = false;
-                    errorMsg.Add($"Mã NCC '{raw.Code}' đã tồn tại trên hệ thống hoặc bị trùng trong file");
-                }
-                else
-                {
-                    seenCodes.Add(raw.Code);
-                }
-            }
-
-            if (!string.IsNullOrWhiteSpace(raw.TaxCode))
-            {
-                if (raw.TaxCode.Length > 50)
-                {
-                    isValid = false;
-                    errorMsg.Add("Mã số thuế tối đa 50 ký tự");
-                }
-                else if (existingTaxCodes.Any(t => t.Equals(raw.TaxCode, StringComparison.OrdinalIgnoreCase)) || seenTaxCodes.Contains(raw.TaxCode))
-                {
-                    isValid = false;
-                    errorMsg.Add($"MST '{raw.TaxCode}' đã tồn tại trên hệ thống hoặc bị trùng trong file");
-                }
-                else
-                {
-                    seenTaxCodes.Add(raw.TaxCode);
-                }
-            }
-
-            previewRows.Add(new SupplierImportRowPreviewDto(
-                SupplierCode: string.IsNullOrWhiteSpace(raw.Code) ? "(Tự sinh)" : raw.Code,
-                SupplierName: raw.Name,
-                TaxCode: string.IsNullOrWhiteSpace(raw.TaxCode) ? null : raw.TaxCode,
-                ContactPhone: string.IsNullOrWhiteSpace(raw.Phone) ? null : raw.Phone,
-                Website: string.IsNullOrWhiteSpace(raw.Website) ? null : raw.Website,
-                SupplierType: string.IsNullOrWhiteSpace(raw.SupplierType) ? null : raw.SupplierType,
-                Scope: string.IsNullOrWhiteSpace(raw.Scope) ? null : raw.Scope,
-                MaxDebtDays: raw.Debt,
-                CreditLimit: raw.CreditLimit,
-                PaymentTerms: string.IsNullOrWhiteSpace(raw.Terms) ? null : raw.Terms,
-                IndustryGroups: string.IsNullOrWhiteSpace(raw.Groups) ? null : raw.Groups,
-                IsValid: isValid,
-                Error: errorMsg.Count > 0 ? string.Join("; ", errorMsg) : null));
-        }
-
-        var total = previewRows.Count;
-        var valid = previewRows.Count(r => r.IsValid);
-        var errors = total - valid;
-
-        return Ok(new SupplierImportPreviewResponseDto(total, valid, errors, previewRows, availableSheets, selectedSheet));
+        var (response, errorMessage) = await ExcelService.PreviewExcelAsync(stream, sheetName, ct);
+        return errorMessage is not null ? BadRequest(errorMessage) : Ok(response);
     }
 
     [HttpPost("import-excel")]
@@ -549,852 +120,75 @@ public class SuppliersController(
         if (file == null || file.Length == 0)
             return BadRequest("Vui lòng chọn file Excel danh sách NCC.");
 
-        if (string.IsNullOrWhiteSpace(sheetName) && Request?.HasFormContentType == true && Request.Form.TryGetValue("sheetName", out var formSheet))
-        {
-            sheetName = formSheet.ToString();
-        }
-
+        sheetName = ResolveSheetName(sheetName);
         using var stream = file.OpenReadStream();
-        using var workbook = new XLWorkbook(stream);
-
-        var (rawRows, availableSheets, selectedSheet) = ExtractSupplierRowsFromExcel(workbook, sheetName);
-        if (availableSheets.Count == 0)
-            return BadRequest("File Excel không có sheet nào.");
-
-        var existingNames = await db.Suppliers.AsNoTracking()
-            .Select(s => s.SupplierName)
-            .ToListAsync(ct);
-
-        var existingCodes = await db.Suppliers.AsNoTracking()
-            .Select(s => s.SupplierCode)
-            .ToListAsync(ct);
-
-        var existingTaxCodes = await db.Suppliers.AsNoTracking()
-            .Where(s => !string.IsNullOrEmpty(s.TaxCode))
-            .Select(s => s.TaxCode!)
-            .ToListAsync(ct);
-
-        var allGroups = await db.SupplierGroups.AsNoTracking().ToListAsync(ct);
-        var groupMap = allGroups.ToDictionary(g => g.Name.Trim().ToLower(), g => g.Id);
-
-        var importedCount = 0;
-        var failedCount = 0;
-        var errors = new List<string>();
-        var seenNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var seenCodes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var seenTaxCodes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-        foreach (var raw in rawRows)
-        {
-            if (string.IsNullOrWhiteSpace(raw.Name))
-            {
-                failedCount++;
-                errors.Add($"Dòng {raw.RowIndex}: Tên nhà cung cấp không được để trống.");
-                continue;
-            }
-
-            if (existingNames.Any(n => Supplier.SameFoldedName(n, raw.Name)) || seenNames.Contains(raw.Name))
-            {
-                failedCount++;
-                errors.Add($"Dòng {raw.RowIndex}: Tên nhà cung cấp '{raw.Name}' đã tồn tại hoặc bị trùng trong file.");
-                continue;
-            }
-
-            if (!string.IsNullOrWhiteSpace(raw.Code) && !raw.Code.Equals("(Tự sinh)", StringComparison.OrdinalIgnoreCase))
-            {
-                if (existingCodes.Any(c => c.Equals(raw.Code, StringComparison.OrdinalIgnoreCase)) || seenCodes.Contains(raw.Code))
-                {
-                    failedCount++;
-                    errors.Add($"Dòng {raw.RowIndex}: Mã NCC '{raw.Code}' đã tồn tại trên hệ thống hoặc bị trùng trong file.");
-                    continue;
-                }
-            }
-
-            if (!string.IsNullOrWhiteSpace(raw.TaxCode))
-            {
-                if (raw.TaxCode.Length > 50)
-                {
-                    failedCount++;
-                    errors.Add($"Dòng {raw.RowIndex}: Mã số thuế tối đa 50 ký tự.");
-                    continue;
-                }
-                if (existingTaxCodes.Any(t => t.Equals(raw.TaxCode, StringComparison.OrdinalIgnoreCase)) || seenTaxCodes.Contains(raw.TaxCode))
-                {
-                    failedCount++;
-                    errors.Add($"Dòng {raw.RowIndex}: MST '{raw.TaxCode}' đã tồn tại trên hệ thống hoặc bị trùng trong file.");
-                    continue;
-                }
-            }
-
-            seenNames.Add(raw.Name);
-            if (!string.IsNullOrWhiteSpace(raw.Code) && !raw.Code.Equals("(Tự sinh)", StringComparison.OrdinalIgnoreCase))
-                seenCodes.Add(raw.Code);
-            if (!string.IsNullOrWhiteSpace(raw.TaxCode))
-                seenTaxCodes.Add(raw.TaxCode);
-
-            string? normalizedPhone = null;
-            if (!string.IsNullOrWhiteSpace(raw.Phone))
-            {
-                try
-                {
-                    normalizedPhone = VietnamPhoneRules.NormalizeOptional(raw.Phone);
-                }
-                catch
-                {
-                    normalizedPhone = raw.Phone.Length <= 50 ? raw.Phone : raw.Phone[..50];
-                }
-            }
-
-            var finalCode = !string.IsNullOrWhiteSpace(raw.Code) && !raw.Code.Equals("(Tự sinh)", StringComparison.OrdinalIgnoreCase)
-                ? raw.Code
-                : await NextSupplierCodeAsync(ct);
-
-            var supplier = new Supplier
-            {
-                SupplierCode = finalCode,
-                SupplierName = raw.Name,
-                TaxCode = string.IsNullOrWhiteSpace(raw.TaxCode) ? null : raw.TaxCode,
-                ContactPhone = normalizedPhone,
-                Website = string.IsNullOrWhiteSpace(raw.Website) ? null : (raw.Website.Length <= 255 ? raw.Website : raw.Website[..255]),
-                SupplierType = string.IsNullOrWhiteSpace(raw.SupplierType) ? null : (raw.SupplierType.Length <= 50 ? raw.SupplierType : raw.SupplierType[..50]),
-                Scope = string.IsNullOrWhiteSpace(raw.Scope) ? null : (raw.Scope.Length <= 50 ? raw.Scope : raw.Scope[..50]),
-                MaxDebtDays = raw.Debt,
-                CreditLimit = raw.CreditLimit,
-                PaymentTerms = string.IsNullOrWhiteSpace(raw.Terms) ? null : raw.Terms,
-                Rating = SupplierGrades.D,
-                ApprovalStatus = SupplierApprovalStatuses.New,
-                CreatedAt = DateTime.UtcNow,
-            };
-
-            db.Suppliers.Add(supplier);
-            await db.SaveChangesAsync(ct);
-            existingNames.Add(raw.Name);
-            existingCodes.Add(finalCode);
-            if (!string.IsNullOrEmpty(supplier.TaxCode)) existingTaxCodes.Add(supplier.TaxCode);
-
-            if (!string.IsNullOrWhiteSpace(raw.Groups))
-            {
-                var groupNames = raw.Groups.Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-                foreach (var gn in groupNames)
-                {
-                    if (groupMap.TryGetValue(gn.ToLower(), out var gId))
-                    {
-                        db.SupplierGroupMembers.Add(new SupplierGroupMember
-                        {
-                            SupplierId = supplier.Id,
-                            SupplierGroupId = gId,
-                        });
-                    }
-                }
-                await db.SaveChangesAsync(ct);
-            }
-
-            importedCount++;
-        }
-
-        var totalRows = importedCount + failedCount;
-        return Ok(new SupplierImportResultDto(totalRows, importedCount, failedCount, errors));
-    }
-
-    private sealed record RawSupplierRow(
-        int RowIndex,
-        string? Code,
-        string Name,
-        string? TaxCode,
-        string? Phone,
-        string? Website,
-        string? SupplierType,
-        string? Scope,
-        int Debt,
-        decimal? CreditLimit,
-        string? Terms,
-        string? Groups);
-
-    private static (List<RawSupplierRow> Rows, List<string> AvailableSheets, string SelectedSheet)
-        ExtractSupplierRowsFromExcel(XLWorkbook workbook, string? requestedSheetName)
-    {
-        var availableSheets = workbook.Worksheets.Select(w => w.Name).ToList();
-        IXLWorksheet? ws = null;
-
-        if (!string.IsNullOrWhiteSpace(requestedSheetName))
-        {
-            ws = workbook.Worksheets.FirstOrDefault(w =>
-                string.Equals(w.Name.Trim(), requestedSheetName.Trim(), StringComparison.OrdinalIgnoreCase));
-        }
-
-        if (ws is null)
-        {
-            var priorityNames = new[] { "OPTION 3", "OPTION", "MÃ NCC", "MA NCC", "NHÀ CUNG CẤP", "SUPPLIER", "FINAL" };
-            foreach (var p in priorityNames)
-            {
-                ws = workbook.Worksheets.FirstOrDefault(w => w.Name.Contains(p, StringComparison.OrdinalIgnoreCase));
-                if (ws != null) break;
-            }
-        }
-
-        ws ??= workbook.Worksheets.FirstOrDefault(w => w.RowsUsed().Any()) ?? workbook.Worksheets.FirstOrDefault();
-        if (ws is null)
-            return ([], availableSheets, string.Empty);
-
-        var selectedSheet = ws.Name;
-        var rows = new List<RawSupplierRow>();
-        if (!ws.RowsUsed().Any())
-            return (rows, availableSheets, selectedSheet);
-
-        var maxRow = ws.LastRowUsed()?.RowNumber() ?? 0;
-        var maxCol = ws.LastColumnUsed()?.ColumnNumber() ?? 0;
-
-        // Sample header cells in rows 1..6
-        var headerCells = new Dictionary<(int Row, int Col), string>();
-        for (int r = 1; r <= Math.Min(6, maxRow); r++)
-        {
-            var row = ws.Row(r);
-            for (int c = 1; c <= Math.Min(40, maxCol); c++)
-            {
-                var val = row.Cell(c).GetString().Trim();
-                if (!string.IsNullOrWhiteSpace(val))
-                    headerCells[(r, c)] = val;
-            }
-        }
-
-        bool isOptionSheet = headerCells.Values.Any(v =>
-            v.Contains("F0-F1-F2", StringComparison.OrdinalIgnoreCase) ||
-            v.Contains("F0-F1-F2-F3", StringComparison.OrdinalIgnoreCase))
-            || (headerCells.Values.Any(v => v.Contains("HẠNG MỤC", StringComparison.OrdinalIgnoreCase) || v.Contains("HANG MUC", StringComparison.OrdinalIgnoreCase))
-                && headerCells.Values.Any(v => v.Contains("F0", StringComparison.OrdinalIgnoreCase) || v.Contains("F1", StringComparison.OrdinalIgnoreCase)));
-
-        bool isSummarySheet = !isOptionSheet && headerCells.Values.Any(v =>
-            v.Contains("MÃ NCC VER", StringComparison.OrdinalIgnoreCase) ||
-            v.Contains("MA NCC VER", StringComparison.OrdinalIgnoreCase) ||
-            (v.Contains("Tên NCC", StringComparison.OrdinalIgnoreCase) && headerCells.Values.Any(x => x.Contains("VER.", StringComparison.OrdinalIgnoreCase))));
-
-        if (isOptionSheet)
-        {
-            int codeCol = 0;
-            int nameCol = 0;
-            int hmCol = 0;
-            int hhCol = 0;
-
-            for (int c = 1; c <= Math.Min(40, maxCol); c++)
-            {
-                var c1 = headerCells.TryGetValue((1, c), out var h1) ? h1 : "";
-                var c2 = headerCells.TryGetValue((2, c), out var h2) ? h2 : "";
-                var combined = $"{c1} {c2}".ToUpperInvariant();
-
-                if (codeCol == 0 && (combined.Contains("F0-F1-F2") || combined.Contains("F0-F1-F2-F3") || c1.Contains("MÃ NCC", StringComparison.OrdinalIgnoreCase) || c1.Contains("MA NCC", StringComparison.OrdinalIgnoreCase)))
-                {
-                    codeCol = c;
-                }
-
-                if (nameCol == 0 && (c1.Contains("TÊN NCC", StringComparison.OrdinalIgnoreCase) || c1.Contains("TEN NCC", StringComparison.OrdinalIgnoreCase)))
-                {
-                    nameCol = c;
-                }
-
-                if (hmCol == 0 && (c1.Contains("HẠNG MỤC", StringComparison.OrdinalIgnoreCase) || c1.Contains("HANG MUC", StringComparison.OrdinalIgnoreCase)))
-                {
-                    hmCol = c;
-                }
-
-                if (hhCol == 0 && (c1.Contains("TÊN HÀNG HÓA", StringComparison.OrdinalIgnoreCase) || c1.Contains("TEN HANG HOA", StringComparison.OrdinalIgnoreCase) || c1.Contains("LOẠI HÀNG CHỦ YẾU", StringComparison.OrdinalIgnoreCase) || c1.Contains("LOẠI", StringComparison.OrdinalIgnoreCase)))
-                {
-                    hhCol = c;
-                }
-            }
-
-            for (int r = 4; r <= maxRow; r++)
-            {
-                var row = ws.Row(r);
-                var shortName = nameCol > 0 ? row.Cell(nameCol).GetString().Trim() : "";
-                var fullName = nameCol > 0 ? row.Cell(nameCol + 1).GetString().Trim() : "";
-                var name = !string.IsNullOrWhiteSpace(fullName) ? fullName : shortName;
-
-                if (string.IsNullOrWhiteSpace(name))
-                    continue;
-
-                var code = codeCol > 0 ? row.Cell(codeCol).GetString().Trim() : "";
-
-                string? hmVal = hmCol > 0 ? (!string.IsNullOrWhiteSpace(row.Cell(hmCol + 1).GetString().Trim()) ? row.Cell(hmCol + 1).GetString().Trim() : row.Cell(hmCol).GetString().Trim()) : null;
-                string? hhVal = hhCol > 0 ? (!string.IsNullOrWhiteSpace(row.Cell(hhCol + 1).GetString().Trim()) ? row.Cell(hhCol + 1).GetString().Trim() : row.Cell(hhCol).GetString().Trim()) : null;
-
-                var groupsList = new List<string>();
-                if (!string.IsNullOrWhiteSpace(hmVal)) groupsList.Add(hmVal);
-                if (!string.IsNullOrWhiteSpace(hhVal)) groupsList.Add(hhVal);
-                var groups = groupsList.Count > 0 ? string.Join(" - ", groupsList) : null;
-
-                rows.Add(new RawSupplierRow(
-                    RowIndex: r,
-                    Code: string.IsNullOrWhiteSpace(code) ? null : code,
-                    Name: name,
-                    TaxCode: null,
-                    Phone: null,
-                    Website: null,
-                    SupplierType: "Nhà phân phối",
-                    Scope: "Trong nước",
-                    Debt: 30,
-                    CreditLimit: null,
-                    Terms: null,
-                    Groups: groups));
-            }
-        }
-        else if (isSummarySheet)
-        {
-            int nameCol = 0;
-            int ver3Col = 0;
-            int ver2Col = 0;
-            int ver1Col = 0;
-
-            for (int c = 1; c <= Math.Min(40, maxCol); c++)
-            {
-                var val = headerCells.TryGetValue((1, c), out var h) ? h.ToUpperInvariant() : "";
-                if (val.Contains("TÊN NCC") || val.Contains("TEN NCC")) nameCol = c;
-                else if (val.Contains("VER.3") || val.Contains("VER 3")) ver3Col = c;
-                else if (val.Contains("VER.2") || val.Contains("VER 2")) ver2Col = c;
-                else if (val.Contains("VER.1") || val.Contains("VER 1")) ver1Col = c;
-            }
-            if (nameCol == 0) nameCol = 2;
-
-            for (int r = 2; r <= maxRow; r++)
-            {
-                var row = ws.Row(r);
-                var name = nameCol > 0 ? row.Cell(nameCol).GetString().Trim() : "";
-                if (string.IsNullOrWhiteSpace(name))
-                    continue;
-
-                var v3 = ver3Col > 0 ? row.Cell(ver3Col).GetString().Trim() : "";
-                var v2 = ver2Col > 0 ? row.Cell(ver2Col).GetString().Trim() : "";
-                var v1 = ver1Col > 0 ? row.Cell(ver1Col).GetString().Trim() : "";
-                var code = !string.IsNullOrWhiteSpace(v3) ? v3 : (!string.IsNullOrWhiteSpace(v2) ? v2 : v1);
-
-                rows.Add(new RawSupplierRow(
-                    RowIndex: r,
-                    Code: string.IsNullOrWhiteSpace(code) ? null : code,
-                    Name: name,
-                    TaxCode: null,
-                    Phone: null,
-                    Website: null,
-                    SupplierType: "Nhà phân phối",
-                    Scope: "Trong nước",
-                    Debt: 30,
-                    CreditLimit: null,
-                    Terms: null,
-                    Groups: null));
-            }
-        }
-        else
-        {
-            // Standard Template or Generic Sheet
-            int bestHeaderRow = 1;
-            int bestMatchCount = 0;
-
-            for (int r = 1; r <= Math.Min(5, maxRow); r++)
-            {
-                var row = ws.Row(r);
-                int matches = 0;
-                for (int c = 1; c <= Math.Min(30, maxCol); c++)
-                {
-                    var txt = row.Cell(c).GetString().Trim().ToLowerInvariant();
-                    if (string.IsNullOrWhiteSpace(txt)) continue;
-                    if (txt.Contains("mã ncc") || txt.Contains("ma ncc") || txt.Contains("supplier code")) matches++;
-                    else if (txt.Contains("tên ncc") || txt.Contains("tên nhà cung cấp") || txt.Contains("ten nha cung cap") || txt.Contains("supplier name") || (txt.Contains("nhà cung cấp") && !txt.Contains("loại"))) matches++;
-                    else if (txt.Contains("mã số thuế") || txt.Contains("mst") || txt.Contains("tax code")) matches++;
-                    else if (txt.Contains("số điện thoại") || txt.Contains("sđt") || txt.Contains("sdt") || txt.Contains("phone")) matches++;
-                    else if (txt.Contains("website") || txt == "web") matches++;
-                    else if (txt.Contains("loại hình") || txt.Contains("loại ncc")) matches++;
-                    else if (txt.Contains("phạm vi") || txt.Contains("scope")) matches++;
-                    else if (txt.Contains("hạn nợ") || txt.Contains("ngày nợ")) matches++;
-                    else if (txt.Contains("hạn mức")) matches++;
-                    else if (txt.Contains("điều khoản") || txt.Contains("thanh toán")) matches++;
-                    else if (txt.Contains("ngành hàng") || txt.Contains("nhóm")) matches++;
-                }
-                if (matches > bestMatchCount)
-                {
-                    bestMatchCount = matches;
-                    bestHeaderRow = r;
-                }
-            }
-
-            int colCode = 0, colName = 0, colTax = 0, colPhone = 0, colWebsite = 0;
-            int colType = 0, colScope = 0, colDebt = 0, colLimit = 0, colTerms = 0, colGroups = 0;
-
-            if (bestMatchCount > 0)
-            {
-                var hRow = ws.Row(bestHeaderRow);
-                for (int c = 1; c <= Math.Min(30, maxCol); c++)
-                {
-                    var txt = hRow.Cell(c).GetString().Trim().ToLowerInvariant();
-                    if (string.IsNullOrWhiteSpace(txt)) continue;
-
-                    if (colCode == 0 && (txt.Contains("mã ncc") || txt.Contains("ma ncc") || txt.Contains("supplier code")) && !txt.Contains("thuế"))
-                        colCode = c;
-                    else if (colName == 0 && (txt.Contains("tên nhà cung cấp") || txt.Contains("ten nha cung cap") || txt.Contains("tên ncc") || txt.Contains("ten ncc") || txt.Contains("supplier name") || (txt.Contains("nhà cung cấp") && !txt.Contains("loại")) || txt == "tên"))
-                        colName = c;
-                    else if (colTax == 0 && (txt.Contains("mã số thuế") || txt.Contains("mst") || txt.Contains("tax code") || txt.Contains("tax")))
-                        colTax = c;
-                    else if (colPhone == 0 && (txt.Contains("số điện thoại") || txt.Contains("sđt") || txt.Contains("sdt") || txt.Contains("phone") || txt.Contains("điện thoại")))
-                        colPhone = c;
-                    else if (colWebsite == 0 && (txt.Contains("website") || txt == "web" || txt.Contains("url")))
-                        colWebsite = c;
-                    else if (colType == 0 && (txt.Contains("loại hình") || txt.Contains("loại ncc") || txt.Contains("loại")))
-                        colType = c;
-                    else if (colScope == 0 && (txt.Contains("phạm vi") || txt.Contains("scope")))
-                        colScope = c;
-                    else if (colDebt == 0 && (txt.Contains("hạn nợ") || txt.Contains("ngày nợ") || txt.Contains("debt")))
-                        colDebt = c;
-                    else if (colLimit == 0 && (txt.Contains("hạn mức") || txt.Contains("credit limit")))
-                        colLimit = c;
-                    else if (colTerms == 0 && (txt.Contains("điều khoản") || txt.Contains("thanh toán") || txt.Contains("terms")))
-                        colTerms = c;
-                    else if (colGroups == 0 && (txt.Contains("ngành hàng") || txt.Contains("nhóm")))
-                        colGroups = c;
-                }
-            }
-
-            if (colName == 0)
-            {
-                colCode = 1;
-                colName = 2;
-                colTax = 3;
-                colPhone = 4;
-                colWebsite = 5;
-                colType = 6;
-                colScope = 7;
-                colDebt = 8;
-                colLimit = 9;
-                colTerms = 10;
-                colGroups = 11;
-            }
-
-            int dataStartRow = bestMatchCount > 0 ? bestHeaderRow + 1 : 2;
-
-            for (int r = dataStartRow; r <= maxRow; r++)
-            {
-                var row = ws.Row(r);
-                var name = colName > 0 ? row.Cell(colName).GetString().Trim() : "";
-                var code = colCode > 0 ? row.Cell(colCode).GetString().Trim() : "";
-                var taxCode = colTax > 0 ? row.Cell(colTax).GetString().Trim() : "";
-                var phone = colPhone > 0 ? row.Cell(colPhone).GetString().Trim() : "";
-                var website = colWebsite > 0 ? row.Cell(colWebsite).GetString().Trim() : "";
-                var supplierType = colType > 0 ? row.Cell(colType).GetString().Trim() : "";
-                var scope = colScope > 0 ? row.Cell(colScope).GetString().Trim() : "";
-                var debtStr = colDebt > 0 ? row.Cell(colDebt).GetString().Trim() : "";
-                var limitStr = colLimit > 0 ? row.Cell(colLimit).GetString().Trim() : "";
-                var terms = colTerms > 0 ? row.Cell(colTerms).GetString().Trim() : "";
-                var groups = colGroups > 0 ? row.Cell(colGroups).GetString().Trim() : "";
-
-                if (string.IsNullOrWhiteSpace(name) && string.IsNullOrWhiteSpace(taxCode) && string.IsNullOrWhiteSpace(phone) && string.IsNullOrWhiteSpace(code))
-                    continue;
-
-                if (colCode == 1 && int.TryParse(code, out var sttNum) && sttNum == r - dataStartRow + 1)
-                {
-                    code = "";
-                }
-
-                int.TryParse(debtStr, out var debt);
-                if (debt <= 0) debt = 30;
-
-                decimal? creditLimit = decimal.TryParse(limitStr, out var lim) && lim > 0 ? lim : null;
-
-                rows.Add(new RawSupplierRow(
-                    RowIndex: r,
-                    Code: string.IsNullOrWhiteSpace(code) ? null : code,
-                    Name: name,
-                    TaxCode: string.IsNullOrWhiteSpace(taxCode) ? null : taxCode,
-                    Phone: string.IsNullOrWhiteSpace(phone) ? null : phone,
-                    Website: string.IsNullOrWhiteSpace(website) ? null : website,
-                    SupplierType: string.IsNullOrWhiteSpace(supplierType) ? null : supplierType,
-                    Scope: string.IsNullOrWhiteSpace(scope) ? null : scope,
-                    Debt: debt,
-                    CreditLimit: creditLimit,
-                    Terms: string.IsNullOrWhiteSpace(terms) ? null : terms,
-                    Groups: string.IsNullOrWhiteSpace(groups) ? null : groups));
-            }
-        }
-
-        return (rows, availableSheets, selectedSheet);
+        var (result, errorMessage) = await ExcelService.ImportExcelAsync(stream, sheetName, ct);
+        return errorMessage is not null ? BadRequest(errorMessage) : Ok(result);
     }
 
     [HttpGet("blacklist")]
     [RequirePermission("wms.suppliers.view:all")]
-    public async Task<ActionResult<IReadOnlyList<SupplierBlacklistDto>>> ListBlacklist(
-        CancellationToken ct)
-    {
-        var items = await db.Suppliers.AsNoTracking()
-            .Where(s => s.IsBlacklisted)
-            .OrderByDescending(s => s.BlacklistedAt)
-            .ThenBy(s => s.SupplierCode)
-            .Select(s => new SupplierBlacklistDto(
-                s.Id,
-                s.SupplierCode,
-                s.SupplierName,
-                s.ContactPhone,
-                s.Rating,
-                s.BlacklistedAt ?? s.UpdatedAt,
-                s.BlacklistedByName,
-                s.BlacklistReason))
-            .ToListAsync(ct);
-        return Ok(items);
-    }
+    public async Task<ActionResult<IReadOnlyList<SupplierBlacklistDto>>> ListBlacklist(CancellationToken ct) =>
+        Ok(await Directory.ListBlacklistAsync(ct));
 
     [HttpGet("{id:int}")]
     [RequirePermission("wms.suppliers.view:all")]
     public async Task<ActionResult<SupplierDto>> GetById(int id, CancellationToken ct)
     {
-        var s = await db.Suppliers.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id, ct);
-        if (s is null)
-            return NotFound();
-
-        var groupsOfSupplier = await db.SupplierGroupMembers.AsNoTracking()
-            .Where(m => m.SupplierId == id)
-            .Select(m => m.Group!.Name)
-            .Distinct()
-            .OrderBy(n => n)
-            .ToListAsync(ct);
-
-        var purchasedRevenue = await db.PurchaseOrders.AsNoTracking()
-            .Where(o => o.SupplierId == id && o.DeliveryStatus == PurchaseOrderDeliveryStatuses.Complete)
-            .SumAsync(o => o.TotalAmount, ct);
-
-        var latest = await db.SupplierEvaluations.AsNoTracking()
-            .Where(v => v.SupplierId == id)
-            .OrderByDescending(v => v.EvaluatedAt)
-            .ThenByDescending(v => v.Id)
-            .Select(v => new { v.Period, v.Score, v.Grade, v.EvaluatedAt })
-            .FirstOrDefaultAsync(ct);
-
-        SupplierLatestEvaluationDto? latestEvaluation = latest is null
-            ? null
-            : new SupplierLatestEvaluationDto(
-                latest.Period,
-                latest.Score,
-                latest.Grade,
-                SupplierGradeMapper.KpiGradeLabel(latest.Grade),
-                latest.EvaluatedAt);
-
-        var contacts = await db.SupplierContacts.AsNoTracking()
-            .Where(c => c.SupplierId == id)
-            .OrderBy(c => c.Role == SupplierContactRoles.Primary ? 0 : 1)
-            .ThenBy(c => c.Id)
-            .ToListAsync(ct);
-
-        var primaryContactEntity = contacts.FirstOrDefault(c => c.Role == SupplierContactRoles.Primary) ?? contacts.FirstOrDefault();
-        SupplierPrimaryContactDto? primaryContact = primaryContactEntity is null
-            ? null
-            : new SupplierPrimaryContactDto(
-                primaryContactEntity.Id,
-                primaryContactEntity.FullName,
-                primaryContactEntity.Position,
-                primaryContactEntity.Phone,
-                primaryContactEntity.Email,
-                primaryContactEntity.Role);
-
-        var attachments = await db.SupplierAttachments.AsNoTracking()
-            .Where(a => a.SupplierId == id)
-            .OrderByDescending(a => a.UploadedAt)
-            .Select(a => new SupplierAttachmentDto(
-                a.Id,
-                a.SupplierId,
-                a.DocType,
-                SupplierAttachmentDocTypes.ToClientLabel(a.DocType),
-                a.FileName,
-                a.FileSizeBytes,
-                a.ContentType,
-                a.UploadedAt,
-                a.UploadedByName,
-                $"/api/warehouse/suppliers/{id}/attachments/{a.Id}/download"
-            ))
-            .ToListAsync(ct);
-
-        return Ok(new SupplierDto(
-            s.Id,
-            s.SupplierCode,
-            s.SupplierName,
-            s.ContactPhone,
-            s.MaxDebtDays,
-            s.CreditLimit,
-            s.PaymentTerms,
-            s.Rating,
-            s.ApprovalStatus,
-            s.IsBlacklisted,
-            s.BlacklistReason,
-            s.BlacklistedAt,
-            s.BlacklistedByName,
-            Math.Round(purchasedRevenue, 2),
-            groupsOfSupplier,
-            latestEvaluation,
-            s.TaxCode,
-            s.SupplierType,
-            s.Scope,
-            s.Website,
-            primaryContact,
-            attachments,
-            contacts.Count));
+        var dto = await Directory.GetByIdAsync(id, ct);
+        return dto is null ? NotFound() : Ok(dto);
     }
 
     [HttpPost]
     [RequirePermission("wms.suppliers.create")]
-    public async Task<ActionResult<SupplierDto>> Create([FromBody] UpsertSupplierRequest req, CancellationToken ct)
-    {
-        if (TryValidateUpsert(req, requireCode: false, out var phone, out var errors) is BadRequestObjectResult bad)
-            return bad;
-
-        var name = req.SupplierName.Trim();
-        if (await SupplierNameTakenAsync(name, exceptId: null, currentName: null, ct))
-        {
-            errors["supplierName"] = ["Tên nhà cung cấp đã tồn tại."];
-            return FieldErrors(errors);
-        }
-
-        string supplierCode;
-        if (!string.IsNullOrWhiteSpace(req.SupplierCode))
-        {
-            var customCode = req.SupplierCode.Trim();
-            if (await db.Suppliers.IgnoreQueryFilters().AnyAsync(s => s.SupplierCode == customCode, ct))
-            {
-                errors["supplierCode"] = [$"Mã nhà cung cấp '{customCode}' đã tồn tại."];
-                return FieldErrors(errors);
-            }
-            supplierCode = customCode;
-        }
-        else
-        {
-            supplierCode = await NextSupplierCodeAsync(ct);
-        }
-
-        var s = new Supplier
-        {
-            SupplierCode = supplierCode,
-            SupplierName = name,
-            TaxCode = string.IsNullOrWhiteSpace(req.TaxCode) ? null : req.TaxCode.Trim(),
-            SupplierType = string.IsNullOrWhiteSpace(req.SupplierType) ? null : req.SupplierType.Trim(),
-            Scope = string.IsNullOrWhiteSpace(req.Scope) ? null : req.Scope.Trim(),
-            Website = string.IsNullOrWhiteSpace(req.Website) ? null : req.Website.Trim(),
-            ContactPhone = phone,
-            MaxDebtDays = req.MaxDebtDays,
-            CreditLimit = NormalizeCreditLimit(req.CreditLimit),
-            PaymentTerms = string.IsNullOrWhiteSpace(req.PaymentTerms) ? null : req.PaymentTerms.Trim(),
-            Rating = SupplierGrades.D,
-            ApprovalStatus = SupplierApprovalStatuses.New,
-        };
-        db.Suppliers.Add(s);
-        await db.SaveChangesAsync(ct);
-
-        var contactName = req.ResolvedContactName;
-        var contactEmail = req.ResolvedContactEmail;
-        var contactPosition = req.ResolvedContactPosition;
-
-        if (!string.IsNullOrWhiteSpace(contactName) || !string.IsNullOrWhiteSpace(phone) || !string.IsNullOrWhiteSpace(contactEmail))
-        {
-            var primaryContact = new SupplierContact
-            {
-                SupplierId = s.Id,
-                FullName = !string.IsNullOrWhiteSpace(contactName) ? contactName : (!string.IsNullOrWhiteSpace(phone) ? $"Liên hệ {phone}" : s.SupplierName),
-                Position = contactPosition,
-                Phone = phone,
-                Email = contactEmail,
-                Role = SupplierContactRoles.Primary,
-                IsPrimary = true
-            };
-            db.SupplierContacts.Add(primaryContact);
-            await db.SaveChangesAsync(ct);
-        }
-
-        return await GetById(s.Id, ct);
-    }
+    public async Task<ActionResult<SupplierDto>> Create([FromBody] UpsertSupplierRequest req, CancellationToken ct) =>
+        ToActionResult(await Directory.CreateAsync(req, ct));
 
     [HttpPut("{id:int}")]
     [RequirePermission("wms.suppliers.update")]
     public async Task<IActionResult> Update(int id, [FromBody] UpsertSupplierRequest req, CancellationToken ct)
     {
-        if (TryValidateUpsert(req, requireCode: false, out var phone, out var errors) is BadRequestObjectResult invalid)
-            return invalid;
-
-        var s = await db.Suppliers.FindAsync([id], ct);
-        if (s is null) return NotFound();
-
-        var name = req.SupplierName.Trim();
-        if (await SupplierNameTakenAsync(name, exceptId: id, currentName: s.SupplierName, ct))
+        var outcome = await Directory.UpdateAsync(id, req, ct);
+        return outcome.ErrorKind switch
         {
-            return FieldErrors(new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)
-            {
-                ["supplierName"] = ["Tên nhà cung cấp đã tồn tại."],
-            });
-        }
-
-        if (!string.IsNullOrWhiteSpace(req.SupplierCode))
-        {
-            var customCode = req.SupplierCode.Trim();
-            if (customCode != s.SupplierCode)
-            {
-                if (await db.Suppliers.IgnoreQueryFilters().AnyAsync(x => x.Id != id && x.SupplierCode == customCode, ct))
-                {
-                    return FieldErrors(new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)
-                    {
-                        ["supplierCode"] = [$"Mã nhà cung cấp '{customCode}' đã tồn tại."],
-                    });
-                }
-                s.SupplierCode = customCode;
-            }
-        }
-
-        s.SupplierName = name;
-        s.TaxCode = string.IsNullOrWhiteSpace(req.TaxCode) ? null : req.TaxCode.Trim();
-        s.SupplierType = string.IsNullOrWhiteSpace(req.SupplierType) ? null : req.SupplierType.Trim();
-        s.Scope = string.IsNullOrWhiteSpace(req.Scope) ? null : req.Scope.Trim();
-        s.Website = string.IsNullOrWhiteSpace(req.Website) ? null : req.Website.Trim();
-        s.ContactPhone = phone;
-        s.MaxDebtDays = req.MaxDebtDays;
-        s.CreditLimit = NormalizeCreditLimit(req.CreditLimit);
-        s.PaymentTerms = string.IsNullOrWhiteSpace(req.PaymentTerms) ? null : req.PaymentTerms.Trim();
-        // Rating + ApprovalStatus are system-owned — never overwrite from client.
-        s.UpdatedAt = DateTime.UtcNow;
-
-        var contactName = req.ResolvedContactName;
-        var contactEmail = req.ResolvedContactEmail;
-        var contactPosition = req.ResolvedContactPosition;
-
-        var existingPrimary = await db.SupplierContacts
-            .FirstOrDefaultAsync(c => c.SupplierId == id && c.Role == SupplierContactRoles.Primary, ct);
-
-        if (existingPrimary != null)
-        {
-            if (!string.IsNullOrWhiteSpace(contactName))
-                existingPrimary.FullName = contactName;
-            if (contactPosition != null)
-                existingPrimary.Position = contactPosition;
-            if (phone != null)
-                existingPrimary.Phone = phone;
-            if (contactEmail != null)
-                existingPrimary.Email = contactEmail;
-            existingPrimary.UpdatedAt = DateTime.UtcNow;
-        }
-        else if (!string.IsNullOrWhiteSpace(contactName) || !string.IsNullOrWhiteSpace(phone) || !string.IsNullOrWhiteSpace(contactEmail))
-        {
-            var primaryContact = new SupplierContact
-            {
-                SupplierId = s.Id,
-                FullName = !string.IsNullOrWhiteSpace(contactName) ? contactName : (!string.IsNullOrWhiteSpace(phone) ? $"Liên hệ {phone}" : s.SupplierName),
-                Position = contactPosition,
-                Phone = phone,
-                Email = contactEmail,
-                Role = SupplierContactRoles.Primary,
-                IsPrimary = true
-            };
-            db.SupplierContacts.Add(primaryContact);
-        }
-
-        await db.SaveChangesAsync(ct);
-        return NoContent();
+            SupplierServiceErrorKind.None => NoContent(),
+            SupplierServiceErrorKind.NotFound => NotFound(),
+            SupplierServiceErrorKind.ValidationFields => BadRequest(new { errors = outcome.FieldErrors }),
+            _ => BadRequest(outcome.Message),
+        };
     }
 
     [HttpPost("{id:int}/approve")]
     [RequirePermission("wms.suppliers.approve")]
-    public async Task<ActionResult<SupplierDto>> Approve(int id, CancellationToken ct)
-    {
-        var s = await db.Suppliers.FirstOrDefaultAsync(x => x.Id == id, ct);
-        if (s is null) return NotFound();
-        if (s.IsBlacklisted)
-            return Conflict("NCC đang blacklist, không thể duyệt để đặt hàng.");
-
-        s.ApprovalStatus = SupplierApprovalStatuses.Approved;
-        s.UpdatedAt = DateTime.UtcNow;
-        await db.SaveChangesAsync(ct);
-        return await GetById(id, ct);
-    }
+    public async Task<ActionResult<SupplierDto>> Approve(int id, CancellationToken ct) =>
+        ToActionResult(await Directory.ApproveAsync(id, ct));
 
     [HttpPost("{id:int}/reject")]
     [RequirePermission("wms.suppliers.approve")]
-    public async Task<ActionResult<SupplierDto>> Reject(int id, CancellationToken ct)
-    {
-        var s = await db.Suppliers.FirstOrDefaultAsync(x => x.Id == id, ct);
-        if (s is null) return NotFound();
-
-        s.ApprovalStatus = SupplierApprovalStatuses.Rejected;
-        s.UpdatedAt = DateTime.UtcNow;
-        await db.SaveChangesAsync(ct);
-        return await GetById(id, ct);
-    }
+    public async Task<ActionResult<SupplierDto>> Reject(int id, CancellationToken ct) =>
+        ToActionResult(await Directory.RejectAsync(id, ct));
 
     [HttpPost("{id:int}/blacklist")]
     [RequirePermission("wms.suppliers.update")]
     public async Task<ActionResult<SupplierDto>> AddToBlacklist(
-        int id, [FromBody] BlacklistSupplierRequest request, CancellationToken ct)
-    {
-        var s = await db.Suppliers.FirstOrDefaultAsync(x => x.Id == id, ct);
-        if (s is null) return NotFound();
-
-        var reason = (request.Reason ?? string.Empty).Trim();
-        if (reason.Length == 0)
-            return BadRequest("Lý do đưa vào blacklist là bắt buộc.");
-        if (reason.Length > 1000)
-            return BadRequest("Lý do blacklist tối đa 1000 ký tự.");
-
-        s.IsBlacklisted = true;
-        s.BlacklistedAt = DateTime.UtcNow;
-        s.BlacklistedById = currentUser.IsAuthenticated ? currentUser.Id : null;
-        s.BlacklistedByName = currentUser.IsAuthenticated ? currentUser.Name : null;
-        s.BlacklistReason = reason;
-        s.UpdatedAt = DateTime.UtcNow;
-        await db.SaveChangesAsync(ct);
-
-        return await GetById(id, ct);
-    }
+        int id, [FromBody] BlacklistSupplierRequest request, CancellationToken ct) =>
+        ToActionResult(await Directory.AddToBlacklistAsync(id, request, ct));
 
     [HttpDelete("{id:int}/blacklist")]
     [RequirePermission("wms.suppliers.update")]
-    public async Task<ActionResult<SupplierDto>> RemoveFromBlacklist(int id, CancellationToken ct)
-    {
-        var s = await db.Suppliers.FirstOrDefaultAsync(x => x.Id == id, ct);
-        if (s is null) return NotFound();
-
-        s.IsBlacklisted = false;
-        s.BlacklistedAt = null;
-        s.BlacklistedById = null;
-        s.BlacklistedByName = null;
-        s.BlacklistReason = null;
-        s.UpdatedAt = DateTime.UtcNow;
-        await db.SaveChangesAsync(ct);
-
-        return await GetById(id, ct);
-    }
+    public async Task<ActionResult<SupplierDto>> RemoveFromBlacklist(int id, CancellationToken ct) =>
+        ToActionResult(await Directory.RemoveFromBlacklistAsync(id, ct));
 
     [HttpDelete("{id:int}")]
     [RequirePermission("wms.suppliers.delete")]
-    public async Task<IActionResult> Delete(int id, CancellationToken ct)
-    {
-        var s = await db.Suppliers.FindAsync([id], ct);
-        if (s is null) return NotFound();
-        s.DeletedAt = DateTime.UtcNow;
-        await db.SaveChangesAsync(ct);
-        return NoContent();
-    }
+    public async Task<IActionResult> Delete(int id, CancellationToken ct) =>
+        await Directory.DeleteAsync(id, ct) ? NoContent() : NotFound();
 
     [HttpGet("{id:int}/attachments")]
     [RequirePermission("wms.suppliers.view:all")]
     public async Task<ActionResult<IReadOnlyList<SupplierAttachmentDto>>> ListAttachments(
-        int id, CancellationToken ct)
-    {
-        var supplier = await db.Suppliers.AsNoTracking().FirstOrDefaultAsync(s => s.Id == id, ct);
-        if (supplier is null) return NotFound(new { message = $"Không tìm thấy nhà cung cấp #{id}." });
-
-        var list = await db.SupplierAttachments.AsNoTracking()
-            .Where(a => a.SupplierId == id)
-            .OrderByDescending(a => a.UploadedAt)
-            .Select(a => new SupplierAttachmentDto(
-                a.Id,
-                a.SupplierId,
-                a.DocType,
-                SupplierAttachmentDocTypes.ToClientLabel(a.DocType),
-                a.FileName,
-                a.FileSizeBytes,
-                a.ContentType,
-                a.UploadedAt,
-                a.UploadedByName,
-                $"/api/warehouse/suppliers/{id}/attachments/{a.Id}/download"))
-            .ToListAsync(ct);
-
-        return Ok(list);
-    }
+        int id, CancellationToken ct) =>
+        ToActionResult(await Directory.ListAttachmentsAsync(id, ct), wrapMessage: true);
 
     [HttpPost("{id:int}/attachments")]
     [RequirePermission("wms.suppliers.update")]
@@ -1403,215 +197,56 @@ public class SuppliersController(
         int id,
         IFormFile file,
         [FromForm] string docType = "other",
-        CancellationToken ct = default)
-    {
-        if (file is null || file.Length == 0)
-            return BadRequest(new { message = "File tải lên trống." });
-
-        var supplier = await db.Suppliers.FirstOrDefaultAsync(s => s.Id == id, ct);
-        if (supplier is null)
-            return NotFound(new { message = $"Không tìm thấy nhà cung cấp #{id}." });
-
-        if (fileStorage is null)
-            return StatusCode(500, new { message = "Dịch vụ lưu trữ tệp chưa được cấu hình." });
-
-        var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
-        string[] allowed =
-        [
-            ".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp",
-            ".pdf",
-            ".doc", ".docx", ".rtf",
-            ".xls", ".xlsx", ".xlsm", ".xlsb", ".csv",
-            ".ppt", ".pptx",
-            ".txt", ".zip", ".rar"
-        ];
-        if (!allowed.Contains(ext))
-        {
-            return BadRequest(new { message = $"Định dạng tệp không được hỗ trợ: {ext}. Vui lòng chọn tệp PDF, Word, Excel hoặc hình ảnh." });
-        }
-
-        var normalizedDocType = SupplierAttachmentDocTypes.Allowed.Contains(docType.Trim())
-            ? docType.Trim().ToLowerInvariant()
-            : SupplierAttachmentDocTypes.Other;
-
-        var relativePath = $"purchasing/suppliers/{id}/{normalizedDocType}/{Guid.NewGuid():N}{ext}";
-        var contentType = !string.IsNullOrWhiteSpace(file.ContentType) ? file.ContentType : "application/octet-stream";
-
-        await using var stream = file.OpenReadStream();
-        var stored = await fileStorage.SaveAsync(stream, relativePath, contentType, ct);
-
-        var attachment = new SupplierAttachment
-        {
-            Id = Guid.NewGuid(),
-            SupplierId = id,
-            DocType = normalizedDocType,
-            FileName = Path.GetFileName(file.FileName),
-            StorageKey = stored.StorageKey,
-            FileSizeBytes = file.Length,
-            ContentType = contentType,
-            UploadedAt = DateTime.UtcNow,
-            UploadedByName = currentUser.IsAuthenticated ? currentUser.Name : null,
-        };
-
-        db.SupplierAttachments.Add(attachment);
-        supplier.UpdatedAt = DateTime.UtcNow;
-        await db.SaveChangesAsync(ct);
-
-        var dto = new SupplierAttachmentDto(
-            attachment.Id,
-            attachment.SupplierId,
-            attachment.DocType,
-            SupplierAttachmentDocTypes.ToClientLabel(attachment.DocType),
-            attachment.FileName,
-            attachment.FileSizeBytes,
-            attachment.ContentType,
-            attachment.UploadedAt,
-            attachment.UploadedByName,
-            $"/api/warehouse/suppliers/{id}/attachments/{attachment.Id}/download");
-
-        return Ok(dto);
-    }
+        CancellationToken ct = default) =>
+        ToActionResult(await Directory.UploadAttachmentAsync(id, file, docType, ct), wrapMessage: true);
 
     [HttpGet("{id:int}/attachments/{attachmentId:guid}/download")]
     [RequirePermission("wms.suppliers.view:all")]
     public async Task<IActionResult> DownloadAttachment(int id, Guid attachmentId, CancellationToken ct)
     {
-        var att = await db.SupplierAttachments.AsNoTracking()
-            .FirstOrDefaultAsync(a => a.SupplierId == id && a.Id == attachmentId, ct);
-        if (att is null)
-            return NotFound(new { message = "Không tìm thấy hồ sơ đính kèm." });
-
-        if (fileStorage is null)
-            return StatusCode(500, new { message = "Dịch vụ lưu trữ tệp chưa được cấu hình." });
-
-        var stored = await fileStorage.OpenReadAsync(att.StorageKey, ct);
-        if (stored is null)
-            return NotFound(new { message = "Tệp đính kèm không còn tồn tại trên máy chủ lưu trữ. Vui lòng tải lại hồ sơ." });
-
-        return File(stored.Stream, stored.ResolveContentType(att.FileName), att.FileName);
+        var outcome = await Directory.DownloadAttachmentAsync(id, attachmentId, ct);
+        return outcome.ErrorKind switch
+        {
+            SupplierServiceErrorKind.None => File(outcome.Data!.Stream, outcome.Data.ContentType, outcome.Data.FileName),
+            SupplierServiceErrorKind.NotFound => NotFound(new { message = outcome.Message }),
+            SupplierServiceErrorKind.StorageUnavailable => StatusCode(500, new { message = outcome.Message }),
+            _ => BadRequest(new { message = outcome.Message }),
+        };
     }
 
     [HttpDelete("{id:int}/attachments/{attachmentId:guid}")]
     [RequirePermission("wms.suppliers.update")]
     public async Task<IActionResult> DeleteAttachment(int id, Guid attachmentId, CancellationToken ct)
     {
-        var att = await db.SupplierAttachments
-            .FirstOrDefaultAsync(a => a.SupplierId == id && a.Id == attachmentId, ct);
-        if (att is null)
-            return NotFound(new { message = "Không tìm thấy hồ sơ đính kèm." });
-
-        var supplier = await db.Suppliers.FirstOrDefaultAsync(s => s.Id == id, ct);
-        if (supplier is not null)
-            supplier.UpdatedAt = DateTime.UtcNow;
-
-        att.DeletedAt = DateTime.UtcNow;
-        await db.SaveChangesAsync(ct);
-        return NoContent();
+        var outcome = await Directory.DeleteAttachmentAsync(id, attachmentId, ct);
+        return outcome.ErrorKind == SupplierServiceErrorKind.NotFound
+            ? NotFound(new { message = outcome.Message })
+            : NoContent();
     }
 
-    private static IActionResult? TryValidateUpsert(
-        UpsertSupplierRequest req,
-        bool requireCode,
-        out string? phone,
-        out Dictionary<string, string[]> errors)
+    private string? ResolveSheetName(string? sheetName)
     {
-        errors = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
-        phone = null;
-
-        var code = req.SupplierCode?.Trim() ?? string.Empty;
-        if (requireCode)
+        if (string.IsNullOrWhiteSpace(sheetName)
+            && Request?.HasFormContentType == true
+            && Request.Form.TryGetValue("sheetName", out var formSheet))
         {
-            if (code.Length == 0)
-                errors["supplierCode"] = ["Mã NCC là bắt buộc."];
-            else if (code.Length > SupplierFieldLimits.CodeMax)
-                errors["supplierCode"] = [$"Mã NCC tối đa {SupplierFieldLimits.CodeMax} ký tự."];
+            return formSheet.ToString();
         }
-        else if (code.Length > SupplierFieldLimits.CodeMax)
-        {
-            errors["supplierCode"] = [$"Mã NCC tối đa {SupplierFieldLimits.CodeMax} ký tự."];
-        }
-
-        var name = req.SupplierName?.Trim() ?? string.Empty;
-        if (name.Length == 0)
-            errors["supplierName"] = ["Tên nhà cung cấp là bắt buộc."];
-        else if (name.Length > SupplierFieldLimits.NameMax)
-            errors["supplierName"] = [$"Tên nhà cung cấp tối đa {SupplierFieldLimits.NameMax} ký tự."];
-
-        if (req.MaxDebtDays < SupplierFieldLimits.MaxDebtDaysMin
-            || req.MaxDebtDays > SupplierFieldLimits.MaxDebtDaysMax)
-            errors["maxDebtDays"] = ["Hạn công nợ từ 0 đến 3650 ngày."];
-
-        if (req.CreditLimit is < SupplierFieldLimits.CreditLimitMin
-            or > SupplierFieldLimits.CreditLimitMax)
-            errors["creditLimit"] = ["Hạn mức công nợ phải từ 0 trở lên."];
-
-        var terms = req.PaymentTerms?.Trim() ?? string.Empty;
-        if (terms.Length > SupplierFieldLimits.PaymentTermsMax)
-            errors["paymentTerms"] = [$"Điều khoản thanh toán tối đa {SupplierFieldLimits.PaymentTermsMax} ký tự."];
-
-        var tax = req.TaxCode?.Trim() ?? string.Empty;
-        if (tax.Length > 50)
-            errors["taxCode"] = ["Mã số thuế tối đa 50 ký tự."];
-
-        if ((req.SupplierType?.Trim().Length ?? 0) > 50)
-            errors["supplierType"] = ["Loại hình nhà cung cấp tối đa 50 ký tự."];
-
-        if ((req.Scope?.Trim().Length ?? 0) > 50)
-            errors["scope"] = ["Phạm vi hoạt động tối đa 50 ký tự."];
-
-        if ((req.Website?.Trim().Length ?? 0) > 255)
-            errors["website"] = ["Website tối đa 255 ký tự."];
-
-        try
-        {
-            phone = VietnamPhoneRules.NormalizeOptional(req.ContactPhone);
-        }
-        catch (ArgumentException ex)
-        {
-            errors["contactPhone"] = [ex.Message];
-        }
-
-        return errors.Count > 0 ? FieldErrors(errors) : null;
+        return sheetName;
     }
 
-    private async Task<bool> SupplierNameTakenAsync(
-        string name, int? exceptId, string? currentName, CancellationToken ct)
-    {
-        if (exceptId is not null && Supplier.SameFoldedName(name, currentName))
-            return false;
-
-        var names = await db.Suppliers.AsNoTracking()
-            .Where(s => exceptId == null || s.Id != exceptId)
-            .Select(s => s.SupplierName)
-            .ToListAsync(ct);
-        return names.Exists(existing => Supplier.SameFoldedName(existing, name));
-    }
-
-    private async Task<string> NextSupplierCodeAsync(CancellationToken ct)
-    {
-        var codes = await db.Suppliers.IgnoreQueryFilters()
-            .Select(s => s.SupplierCode)
-            .ToListAsync(ct);
-        var next = 1;
-        foreach (var code in codes)
+    private ActionResult<T> ToActionResult<T>(SupplierServiceOutcome<T> outcome, bool wrapMessage = false) =>
+        outcome.ErrorKind switch
         {
-            if (Supplier.TryParseSequence(code, out var n))
-                next = Math.Max(next, n + 1);
-        }
-
-        for (var i = 0; i < 8; i++)
-        {
-            var candidate = Supplier.GenerateCode(next + i);
-            if (!await db.Suppliers.IgnoreQueryFilters().AnyAsync(s => s.SupplierCode == candidate, ct))
-                return candidate;
-        }
-
-        return Supplier.GenerateCode(next);
-    }
-
-    private static decimal? NormalizeCreditLimit(decimal? value) =>
-        value is > 0 ? Math.Round(value.Value, 2) : null;
-
-    private static BadRequestObjectResult FieldErrors(IReadOnlyDictionary<string, string[]> errors) =>
-        new(new { errors });
+            SupplierServiceErrorKind.None => Ok(outcome.Data),
+            SupplierServiceErrorKind.ValidationFields => BadRequest(new { errors = outcome.FieldErrors }),
+            SupplierServiceErrorKind.NotFound => outcome.Message is not null
+                ? NotFound(new { message = outcome.Message })
+                : NotFound(),
+            SupplierServiceErrorKind.Conflict => Conflict(outcome.Message),
+            SupplierServiceErrorKind.StorageUnavailable => StatusCode(500, new { message = outcome.Message }),
+            _ => wrapMessage
+                ? BadRequest(new { message = outcome.Message })
+                : BadRequest(outcome.Message),
+        };
 }

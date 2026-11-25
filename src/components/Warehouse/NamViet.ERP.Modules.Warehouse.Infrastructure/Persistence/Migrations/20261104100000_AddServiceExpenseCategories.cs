@@ -24,16 +24,6 @@ public partial class AddServiceExpenseCategories : Migration
 
             CREATE UNIQUE INDEX IF NOT EXISTS "IX_service_expense_categories_Code" 
             ON warehouse.service_expense_categories ("Code");
-
-            INSERT INTO warehouse.service_expense_categories ("Code", "Name", "Description", "IsActive", "SortOrder")
-            VALUES 
-                ('NHAN_CONG', 'Chi phí nhân công thi công, lắp đặt', 'Chi phí nhân công khoán, thuê ngoài, lắp ráp', TRUE, 1),
-                ('VAN_CHUYEN', 'Chi phí cẩu tháp, vận chuyển, bốc xếp', 'Chi phí vận tải vật tư, thuê xe cẩu, bốc vác', TRUE, 2),
-                ('KIEM_DINH', 'Chi phí kiểm định áp lực, thử tải', 'Kiểm định chất lượng, thí nghiệm, đo kiểm an toàn', TRUE, 3),
-                ('THUE_THIET_BI', 'Chi phí thuê giàn giáo, máy hàn, thiết bị', 'Thuê máy móc, thiết bị thi công ngắn/dài hạn', TRUE, 4),
-                ('CHI_PHI_CONG_TRUONG', 'Chi phí lưu trú, quản lý công trường', 'Chi phí ăn ở cán bộ, lán trại, phụ cấp công trường', TRUE, 5),
-                ('KHAC', 'Chi phí dịch vụ khác', 'Các chi phí dịch vụ và dịch vụ phụ trợ khác', TRUE, 6)
-            ON CONFLICT ("Code") DO NOTHING;
         """);
     }
 

@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using NamViet.ERP.Api.Application.Dtos.Purchasing;
 using NamViet.ERP.Api.Application.Services.Purchasing;
+using NamViet.ERP.Api.Infrastructure.Authorization;
 using NamViet.ERP.Modules.Warehouse.Domain.Entities;
 using NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence;
 using NamViet.ERP.SharedKernel.Common;
@@ -57,6 +58,7 @@ public class ServiceExpenseItemsController(WarehouseDbContext db, IServiceExpens
 {
     private IServiceExpenseImportExcelService ExcelService => excelService ?? new ServiceExpenseImportExcelService(db);
     [HttpGet]
+    [RequireAnyPermission("wms.projects.view:all", "wms.materials.view:all", "purchasing.plans.view")]
     public async Task<ActionResult<ServiceExpenseItemPagedResponse>> List(
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 50,
@@ -130,6 +132,7 @@ public class ServiceExpenseItemsController(WarehouseDbContext db, IServiceExpens
     }
 
     [HttpGet("{id:int}")]
+    [RequireAnyPermission("wms.projects.view:all", "wms.materials.view:all", "purchasing.plans.view")]
     public async Task<ActionResult<ServiceExpenseItemDto>> GetById(int id, CancellationToken ct)
     {
         var item = await db.ServiceExpenseItems
@@ -153,6 +156,7 @@ public class ServiceExpenseItemsController(WarehouseDbContext db, IServiceExpens
     }
 
     [HttpPost]
+    [RequireAnyPermission("wms.materials.create", "wms.projects.update", "purchasing.plans.create")]
     public async Task<ActionResult<ServiceExpenseItemDto>> Create(
         [FromBody] CreateServiceExpenseItemRequest request,
         CancellationToken ct)
@@ -213,6 +217,7 @@ public class ServiceExpenseItemsController(WarehouseDbContext db, IServiceExpens
     }
 
     [HttpPut("{id:int}")]
+    [RequireAnyPermission("wms.materials.update", "wms.projects.update", "purchasing.plans.update")]
     public async Task<ActionResult<ServiceExpenseItemDto>> Update(
         int id,
         [FromBody] UpdateServiceExpenseItemRequest request,
@@ -271,6 +276,7 @@ public class ServiceExpenseItemsController(WarehouseDbContext db, IServiceExpens
     }
 
     [HttpPatch("{id:int}/toggle-active")]
+    [RequireAnyPermission("wms.materials.update", "wms.projects.update", "purchasing.plans.update")]
     public async Task<ActionResult<ServiceExpenseItemDto>> ToggleActive(int id, CancellationToken ct)
     {
         var entity = await db.ServiceExpenseItems
@@ -297,6 +303,7 @@ public class ServiceExpenseItemsController(WarehouseDbContext db, IServiceExpens
     }
 
     [HttpDelete("{id:int}")]
+    [RequireAnyPermission("wms.materials.delete", "wms.projects.update", "purchasing.plans.update")]
     public async Task<IActionResult> Delete(int id, CancellationToken ct)
     {
         var entity = await db.ServiceExpenseItems
@@ -321,7 +328,7 @@ public class ServiceExpenseItemsController(WarehouseDbContext db, IServiceExpens
     }
 
     [HttpGet("import-template")]
-    [AllowAnonymous]
+    [RequireAnyPermission("wms.projects.view:all", "wms.materials.view:all", "purchasing.plans.view")]
     public async Task<IActionResult> DownloadImportTemplate(CancellationToken ct)
     {
         var bytes = await ExcelService.GenerateTemplateAsync(ct);
@@ -332,6 +339,7 @@ public class ServiceExpenseItemsController(WarehouseDbContext db, IServiceExpens
     }
 
     [HttpPost("parse-import-file")]
+    [RequireAnyPermission("wms.materials.create", "wms.projects.update", "purchasing.plans.create")]
     [RequestSizeLimit(5 * 1024 * 1024 + 1024)]
     public async Task<ActionResult<ServiceExpenseImportParseResultDto>> ParseImportFile(IFormFile? file, CancellationToken ct)
     {
@@ -361,6 +369,7 @@ public class ServiceExpenseItemsController(WarehouseDbContext db, IServiceExpens
     }
 
     [HttpPost("import-batch")]
+    [RequireAnyPermission("wms.materials.create", "wms.projects.update", "purchasing.plans.create")]
     public async Task<ActionResult<ServiceExpenseImportResultDto>> ImportBatch(
         [FromBody] ServiceExpenseImportBatchRequest request,
         CancellationToken ct)

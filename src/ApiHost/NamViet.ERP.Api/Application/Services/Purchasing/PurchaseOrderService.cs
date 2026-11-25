@@ -178,23 +178,12 @@ public sealed partial class PurchaseOrderService(
         return t;
     }
 
-    private static void EnsureAllowedExtension(string fileName)
-    {
-        var ext = Path.GetExtension(fileName).ToLowerInvariant();
-        // Ảnh + tài liệu văn phòng Microsoft / PDF thường dùng cho C/O, C/Q, HĐ, BBNT.
-        string[] allowed =
-        [
-            ".jpg", ".jpeg", ".png", ".webp", ".gif",
-            ".pdf",
-            ".doc", ".docx", ".rtf",
-            ".xls", ".xlsx", ".xlsm", ".xlsb", ".csv",
-            ".ppt", ".pptx",
-            ".txt",
-        ];
-        if (!allowed.Contains(ext))
-            throw new PurchasingConflictException(
-                $"Định dạng file không hỗ trợ: {ext}. Cho phép ảnh, PDF và file Microsoft Office (Word/Excel/PowerPoint).");
-    }
+    private static void EnsureAllowedExtension(string fileName) =>
+        FileUploadValidator.EnsureAllowedExtension(
+            fileName,
+            FileUploadValidator.StandardOfficeAndImageExtensions,
+            msg => new PurchasingConflictException(msg),
+            $"Định dạng file không hỗ trợ: {Path.GetExtension(fileName).ToLowerInvariant()}. Cho phép ảnh, PDF và file Microsoft Office (Word/Excel/PowerPoint).");
 
     private static List<PurchaseOrderInstallmentRequest> BuildInstallmentSpecs(
         int? installmentCount,

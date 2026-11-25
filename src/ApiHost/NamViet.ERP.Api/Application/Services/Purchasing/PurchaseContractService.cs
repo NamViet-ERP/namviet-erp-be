@@ -47,16 +47,6 @@ public sealed class PurchaseContractService(
     IFileStorage fileStorage,
     ICurrentUser currentUser) : IPurchaseContractService
 {
-    private static readonly string[] AllowedExtensions =
-    [
-        ".jpg", ".jpeg", ".png", ".webp", ".gif",
-        ".pdf",
-        ".doc", ".docx", ".rtf",
-        ".xls", ".xlsx", ".xlsm", ".xlsb", ".csv",
-        ".ppt", ".pptx",
-        ".txt",
-    ];
-
     public async Task<PurchaseContractPagedResponse> ListAsync(
         int page,
         int pageSize,
@@ -390,13 +380,12 @@ public sealed class PurchaseContractService(
         return PurchaseContractStatuses.Allowed.Contains(t) ? t : null;
     }
 
-    private static void EnsureAllowedExtension(string fileName)
-    {
-        var ext = Path.GetExtension(fileName).ToLowerInvariant();
-        if (!AllowedExtensions.Contains(ext))
-            throw new PurchasingConflictException(
-                $"Định dạng file không hỗ trợ: {ext}. Cho phép ảnh, PDF và file Microsoft Office.");
-    }
+    private static void EnsureAllowedExtension(string fileName) =>
+        FileUploadValidator.EnsureAllowedExtension(
+            fileName,
+            FileUploadValidator.StandardOfficeAndImageExtensions,
+            msg => new PurchasingConflictException(msg),
+            $"Định dạng file không hỗ trợ: {Path.GetExtension(fileName).ToLowerInvariant()}. Cho phép ảnh, PDF và file Microsoft Office.");
 
     private static PurchaseContractDto ToDto(PurchaseContract c) => new(
         c.Id,

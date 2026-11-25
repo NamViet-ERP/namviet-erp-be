@@ -1017,11 +1017,9 @@ public sealed class PurchaseDefectApplicationService(
         };
     }
 
-    private static void EnsureAllowedExtension(string fileName)
-    {
-        var ext = Path.GetExtension(fileName).ToLowerInvariant();
-        string[] allowed = [".jpg", ".jpeg", ".png", ".webp", ".gif", ".pdf", ".doc", ".docx", ".xls", ".xlsx"];
-        if (!allowed.Contains(ext))
-            throw new PurchasingConflictException($"Định dạng file không hỗ trợ: {ext}");
-    }
+    private static void EnsureAllowedExtension(string fileName) =>
+        FileUploadValidator.EnsureAllowedExtension(
+            fileName,
+            FileUploadValidator.DefectAttachmentExtensions,
+            msg => new PurchasingConflictException(msg));
 }

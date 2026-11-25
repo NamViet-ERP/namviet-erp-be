@@ -44,9 +44,9 @@ public class FileAccessBoundaryTests
         db.Projects.Add(new Project { ProjectCode = "TEST", ProjectName = "Test" });
         await db.SaveChangesAsync();
         var service = new CskhCoordinationService(db);
-        var document = service.CreateDocument("TEST", new CreateProjectDocumentRequest("DOC", "Document", "other", null, null));
+        var document = await service.CreateDocumentAsync("TEST", new CreateProjectDocumentRequest("DOC", "Document", "other", null, null));
         var key = $"cskh/projects/TEST/docs/{document.Id}/file.pdf";
-        service.UpdateDocumentFile("TEST", document.Id, "file.pdf", "1 KB", $"/download?key={Uri.EscapeDataString(key)}");
+        await service.UpdateDocumentFileAsync("TEST", document.Id, "file.pdf", "1 KB", $"/download?key={Uri.EscapeDataString(key)}");
         var storage = new TrackingStorage();
         var controller = new ProjectDocumentsController(service);
         Assert.IsType<NotFoundResult>(await controller.DownloadFile("TEST", document.Id, "hr/employees/private.pdf", storage, default));

@@ -120,3 +120,21 @@ public record UpsertPurchaseItemEstimatePriceRequest(
     decimal EstimatePrice,
     DateOnly EffectiveDate,
     string? Note);
+
+public record PriceBookMarkupCategoryDto(
+    string Id,
+    string Name,
+    decimal Percent,
+    string? Note = null);
+
+public record PriceBookMarkupSettingsDto(
+    decimal GlobalMarkupPercent,
+    IReadOnlyList<PriceBookMarkupCategoryDto> Categories,
+    IReadOnlyDictionary<string, decimal> ItemOverrides,
+    DateTime? UpdatedAt,
+    string? UpdatedBy);
+
+public record UpdatePriceBookMarkupSettingsRequest(
+    decimal GlobalMarkupPercent,
+    IReadOnlyList<PriceBookMarkupCategoryDto>? Categories = null,
+    IReadOnlyDictionary<string, decimal>? ItemOverrides = null);

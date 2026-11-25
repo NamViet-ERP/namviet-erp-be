@@ -1,10 +1,10 @@
 using Microsoft.Extensions.Diagnostics.HealthChecks;
+using NamViet.ERP.Api.Services.Storage;
 
 namespace NamViet.ERP.Api.Infrastructure.Health;
 
 /// <summary>
-/// Readiness: private upload root exists and is writable
-/// (same resolution rules as <see cref="Services.Storage.LocalFileStorage"/>).
+/// Readiness: aligned with Program.cs storage provider selection; checks S3 configuration or local upload writability.
 /// </summary>
 public sealed class FileStorageReadyHealthCheck(
     IWebHostEnvironment env,
@@ -16,12 +16,11 @@ public sealed class FileStorageReadyHealthCheck(
     {
         try
         {
-            var provider = configuration["FileStorage:Provider"]?.Trim();
-            var s3Bucket = configuration["FileStorage:S3:BucketName"]?.Trim();
-            if (string.Equals(provider, "S3", StringComparison.OrdinalIgnoreCase)
-                || (!string.Equals(provider, "Local", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(s3Bucket)))
+            var (useS3, s3Options) = FileStorageProviderSelection.Resolve(configuration);
+            if (useS3)
             {
-                return Task.FromResult(HealthCheckResult.Healthy($"S3 storage configured for bucket '{s3Bucket}'"));
+                return Task.FromResult(
+                    HealthCheckResult.Healthy($"S3 storage configured for bucket '{s3Options.BucketName}'"));
             }
 
             var root = ResolveRoot();

@@ -3,7 +3,7 @@ echo "🛡️ [PRE-COMMIT HARNESS BE] Đang kích hoạt kiểm tra an toàn C# 
 
 # 1. Living Invariants .NET Tests
 echo "🧪 [1/2] Kiểm tra Unit Tests & Invariants C#..."
-dotnet test tests/NamViet.ERP.Tests/NamViet.ERP.Tests.csproj --no-build || {
+dotnet test tests/NamViet.ERP.Tests/NamViet.ERP.Tests.csproj || {
     echo "❌ Unit Tests BE thất bại!"; exit 1;
 }
 

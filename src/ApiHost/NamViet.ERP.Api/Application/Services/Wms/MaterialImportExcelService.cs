@@ -575,7 +575,7 @@ public sealed class MaterialImportExcelService(WarehouseDbContext db) : IMateria
             var categoryCache = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
 
             // Helper tìm hoặc tạo node danh mục
-            int EnsureCategoryHierarchy(string l1, string l2, string? l3, string? l4, string? l5)
+            async Task<int> EnsureCategoryHierarchyAsync(string l1, string l2, string? l3, string? l4, string? l5)
             {
                 var key = $"{l1}|{l2}|{l3}|{l4}|{l5}";
                 if (categoryCache.TryGetValue(key, out var cachedId)) return cachedId;
@@ -594,7 +594,7 @@ public sealed class MaterialImportExcelService(WarehouseDbContext db) : IMateria
                         IsActive = true
                     };
                     db.MaterialCategories.Add(c1);
-                    db.SaveChanges();
+                    await db.SaveChangesAsync(ct);
                     allCategories.Add(c1);
                 }
 
@@ -612,7 +612,7 @@ public sealed class MaterialImportExcelService(WarehouseDbContext db) : IMateria
                         IsActive = true
                     };
                     db.MaterialCategories.Add(c2);
-                    db.SaveChanges();
+                    await db.SaveChangesAsync(ct);
                     allCategories.Add(c2);
                 }
 
@@ -634,7 +634,7 @@ public sealed class MaterialImportExcelService(WarehouseDbContext db) : IMateria
                             IsActive = true
                         };
                         db.MaterialCategories.Add(c3);
-                        db.SaveChanges();
+                        await db.SaveChangesAsync(ct);
                         allCategories.Add(c3);
                     }
                     currentLeaf = c3;
@@ -655,7 +655,7 @@ public sealed class MaterialImportExcelService(WarehouseDbContext db) : IMateria
                                 IsActive = true
                             };
                             db.MaterialCategories.Add(c4);
-                            db.SaveChanges();
+                            await db.SaveChangesAsync(ct);
                             allCategories.Add(c4);
                         }
                         currentLeaf = c4;
@@ -676,7 +676,7 @@ public sealed class MaterialImportExcelService(WarehouseDbContext db) : IMateria
                                     IsActive = true
                                 };
                                 db.MaterialCategories.Add(c5);
-                                db.SaveChanges();
+                                await db.SaveChangesAsync(ct);
                                 allCategories.Add(c5);
                             }
                             currentLeaf = c5;
@@ -697,7 +697,7 @@ public sealed class MaterialImportExcelService(WarehouseDbContext db) : IMateria
             foreach (var row in validRows)
             {
                 var code = row.MaterialCode.Trim();
-                var leafCatId = EnsureCategoryHierarchy(
+                var leafCatId = await EnsureCategoryHierarchyAsync(
                     row.DanhMuc ?? "Vật tư chung",
                     row.NhomVatTu ?? "Tổng hợp",
                     row.LoaiVatTu,

@@ -56,7 +56,9 @@ namespace NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence.Migrations
 
             migrationBuilder.Sql("""
                 INSERT INTO warehouse.material_categories ("Code", "Name", "Level", "ParentId", "SortOrder", "IsActive", "CreatedAt", "UpdatedAt")
-                VALUES ('UNCATEGORIZED', 'Chưa phân loại', 1, NULL, 0, TRUE, NOW(), NOW());
+                SELECT 'UNCATEGORIZED', 'Chưa phân loại', 1, NULL, 0, TRUE, NOW(), NOW()
+                WHERE EXISTS (SELECT 1 FROM warehouse.materials WHERE "MaterialCategory" IS NOT NULL OR "MaterialCode" IS NOT NULL)
+                  AND NOT EXISTS (SELECT 1 FROM warehouse.material_categories WHERE "Code" = 'UNCATEGORIZED');
                 """);
 
             migrationBuilder.AddColumn<int>(
@@ -242,16 +244,6 @@ namespace NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence.Migrations
                 principalTable: "warehouse_transactions",
                 principalColumn: "TicketCode",
                 onDelete: ReferentialAction.SetNull);
-
-            migrationBuilder.Sql("""
-                INSERT INTO warehouse.warehouses ("Id", "Code", "Name", "Group", "Address", "Branch", "Manager", "Status", "CreatedAt", "UpdatedAt")
-                SELECT 'wh-general', 'KHO-TONG', 'Kho tổng Nam Việt', 'Kho tổng', 'Kho tổng tập trung', 'HCM', 'Phan Văn Vỹ', 'active', NOW(), NOW()
-                WHERE NOT EXISTS (SELECT 1 FROM warehouse.warehouses WHERE "Id" = 'wh-general');
-
-                INSERT INTO warehouse.wms_settings ("Key", "Value", "CreatedAt", "UpdatedAt")
-                SELECT 'general_warehouse_id', 'wh-general', NOW(), NOW()
-                WHERE NOT EXISTS (SELECT 1 FROM warehouse.wms_settings WHERE "Key" = 'general_warehouse_id');
-                """);
         }
 
         /// <inheritdoc />

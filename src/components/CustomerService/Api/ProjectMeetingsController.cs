@@ -14,55 +14,59 @@ public class ProjectMeetingsController(ICskhCoordinationService cskhService) : C
 {
     [HttpGet]
     [RequirePermission("wms.projects.view:all")]
-    public ActionResult<List<ProjectMeetingDto>> List(string code)
+    public async Task<ActionResult<List<ProjectMeetingDto>>> List(string code, CancellationToken ct = default)
     {
-        var list = cskhService.GetMeetings(code);
+        var list = await cskhService.GetMeetingsAsync(code, ct);
         return Ok(list);
     }
 
     [HttpPost]
     [RequirePermission("wms.projects.update")]
-    public ActionResult<ProjectMeetingDto> Create(string code, [FromBody] CreateProjectMeetingRequest request)
+    public async Task<ActionResult<ProjectMeetingDto>> Create(
+        string code, [FromBody] CreateProjectMeetingRequest request, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(request.Name))
             return BadRequest(new { error = "Tiêu đề cuộc họp không được để trống." });
 
-        var created = cskhService.CreateMeeting(code, request);
+        var created = await cskhService.CreateMeetingAsync(code, request, ct);
         return Created($"/api/warehouse/projects/{code}/meetings/{created.Id}", created);
     }
 
     [HttpPut("{id}/minutes")]
     [RequirePermission("wms.projects.update")]
-    public ActionResult<ProjectMeetingDto> UpdateMinutes(string code, string id, [FromBody] UpdateProjectMeetingMinutesRequest request)
+    public async Task<ActionResult<ProjectMeetingDto>> UpdateMinutes(
+        string code, string id, [FromBody] UpdateProjectMeetingMinutesRequest request, CancellationToken ct = default)
     {
-        var updated = cskhService.UpdateMeetingMinutes(code, id, request);
+        var updated = await cskhService.UpdateMeetingMinutesAsync(code, id, request, ct);
         if (updated == null) return NotFound();
         return Ok(updated);
     }
 
     [HttpPut("{id}/actions/{actionId}")]
     [RequirePermission("wms.projects.update")]
-    public ActionResult<ProjectMeetingDto> ToggleAction(string code, string id, string actionId, [FromBody] UpdateProjectMeetingActionRequest request)
+    public async Task<ActionResult<ProjectMeetingDto>> ToggleAction(
+        string code, string id, string actionId, [FromBody] UpdateProjectMeetingActionRequest request, CancellationToken ct = default)
     {
-        var updated = cskhService.ToggleMeetingAction(code, id, actionId, request.Done);
+        var updated = await cskhService.ToggleMeetingActionAsync(code, id, actionId, request.Done, ct);
         if (updated == null) return NotFound();
         return Ok(updated);
     }
 
     [HttpPut("{id}")]
     [RequirePermission("wms.projects.update")]
-    public ActionResult<ProjectMeetingDto> Update(string code, string id, [FromBody] CreateProjectMeetingRequest request)
+    public async Task<ActionResult<ProjectMeetingDto>> Update(
+        string code, string id, [FromBody] CreateProjectMeetingRequest request, CancellationToken ct = default)
     {
-        var updated = cskhService.UpdateMeeting(code, id, request);
+        var updated = await cskhService.UpdateMeetingAsync(code, id, request, ct);
         if (updated == null) return NotFound();
         return Ok(updated);
     }
 
     [HttpDelete("{id}")]
     [RequirePermission("wms.projects.update")]
-    public IActionResult Delete(string code, string id)
+    public async Task<IActionResult> Delete(string code, string id, CancellationToken ct = default)
     {
-        var deleted = cskhService.DeleteMeeting(code, id);
+        var deleted = await cskhService.DeleteMeetingAsync(code, id, ct);
         if (!deleted) return NotFound();
         return NoContent();
     }

@@ -43,29 +43,46 @@ public class PurchasePlanImportServiceTests
         var preview = service.Preview(ms, "DA-DEMO");
 
         Assert.Equal(0, preview.ErrorRowCount);
-        Assert.True(preview.ValidRowCount >= 50);
-        Assert.Equal(50, preview.Lines.Count);
+        Assert.Equal(0, preview.ValidRowCount);
+        Assert.Empty(preview.Lines);
         Assert.Contains(preview.MappedColumns, c => c.Field == "MaterialCode");
         Assert.Contains(preview.MappedColumns, c => c.Field == "ProductName");
         Assert.Contains(preview.MappedColumns, c => c.Field == "Quantity");
         Assert.Contains(preview.MappedColumns, c => c.Field == "Unit");
-
-        var line = Assert.Single(preview.Lines, l => l.ProductName.Contains("A515"));
-        Assert.True(line.IsValid);
-        Assert.Equal("VT-THEP-A515", line.MaterialCode);
-        Assert.Equal(5m, line.Quantity);
-        Assert.Equal("Tấm", line.Unit);
-        Assert.Equal(25_500m, line.BudgetUnitPrice);
-        Assert.Equal(2651m, line.KgPerUnit);
-        Assert.Equal(25_455m, line.ProposalUnitPrice);
-        Assert.Equal("ĐÔNG Á", line.ProposalSupplierName);
-        Assert.Equal(PurchasePlanLineTypes.Material, line.LineType);
         Assert.Contains(preview.MappedColumns, c => c.Field == "Description");
         Assert.Contains(preview.MappedColumns, c => c.Field == "BudgetUnitPrice");
         Assert.Contains(preview.MappedColumns, c => c.Field == "ProposalUnitPrice");
         Assert.Contains(preview.MappedColumns, c => c.Field == "PurchaseUnitPrice");
         Assert.Contains(preview.MappedColumns, c => c.Field == "SelectedUnitPrice");
         Assert.DoesNotContain(preview.MappedColumns, c => c.Field.StartsWith("Quote", StringComparison.Ordinal));
+
+        // Verify populating a row into the downloaded clean template round-trips cleanly
+        ms.Position = 0;
+        using var wb = new XLWorkbook(ms);
+        var sheet = wb.Worksheet("KHMH");
+        sheet.Cell(3, 1).Value = 1;
+        sheet.Cell(3, 2).Value = "Hệ ống";
+        sheet.Cell(3, 3).Value = "Ống thép";
+        sheet.Cell(3, 4).Value = "VT-TEST-01";
+        sheet.Cell(3, 5).Value = "Ống thép đúc DN100";
+        sheet.Cell(3, 8).Value = "Cây";
+        sheet.Cell(3, 9).Value = 10;
+        sheet.Cell(3, 11).Value = 500_000;
+        sheet.Cell(3, 12).Value = 5_000_000;
+
+        using var populated = new MemoryStream();
+        wb.SaveAs(populated);
+        populated.Position = 0;
+
+        var populatedPreview = service.Preview(populated, "DA-DEMO");
+        Assert.Equal(0, populatedPreview.ErrorRowCount);
+        Assert.Equal(1, populatedPreview.ValidRowCount);
+        var line = Assert.Single(populatedPreview.Lines);
+        Assert.Equal("VT-TEST-01", line.MaterialCode);
+        Assert.Equal("Ống thép đúc DN100", line.ProductName);
+        Assert.Equal(10m, line.Quantity);
+        Assert.Equal("Cây", line.Unit);
+        Assert.Equal(500_000m, line.BudgetUnitPrice);
     }
 
     [Theory]

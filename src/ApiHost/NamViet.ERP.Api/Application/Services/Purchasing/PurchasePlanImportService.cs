@@ -3,7 +3,6 @@ using System.Text;
 using System.Text.RegularExpressions;
 using ClosedXML.Excel;
 using NamViet.ERP.Api.Application.Dtos.Purchasing;
-using NamViet.ERP.Modules.Warehouse.Application.Catalog;
 using Microsoft.EntityFrameworkCore;
 using NamViet.ERP.Modules.Warehouse.Domain.Entities;
 using NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence;
@@ -106,14 +105,6 @@ public sealed class PurchasePlanImportService(WarehouseDbContext? db = null) : I
     private static readonly XLColor GroupHeaderFont = XLColor.FromHtml("#0070C0");
     private static readonly XLColor ColumnHeaderFill = XLColor.FromHtml("#002060");
     private static readonly XLColor ColumnHeaderFont = XLColor.FromHtml("#FFC000");
-    private static readonly XLColor AccentRed = XLColor.FromHtml("#C00000");
-    private static readonly XLColor FillHe = XLColor.FromHtml("#FFF2CC");
-    private static readonly XLColor FillStatus = XLColor.FromHtml("#DDEBF7");
-    private static readonly XLColor FillBudget = XLColor.FromHtml("#E2EFDA");
-    private static readonly XLColor FillProposal = XLColor.FromHtml("#FCE4D6");
-    private static readonly XLColor FillDelivery = XLColor.FromHtml("#DEEBF7");
-    private static readonly XLColor FillPurchase = XLColor.FromHtml("#EDEDED");
-    private static readonly XLColor FillSelected = XLColor.FromHtml("#FFF2CC");
 
     public byte[] BuildImportTemplate()
     {
@@ -121,9 +112,6 @@ public sealed class PurchasePlanImportService(WarehouseDbContext? db = null) : I
         var sheet = workbook.Worksheets.Add("KHMH");
         const int groupRow = 1;
         const int headerRow = 2;
-        const int firstDataRow = 3;
-        const int sampleRowCount = 50;
-        var lastDataRow = firstDataRow + sampleRowCount - 1;
         var colCount = TemplateColumns.Length;
 
         for (var i = 0; i < colCount; i++)
@@ -165,171 +153,16 @@ public sealed class PurchasePlanImportService(WarehouseDbContext? db = null) : I
                 : ColumnHeaderFont;
         }
 
-        WriteSampleRows(sheet, firstDataRow);
-        StyleDataArea(sheet, firstDataRow, lastDataRow, colCount);
-        ApplyGroupSeparators(sheet, groupRow, lastDataRow, colCount);
+        ApplyGroupSeparators(sheet, groupRow, headerRow, colCount);
 
         sheet.SheetView.FreezeRows(headerRow);
-        sheet.Columns().AdjustToContents(groupRow, lastDataRow, 8.0, 28.0);
+        sheet.Columns().AdjustToContents(groupRow, headerRow, 8.0, 28.0);
         sheet.Row(groupRow).Height = 22;
         sheet.Row(headerRow).Height = 40;
 
         using var ms = new MemoryStream();
         workbook.SaveAs(ms);
         return ms.ToArray();
-    }
-
-    private static void WriteSampleRows(IXLWorksheet sheet, int firstDataRow)
-    {
-        var samples = KhmhDemoMaterialCatalog.All;
-
-        for (var i = 0; i < samples.Count; i++)
-        {
-            var row = firstDataRow + i;
-            var s = samples[i];
-            var budgetAmount = Math.Round(s.Qty * s.KgPerUnit * s.BudgetUnitPrice, 0);
-            var proposalAmount = Math.Round(s.Qty * s.KgPerUnit * s.ProposalUnitPrice, 0);
-            var purchasePrice = Math.Round(s.ProposalUnitPrice * 0.99m, 0);
-            var purchaseAmount = Math.Round(s.Qty * s.KgPerUnit * purchasePrice, 0);
-
-            sheet.Cell(row, 1).Value = i + 1;
-            sheet.Cell(row, 2).Value = s.SystemName;
-            sheet.Cell(row, 3).Value = s.Category;
-            sheet.Cell(row, 4).Value = s.MaterialCode;
-            sheet.Cell(row, 5).Value = s.ProductName;
-            sheet.Cell(row, 6).Value = s.Spec;
-            sheet.Cell(row, 7).Value = "Phục vụ thi công dự án";
-            sheet.Cell(row, 8).Value = s.Unit;
-            sheet.Cell(row, 9).Value = s.Qty;
-            sheet.Cell(row, 10).Value = s.KgPerUnit;
-            sheet.Cell(row, 11).Value = s.BudgetUnitPrice;
-            sheet.Cell(row, 12).Value = budgetAmount;
-            sheet.Cell(row, 13).Value = s.PurchaseStatus;
-            sheet.Cell(row, 14).Value = s.KgPerUnit;
-            sheet.Cell(row, 15).Value = s.ProposalUnitPrice;
-            sheet.Cell(row, 16).Value = proposalAmount;
-            sheet.Cell(row, 17).Value = s.ProposalSupplier;
-            sheet.Cell(row, 18).Value = s.ProposalNote;
-            sheet.Cell(row, 19).Value = new DateTime(2026, 5, 27);
-            sheet.Cell(row, 20).Value = new DateTime(2026, 5, 20);
-            sheet.Cell(row, 21).Value = new DateTime(2026, 5, 25);
-            sheet.Cell(row, 22).Value = new DateTime(2026, 5, 25);
-            sheet.Cell(row, 23).Value = string.Empty;
-            sheet.Cell(row, 24).Value = Math.Round(s.KgPerUnit * 0.995m, 2);
-            sheet.Cell(row, 25).Value = purchasePrice;
-            sheet.Cell(row, 26).Value = purchaseAmount;
-            sheet.Cell(row, 27).Value = s.PurchaseSupplier;
-            sheet.Cell(row, 28).Value = string.Empty;
-            sheet.Cell(row, 29).Value = s.ProposalUnitPrice;
-            sheet.Cell(row, 30).Value = proposalAmount;
-            sheet.Cell(row, 31).Value = s.SelectedSupplier;
-            sheet.Cell(row, 32).Value = s.SelectionReason;
-
-            for (var c = 19; c <= 22; c++)
-                sheet.Cell(row, c).Style.DateFormat.Format = "dd-mm-yyyy";
-        }
-    }
-
-    private static void StyleDataArea(IXLWorksheet sheet, int firstRow, int lastRow, int colCount)
-    {
-        var range = sheet.Range(firstRow, 1, lastRow, colCount);
-        range.Style.Font.FontSize = 10;
-        range.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
-        range.Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
-        range.Style.Border.OutsideBorderColor = ColumnHeaderFill;
-        range.Style.Border.InsideBorder = XLBorderStyleValues.Hair;
-        range.Style.Border.InsideBorderColor = XLColor.FromHtml("#7F7F7F");
-
-        for (var row = firstRow; row <= lastRow; row++)
-        {
-            var rowRange = sheet.Range(row, 1, row, colCount);
-            rowRange.Style.Border.BottomBorder = XLBorderStyleValues.Dashed;
-            rowRange.Style.Border.BottomBorderColor = ColumnHeaderFill;
-            rowRange.Style.Border.TopBorder = XLBorderStyleValues.Dashed;
-            rowRange.Style.Border.TopBorderColor = ColumnHeaderFill;
-        }
-
-        ApplyColumnFill(sheet, firstRow, lastRow, 2, FillHe);
-        ApplyColumnFill(sheet, firstRow, lastRow, 11, FillBudget);
-        ApplyColumnFill(sheet, firstRow, lastRow, 12, FillBudget);
-        ApplyColumnFill(sheet, firstRow, lastRow, 13, FillStatus);
-        for (var c = 14; c <= 18; c++)
-            ApplyColumnFill(sheet, firstRow, lastRow, c, FillProposal);
-        for (var c = 19; c <= 23; c++)
-            ApplyColumnFill(sheet, firstRow, lastRow, c, FillDelivery);
-        for (var c = 24; c <= 28; c++)
-            ApplyColumnFill(sheet, firstRow, lastRow, c, FillPurchase);
-        for (var c = 29; c <= 32; c++)
-            ApplyColumnFill(sheet, firstRow, lastRow, c, FillSelected);
-
-        // Default: text left, money right. Center only columns from user screenshots.
-        var leftCols = new[] { 3, 5, 6, 7, 18, 23, 28 }; // danh mục, tên SP, quy cách, diễn giải, ghi chú
-        var rightCols = new[] { 11, 12, 15, 16, 25, 26, 29, 30 }; // đơn giá / thành tiền
-        var centerCols = new[]
-        {
-            1, 2, 4,       // STT, HỆ, MÃ VẬT TƯ
-            8, 9, 10,       // ĐVT, SỐ LƯỢNG, KG/ĐVT
-            13,            // TÌNH TRẠNG
-            14, 24,        // KG/ĐVT đề xuất / mua hàng
-            17, 27,        // NCC
-            19, 20, 21, 22, // ngày giao hàng
-            31, 32,        // NCC CHỌN, LÝ DO CHỌN
-        };
-
-        var integerCols = new[] { 1, 9, 11, 12, 15, 16, 25, 26, 29, 30 };
-        var kgCols = new[] { 10, 14, 24 }; // KG/ĐVT — format per value (no trailing ".")
-
-        for (var row = firstRow; row <= lastRow; row++)
-        {
-            foreach (var c in leftCols)
-                sheet.Cell(row, c).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Left;
-            foreach (var c in rightCols)
-                sheet.Cell(row, c).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
-            foreach (var c in centerCols)
-                sheet.Cell(row, c).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
-
-            foreach (var c in integerCols)
-                sheet.Cell(row, c).Style.NumberFormat.Format = "#,##0";
-
-            foreach (var c in kgCols)
-                ApplyKgNumberFormat(sheet.Cell(row, c));
-
-            sheet.Cell(row, 5).Style.Alignment.WrapText = true;
-            sheet.Cell(row, 6).Style.Alignment.WrapText = true;
-            sheet.Cell(row, 7).Style.Alignment.WrapText = true;
-            sheet.Cell(row, 18).Style.Alignment.WrapText = true;
-            sheet.Cell(row, 32).Style.Alignment.WrapText = true;
-
-            sheet.Cell(row, 12).Style.Font.FontColor = AccentRed;
-            sheet.Cell(row, 12).Style.Font.Bold = true;
-            sheet.Cell(row, 17).Style.Font.FontColor = AccentRed;
-            sheet.Cell(row, 17).Style.Font.Bold = true;
-            sheet.Cell(row, 22).Style.Font.FontColor = AccentRed;
-            sheet.Cell(row, 27).Style.Font.FontColor = AccentRed;
-            sheet.Cell(row, 27).Style.Font.Bold = true;
-            sheet.Cell(row, 31).Style.Font.FontColor = AccentRed;
-            sheet.Cell(row, 31).Style.Font.Bold = true;
-        }
-    }
-
-    /// <summary>
-    /// Avoid Excel showing "2,651." — optional-decimal formats still leave a trailing point for integers.
-    /// </summary>
-    private static void ApplyKgNumberFormat(IXLCell cell)
-    {
-        if (cell.TryGetValue(out double n))
-        {
-            var isWhole = Math.Abs(n - Math.Truncate(n)) < 0.0000001;
-            cell.Style.NumberFormat.Format = isWhole ? "#,##0" : "#,##0.00";
-            return;
-        }
-
-        cell.Style.NumberFormat.Format = "#,##0.##";
-    }
-
-    private static void ApplyColumnFill(IXLWorksheet sheet, int firstRow, int lastRow, int col, XLColor fill)
-    {
-        sheet.Range(firstRow, col, lastRow, col).Style.Fill.BackgroundColor = fill;
     }
 
     /// <summary>Thick navy vertical borders between major header groups (matches business Excel).</summary>

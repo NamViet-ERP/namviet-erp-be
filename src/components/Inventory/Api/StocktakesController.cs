@@ -28,14 +28,10 @@ public class StocktakesController(
         currentUser.IsInRole(RolePermissionTemplates.AdminRole)
         || currentUser.HasPermission("wms.stocktakes.approve");
 
-    private static bool _schemaEnsured;
-    private static readonly SemaphoreSlim _schemaLock = new(1, 1);
-
     [HttpGet]
     [RequirePermission("wms.stocktakes.view:all")]
     public async Task<ActionResult<List<StocktakeDto>>> List(CancellationToken ct)
     {
-        await EnsureStocktakeSchemaAsync(ct);
         var items = await db.Stocktakes
             .Include(s => s.Items)
             .Where(s => s.DeletedAt == null)
@@ -48,7 +44,6 @@ public class StocktakesController(
     [RequirePermission("wms.stocktakes.view:all")]
     public async Task<ActionResult<StocktakeDto>> GetById(string id, CancellationToken ct)
     {
-        await EnsureStocktakeSchemaAsync(ct);
         var s = await FindAsync(id, ct);
         if (s is null) return NotFound();
         return Ok(WmsMapper.ToStocktake(s));
@@ -58,8 +53,6 @@ public class StocktakesController(
     [RequirePermission("wms.stocktakes.create")]
     public async Task<ActionResult<StocktakeDto>> Create([FromBody] CreateStocktakeDto dto, CancellationToken ct)
     {
-        await EnsureStocktakeSchemaAsync(ct);
-
         var projectCode = dto.WarehouseId?.Trim() ?? "";
         if (string.IsNullOrWhiteSpace(projectCode))
             return BadRequest("Vui lòng chọn kho dự án kiểm kê.");
@@ -170,7 +163,6 @@ public class StocktakesController(
     [RequirePermission("wms.stocktakes.create")]
     public async Task<ActionResult<StocktakeDto>> Update(string id, [FromBody] StocktakeDto dto, CancellationToken ct)
     {
-        await EnsureStocktakeSchemaAsync(ct);
         await using var tx = db.Database.IsRelational() ? await db.Database.BeginTransactionAsync(ct) : null;
         await TicketCodeAllocator.AcquireNamedLockAsync(db, $"wms_stocktake_{id}", ct);
         var s = await FindAsync(id, ct);
@@ -355,27 +347,6 @@ public class StocktakesController(
         await db.Stocktakes.Include(s => s.Items)
             .FirstOrDefaultAsync(s => s.Id == id && s.DeletedAt == null, ct);
 
-    private async Task EnsureStocktakeSchemaAsync(CancellationToken ct)
-    {
-        if (_schemaEnsured || !db.Database.IsRelational()) return;
-        await _schemaLock.WaitAsync(ct);
-        try
-        {
-            if (_schemaEnsured) return;
-            await db.Database.ExecuteSqlRawAsync(
-                "ALTER TABLE warehouse.stocktake_items ADD COLUMN IF NOT EXISTS \"Reason\" character varying(500);",
-                ct);
-            _schemaEnsured = true;
-        }
-        catch
-        {
-            // Bỏ qua nếu user DB không có quyền DDL hoặc cột đã tồn tại
-        }
-        finally
-        {
-            _schemaLock.Release();
-        }
-    }
 
     private async Task EnsureMaterialsExistAsync(List<StocktakeItem> items, CancellationToken ct)
     {

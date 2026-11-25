@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using NamViet.ERP.Api.Infrastructure.Authorization;
 using NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence;
 
 namespace NamViet.ERP.Api.Controllers.Purchasing;
@@ -19,6 +20,7 @@ public record ServiceExpenseCategoryDto(
 public class ServiceExpenseCategoriesController(WarehouseDbContext db) : ControllerBase
 {
     [HttpGet]
+    [RequireAnyPermission("wms.projects.view:all", "wms.materials.view:all", "purchasing.plans.view")]
     public async Task<ActionResult<List<ServiceExpenseCategoryDto>>> GetAll(CancellationToken ct = default)
     {
         var items = await db.ServiceExpenseCategories

@@ -30,17 +30,6 @@ public partial class AddServiceExpenseItems : Migration
 
             CREATE UNIQUE INDEX IF NOT EXISTS "IX_service_expense_items_Code" 
             ON warehouse.service_expense_items ("Code");
-
-            INSERT INTO warehouse.service_expense_items 
-                ("Code", "Name", "Type", "Unit", "ReferencePrice", "Description", "IsActive", "SortOrder", "CreatedAt", "UpdatedAt")
-            VALUES 
-                ('DV-NC-01', 'Chi phí nhân công thi công, lắp đặt', 'service', 'Công', 500000, 'Chi phí nhân công khoán, thuê ngoài, thợ hàn, thợ điện', TRUE, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
-                ('DV-VC-01', 'Chi phí cẩu tháp, vận chuyển, bốc xếp', 'service', 'Chuyến', 3500000, 'Thuê xe cẩu, vận tải hàng hóa, bốc dỡ vật tư tới công trường', TRUE, 2, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
-                ('DV-KD-01', 'Chi phí kiểm định áp lực, thử tải', 'service', 'Lần', 8000000, 'Kiểm định bồn bể, đường ống áp lực, đo kiểm an toàn kỹ thuật', TRUE, 3, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
-                ('CP-THUE-01', 'Thuê máy móc, thiết bị, giàn giáo', 'expense', 'Tháng', 15000000, 'Thuê máy phát điện, máy nén khí, giàn giáo thi công', TRUE, 4, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
-                ('CP-TK-01', 'Chi phí tiếp khách, quan hệ đối tác', 'expense', 'Lần', 2000000, 'Chi phí công tác, tiếp đón chủ đầu tư, tư vấn giám sát', TRUE, 5, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
-                ('CP-LT-01', 'Chi phí lưu trú, phụ cấp công trường', 'expense', 'Tháng', 12000000, 'Chi phí nhà trọ cán bộ, điện nước lán trại công trường', TRUE, 6, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-            ON CONFLICT ("Code") DO NOTHING;
         """);
     }
 

@@ -3,13 +3,16 @@ using Microsoft.AspNetCore.Mvc;
 using NamViet.ERP.Api.Application.Dtos.Purchasing;
 using NamViet.ERP.Api.Application.Services.Purchasing;
 using NamViet.ERP.Api.Infrastructure.Authorization;
+using NamViet.ERP.SharedKernel.Common;
 
 namespace NamViet.ERP.Api.Controllers.Purchasing;
 
 [ApiController]
 [Route("api/purchasing/price-book")]
 [Authorize]
-public class PurchasePriceBookController(IPurchasePriceBookService priceBook) : ControllerBase
+public class PurchasePriceBookController(
+    IPurchasePriceBookService priceBook,
+    IPriceBookMarkupSettingsService markupSettings) : ControllerBase
 {
     [HttpGet("items")]
     [RequirePermission("purchasing.pricebook.view")]
@@ -86,6 +89,26 @@ public class PurchasePriceBookController(IPurchasePriceBookService priceBook) : 
         catch (PurchasingConflictException ex)
         {
             return Conflict(ex.Message);
+        }
+    }
+
+    [HttpGet("/api/purchasing/markup-settings")]
+    [RequirePermission("purchasing.pricebook.view")]
+    public async Task<ActionResult<PriceBookMarkupSettingsDto>> GetMarkupSettings(CancellationToken ct) =>
+        Ok(await markupSettings.GetAsync(ct));
+
+    [HttpPut("/api/purchasing/markup-settings")]
+    [RequirePermission("purchasing.pricebook.update")]
+    public async Task<ActionResult<PriceBookMarkupSettingsDto>> UpdateMarkupSettings(
+        [FromBody] UpdatePriceBookMarkupSettingsRequest request, CancellationToken ct)
+    {
+        try
+        {
+            return Ok(await markupSettings.UpdateAsync(request, ct));
+        }
+        catch (DomainRuleException ex)
+        {
+            return BadRequest(ex.Message);
         }
     }
 }

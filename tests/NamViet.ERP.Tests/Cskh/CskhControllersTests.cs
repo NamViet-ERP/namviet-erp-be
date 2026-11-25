@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using NamViet.ERP.Api.Application.Services.Cskh;
@@ -58,9 +59,9 @@ public class CskhControllersTests : IDisposable
     // ─────────────────────────────────────────────────────────────────────────────
 
     [Fact]
-    public void Bottlenecks_List_WhenEmpty_ReturnsOkWithEmptyList()
+    public async Task Bottlenecks_List_WhenEmpty_ReturnsOkWithEmptyList()
     {
-        var result = _bottlenecksController.List(TestProjectCode);
+        var result = await _bottlenecksController.List(TestProjectCode);
 
         var okResult = Assert.IsType<OkObjectResult>(result.Result);
         var list = Assert.IsAssignableFrom<IReadOnlyList<ProjectBottleneckDto>>(okResult.Value);
@@ -68,7 +69,7 @@ public class CskhControllersTests : IDisposable
     }
 
     [Fact]
-    public void Bottlenecks_Create_WithValidData_ReturnsCreatedAndPersists()
+    public async Task Bottlenecks_Create_WithValidData_ReturnsCreatedAndPersists()
     {
         var request = new CreateProjectBottleneckRequest(
             Name: "Chậm tiến độ giao cáp điện 3 pha",
@@ -80,7 +81,7 @@ public class CskhControllersTests : IDisposable
             Source: "manual"
         );
 
-        var result = _bottlenecksController.Create(TestProjectCode, request);
+        var result = await _bottlenecksController.Create(TestProjectCode, request);
 
         var createdResult = Assert.IsType<CreatedResult>(result.Result);
         var dto = Assert.IsType<ProjectBottleneckDto>(createdResult.Value);
@@ -90,14 +91,14 @@ public class CskhControllersTests : IDisposable
         Assert.NotEmpty(dto.Id);
 
         // Verify list now has 1
-        var listResult = _bottlenecksController.List(TestProjectCode);
+        var listResult = await _bottlenecksController.List(TestProjectCode);
         var okResult = Assert.IsType<OkObjectResult>(listResult.Result);
         var list = Assert.IsAssignableFrom<IReadOnlyList<ProjectBottleneckDto>>(okResult.Value);
         Assert.Single(list);
     }
 
     [Fact]
-    public void Bottlenecks_Create_WithEmptyName_ReturnsBadRequest()
+    public async Task Bottlenecks_Create_WithEmptyName_ReturnsBadRequest()
     {
         var request = new CreateProjectBottleneckRequest(
             Name: "",
@@ -107,13 +108,13 @@ public class CskhControllersTests : IDisposable
             Reason: "Không rõ"
         );
 
-        var result = _bottlenecksController.Create(TestProjectCode, request);
+        var result = await _bottlenecksController.Create(TestProjectCode, request);
 
         Assert.IsType<BadRequestObjectResult>(result.Result);
     }
 
     [Fact]
-    public void Bottlenecks_Update_Existing_ReturnsOkWithUpdatedValues()
+    public async Task Bottlenecks_Update_Existing_ReturnsOkWithUpdatedValues()
     {
         var createRequest = new CreateProjectBottleneckRequest(
             Name: "Thiếu bulong móng M24",
@@ -122,7 +123,7 @@ public class CskhControllersTests : IDisposable
             ExpectedAt: "2026-03-08",
             Reason: "Kho chưa nhập đủ số lượng"
         );
-        var created = Assert.IsType<CreatedResult>(_bottlenecksController.Create(TestProjectCode, createRequest).Result);
+        var created = Assert.IsType<CreatedResult>((await _bottlenecksController.Create(TestProjectCode, createRequest)).Result);
         var createdDto = Assert.IsType<ProjectBottleneckDto>(created.Value);
 
         var updateRequest = new UpdateProjectBottleneckRequest(
@@ -138,7 +139,7 @@ public class CskhControllersTests : IDisposable
             NoteText: "Cập nhật giải pháp xử lý"
         );
 
-        var updateResult = _bottlenecksController.Update(TestProjectCode, createdDto.Id, updateRequest);
+        var updateResult = await _bottlenecksController.Update(TestProjectCode, createdDto.Id, updateRequest);
 
         var okResult = Assert.IsType<OkObjectResult>(updateResult.Result);
         var updatedDto = Assert.IsType<ProjectBottleneckDto>(okResult.Value);
@@ -148,7 +149,7 @@ public class CskhControllersTests : IDisposable
     }
 
     [Fact]
-    public void Bottlenecks_Update_NonExistent_ReturnsNotFound()
+    public async Task Bottlenecks_Update_NonExistent_ReturnsNotFound()
     {
         var updateRequest = new UpdateProjectBottleneckRequest(
             Name: "Test",
@@ -163,13 +164,13 @@ public class CskhControllersTests : IDisposable
             NoteText: null
         );
 
-        var result = _bottlenecksController.Update(TestProjectCode, "non-existent-id", updateRequest);
+        var result = await _bottlenecksController.Update(TestProjectCode, "non-existent-id", updateRequest);
 
         Assert.IsType<NotFoundResult>(result.Result);
     }
 
     [Fact]
-    public void Bottlenecks_Delete_Existing_ReturnsNoContent()
+    public async Task Bottlenecks_Delete_Existing_ReturnsNoContent()
     {
         var createRequest = new CreateProjectBottleneckRequest(
             Name: "Vấn đề cần xóa",
@@ -178,23 +179,23 @@ public class CskhControllersTests : IDisposable
             ExpectedAt: "2026-03-02",
             Reason: "Nhập nhầm"
         );
-        var created = Assert.IsType<CreatedResult>(_bottlenecksController.Create(TestProjectCode, createRequest).Result);
+        var created = Assert.IsType<CreatedResult>((await _bottlenecksController.Create(TestProjectCode, createRequest)).Result);
         var createdDto = Assert.IsType<ProjectBottleneckDto>(created.Value);
 
-        var deleteResult = _bottlenecksController.Delete(TestProjectCode, createdDto.Id);
+        var deleteResult = await _bottlenecksController.Delete(TestProjectCode, createdDto.Id);
         Assert.IsType<NoContentResult>(deleteResult);
 
         // Verify it is gone
-        var listResult = _bottlenecksController.List(TestProjectCode);
+        var listResult = await _bottlenecksController.List(TestProjectCode);
         var okResult = Assert.IsType<OkObjectResult>(listResult.Result);
         var list = Assert.IsAssignableFrom<IReadOnlyList<ProjectBottleneckDto>>(okResult.Value);
         Assert.Empty(list);
     }
 
     [Fact]
-    public void Bottlenecks_Delete_NonExistent_ReturnsNotFound()
+    public async Task Bottlenecks_Delete_NonExistent_ReturnsNotFound()
     {
-        var deleteResult = _bottlenecksController.Delete(TestProjectCode, "unknown-id");
+        var deleteResult = await _bottlenecksController.Delete(TestProjectCode, "unknown-id");
         Assert.IsType<NotFoundResult>(deleteResult);
     }
 
@@ -203,9 +204,9 @@ public class CskhControllersTests : IDisposable
     // ─────────────────────────────────────────────────────────────────────────────
 
     [Fact]
-    public void Requests_List_WhenEmpty_ReturnsOkWithEmptyList()
+    public async Task Requests_List_WhenEmpty_ReturnsOkWithEmptyList()
     {
-        var result = _requestsController.List(TestProjectCode);
+        var result = await _requestsController.List(TestProjectCode);
 
         var okResult = Assert.IsType<OkObjectResult>(result.Result);
         var list = Assert.IsAssignableFrom<IReadOnlyList<ProjectRequestCenterDto>>(okResult.Value);
@@ -213,7 +214,7 @@ public class CskhControllersTests : IDisposable
     }
 
     [Fact]
-    public void Requests_Create_WithValidData_ReturnsCreated()
+    public async Task Requests_Create_WithValidData_ReturnsCreated()
     {
         var request = new CreateProjectRequestCenterRequest(
             Name: "Yêu cầu cấp thêm 5 cuộn cáp hàn 25mm2",
@@ -225,7 +226,7 @@ public class CskhControllersTests : IDisposable
             Body: "Cần gấp để thi công khu vực xưởng 2"
         );
 
-        var result = _requestsController.Create(TestProjectCode, request);
+        var result = await _requestsController.Create(TestProjectCode, request);
 
         var createdResult = Assert.IsType<CreatedResult>(result.Result);
         var dto = Assert.IsType<ProjectRequestCenterDto>(createdResult.Value);
@@ -236,7 +237,7 @@ public class CskhControllersTests : IDisposable
     }
 
     [Fact]
-    public void Requests_Create_WithEmptyName_ReturnsBadRequest()
+    public async Task Requests_Create_WithEmptyName_ReturnsBadRequest()
     {
         var request = new CreateProjectRequestCenterRequest(
             Name: "   ",
@@ -248,12 +249,12 @@ public class CskhControllersTests : IDisposable
             Body: null
         );
 
-        var result = _requestsController.Create(TestProjectCode, request);
+        var result = await _requestsController.Create(TestProjectCode, request);
         Assert.IsType<BadRequestObjectResult>(result.Result);
     }
 
     [Fact]
-    public void Requests_Update_Existing_ReturnsOk()
+    public async Task Requests_Update_Existing_ReturnsOk()
     {
         var createRequest = new CreateProjectRequestCenterRequest(
             Name: "Yêu cầu kiểm định an toàn thang cáp",
@@ -264,7 +265,7 @@ public class CskhControllersTests : IDisposable
             Priority: "medium",
             Body: "Biên bản kiểm tra kỹ thuật"
         );
-        var created = Assert.IsType<CreatedResult>(_requestsController.Create(TestProjectCode, createRequest).Result);
+        var created = Assert.IsType<CreatedResult>((await _requestsController.Create(TestProjectCode, createRequest)).Result);
         var createdDto = Assert.IsType<ProjectRequestCenterDto>(created.Value);
 
         var updateRequest = new UpdateProjectRequestCenterRequest(
@@ -272,7 +273,7 @@ public class CskhControllersTests : IDisposable
             Notes: "Đã hoàn thành kiểm định và có chứng chỉ"
         );
 
-        var updateResult = _requestsController.Update(TestProjectCode, createdDto.Id, updateRequest);
+        var updateResult = await _requestsController.Update(TestProjectCode, createdDto.Id, updateRequest);
 
         var okResult = Assert.IsType<OkObjectResult>(updateResult.Result);
         var updatedDto = Assert.IsType<ProjectRequestCenterDto>(okResult.Value);
@@ -280,19 +281,19 @@ public class CskhControllersTests : IDisposable
     }
 
     [Fact]
-    public void Requests_Update_NonExistent_ReturnsNotFound()
+    public async Task Requests_Update_NonExistent_ReturnsNotFound()
     {
         var updateRequest = new UpdateProjectRequestCenterRequest(
             Status: "closed",
             Notes: null
         );
 
-        var result = _requestsController.Update(TestProjectCode, "random-id", updateRequest);
+        var result = await _requestsController.Update(TestProjectCode, "random-id", updateRequest);
         Assert.IsType<NotFoundResult>(result.Result);
     }
 
     [Fact]
-    public void Requests_Delete_Existing_ReturnsNoContent()
+    public async Task Requests_Delete_Existing_ReturnsNoContent()
     {
         var createRequest = new CreateProjectRequestCenterRequest(
             Name: "Yêu cầu test",
@@ -303,17 +304,17 @@ public class CskhControllersTests : IDisposable
             Priority: "low",
             Body: null
         );
-        var created = Assert.IsType<CreatedResult>(_requestsController.Create(TestProjectCode, createRequest).Result);
+        var created = Assert.IsType<CreatedResult>((await _requestsController.Create(TestProjectCode, createRequest)).Result);
         var createdDto = Assert.IsType<ProjectRequestCenterDto>(created.Value);
 
-        var deleteResult = _requestsController.Delete(TestProjectCode, createdDto.Id);
+        var deleteResult = await _requestsController.Delete(TestProjectCode, createdDto.Id);
         Assert.IsType<NoContentResult>(deleteResult);
     }
 
     [Fact]
-    public void Requests_Delete_NonExistent_ReturnsNotFound()
+    public async Task Requests_Delete_NonExistent_ReturnsNotFound()
     {
-        var deleteResult = _requestsController.Delete(TestProjectCode, "unknown-id");
+        var deleteResult = await _requestsController.Delete(TestProjectCode, "unknown-id");
         Assert.IsType<NotFoundResult>(deleteResult);
     }
 
@@ -322,9 +323,9 @@ public class CskhControllersTests : IDisposable
     // ─────────────────────────────────────────────────────────────────────────────
 
     [Fact]
-    public void Meetings_List_WhenEmpty_ReturnsOkWithEmptyList()
+    public async Task Meetings_List_WhenEmpty_ReturnsOkWithEmptyList()
     {
-        var result = _meetingsController.List(TestProjectCode);
+        var result = await _meetingsController.List(TestProjectCode);
 
         var okResult = Assert.IsType<OkObjectResult>(result.Result);
         var list = Assert.IsAssignableFrom<IReadOnlyList<ProjectMeetingDto>>(okResult.Value);
@@ -332,7 +333,7 @@ public class CskhControllersTests : IDisposable
     }
 
     [Fact]
-    public void Meetings_Create_WithValidData_ReturnsCreatedWithActions()
+    public async Task Meetings_Create_WithValidData_ReturnsCreatedWithActions()
     {
         var request = new CreateProjectMeetingRequest(
             Name: "Họp giao ban tiến độ tuần 10",
@@ -346,7 +347,7 @@ public class CskhControllersTests : IDisposable
             }
         );
 
-        var result = _meetingsController.Create(TestProjectCode, request);
+        var result = await _meetingsController.Create(TestProjectCode, request);
 
         var createdResult = Assert.IsType<CreatedResult>(result.Result);
         var dto = Assert.IsType<ProjectMeetingDto>(createdResult.Value);
@@ -357,7 +358,7 @@ public class CskhControllersTests : IDisposable
     }
 
     [Fact]
-    public void Meetings_Create_WithEmptyName_ReturnsBadRequest()
+    public async Task Meetings_Create_WithEmptyName_ReturnsBadRequest()
     {
         var request = new CreateProjectMeetingRequest(
             Name: "",
@@ -367,12 +368,12 @@ public class CskhControllersTests : IDisposable
             Actions: new List<CreateProjectMeetingActionRequest>()
         );
 
-        var result = _meetingsController.Create(TestProjectCode, request);
+        var result = await _meetingsController.Create(TestProjectCode, request);
         Assert.IsType<BadRequestObjectResult>(result.Result);
     }
 
     [Fact]
-    public void Meetings_UpdateMinutes_Existing_UpdatesMinutesSuccessfully()
+    public async Task Meetings_UpdateMinutes_Existing_UpdatesMinutesSuccessfully()
     {
         var createRequest = new CreateProjectMeetingRequest(
             Name: "Họp kỹ thuật giải pháp cáp",
@@ -381,11 +382,11 @@ public class CskhControllersTests : IDisposable
             Agenda: "Thống nhất chủng loại cáp",
             Actions: new List<CreateProjectMeetingActionRequest>()
         );
-        var created = Assert.IsType<CreatedResult>(_meetingsController.Create(TestProjectCode, createRequest).Result);
+        var created = Assert.IsType<CreatedResult>((await _meetingsController.Create(TestProjectCode, createRequest)).Result);
         var createdDto = Assert.IsType<ProjectMeetingDto>(created.Value);
 
         var minutesRequest = new UpdateProjectMeetingMinutesRequest("Biên bản: Thống nhất dùng cáp Cadivi 4x50mm2.");
-        var updateResult = _meetingsController.UpdateMinutes(TestProjectCode, createdDto.Id, minutesRequest);
+        var updateResult = await _meetingsController.UpdateMinutes(TestProjectCode, createdDto.Id, minutesRequest);
 
         var okResult = Assert.IsType<OkObjectResult>(updateResult.Result);
         var updatedDto = Assert.IsType<ProjectMeetingDto>(okResult.Value);
@@ -393,15 +394,15 @@ public class CskhControllersTests : IDisposable
     }
 
     [Fact]
-    public void Meetings_UpdateMinutes_NonExistent_ReturnsNotFound()
+    public async Task Meetings_UpdateMinutes_NonExistent_ReturnsNotFound()
     {
         var minutesRequest = new UpdateProjectMeetingMinutesRequest("Nội dung họp");
-        var result = _meetingsController.UpdateMinutes(TestProjectCode, "invalid-meeting-id", minutesRequest);
+        var result = await _meetingsController.UpdateMinutes(TestProjectCode, "invalid-meeting-id", minutesRequest);
         Assert.IsType<NotFoundResult>(result.Result);
     }
 
     [Fact]
-    public void Meetings_ToggleAction_Existing_TogglesDoneStatus()
+    public async Task Meetings_ToggleAction_Existing_TogglesDoneStatus()
     {
         var createRequest = new CreateProjectMeetingRequest(
             Name: "Họp điều phối vật tư",
@@ -413,13 +414,13 @@ public class CskhControllersTests : IDisposable
                 new("Bàn giao chứng chỉ CO CQ thép tấm", "2026-03-14", "NV Cung ứng")
             }
         );
-        var created = Assert.IsType<CreatedResult>(_meetingsController.Create(TestProjectCode, createRequest).Result);
+        var created = Assert.IsType<CreatedResult>((await _meetingsController.Create(TestProjectCode, createRequest)).Result);
         var createdDto = Assert.IsType<ProjectMeetingDto>(created.Value);
         var actionId = createdDto.Actions[0].Id;
 
         // Toggle to true
         var toggleRequest = new UpdateProjectMeetingActionRequest(actionId, Done: true);
-        var toggleResult = _meetingsController.ToggleAction(TestProjectCode, createdDto.Id, actionId, toggleRequest);
+        var toggleResult = await _meetingsController.ToggleAction(TestProjectCode, createdDto.Id, actionId, toggleRequest);
 
         var okResult = Assert.IsType<OkObjectResult>(toggleResult.Result);
         var updatedDto = Assert.IsType<ProjectMeetingDto>(okResult.Value);
@@ -427,15 +428,15 @@ public class CskhControllersTests : IDisposable
     }
 
     [Fact]
-    public void Meetings_ToggleAction_NonExistentMeeting_ReturnsNotFound()
+    public async Task Meetings_ToggleAction_NonExistentMeeting_ReturnsNotFound()
     {
         var toggleRequest = new UpdateProjectMeetingActionRequest("act-1", Done: true);
-        var result = _meetingsController.ToggleAction(TestProjectCode, "non-existent-meeting", "act-1", toggleRequest);
+        var result = await _meetingsController.ToggleAction(TestProjectCode, "non-existent-meeting", "act-1", toggleRequest);
         Assert.IsType<NotFoundResult>(result.Result);
     }
 
     [Fact]
-    public void Meetings_Delete_Existing_ReturnsNoContent()
+    public async Task Meetings_Delete_Existing_ReturnsNoContent()
     {
         var createRequest = new CreateProjectMeetingRequest(
             Name: "Cuộc họp cần xóa",
@@ -444,23 +445,23 @@ public class CskhControllersTests : IDisposable
             Agenda: null,
             Actions: new List<CreateProjectMeetingActionRequest>()
         );
-        var created = Assert.IsType<CreatedResult>(_meetingsController.Create(TestProjectCode, createRequest).Result);
+        var created = Assert.IsType<CreatedResult>((await _meetingsController.Create(TestProjectCode, createRequest)).Result);
         var createdDto = Assert.IsType<ProjectMeetingDto>(created.Value);
 
-        var deleteResult = _meetingsController.Delete(TestProjectCode, createdDto.Id);
+        var deleteResult = await _meetingsController.Delete(TestProjectCode, createdDto.Id);
         Assert.IsType<NoContentResult>(deleteResult);
 
         // Verify it is deleted
-        var listResult = _meetingsController.List(TestProjectCode);
+        var listResult = await _meetingsController.List(TestProjectCode);
         var okResult = Assert.IsType<OkObjectResult>(listResult.Result);
         var list = Assert.IsAssignableFrom<IReadOnlyList<ProjectMeetingDto>>(okResult.Value);
         Assert.Empty(list);
     }
 
     [Fact]
-    public void Meetings_Delete_NonExistent_ReturnsNotFound()
+    public async Task Meetings_Delete_NonExistent_ReturnsNotFound()
     {
-        var deleteResult = _meetingsController.Delete(TestProjectCode, "unknown-id");
+        var deleteResult = await _meetingsController.Delete(TestProjectCode, "unknown-id");
         Assert.IsType<NotFoundResult>(deleteResult);
     }
 }

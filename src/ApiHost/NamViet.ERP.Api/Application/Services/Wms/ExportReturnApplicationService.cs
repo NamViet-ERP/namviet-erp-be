@@ -398,12 +398,16 @@ public sealed class ExportReturnApplicationService(
     {
         if (kind == "photo")
         {
-            if (ext is not (".jpg" or ".jpeg" or ".png" or ".webp"))
+            if (!NamViet.ERP.Api.Services.Storage.FileUploadValidator.IsAllowedExtension(
+                    "file" + ext,
+                    NamViet.ERP.Api.Services.Storage.FileUploadValidator.WmsImageExtensions))
                 throw new DomainRuleException("Ảnh hoàn trả chỉ chấp nhận JPG, PNG, WEBP.");
             return;
         }
 
-        if (ext is not (".pdf" or ".doc" or ".docx" or ".xls" or ".xlsx" or ".jpg" or ".jpeg" or ".png" or ".webp"))
+        if (!NamViet.ERP.Api.Services.Storage.FileUploadValidator.IsAllowedExtension(
+                "file" + ext,
+                NamViet.ERP.Api.Services.Storage.FileUploadValidator.WmsDocumentExtensions))
             throw new DomainRuleException("File chứng từ không hợp lệ.");
     }
 

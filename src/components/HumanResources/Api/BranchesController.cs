@@ -14,6 +14,7 @@ namespace NamViet.ERP.Api.Controllers.Hr;
 public class BranchesController(HrDbContext db) : ControllerBase
 {
     [HttpGet]
+    [RequireAnyPermission("hrm.members.settings.view", "hrm.employees.view:all", "hrm.employees.view:own")]
     public async Task<ActionResult<IReadOnlyList<BranchDto>>> GetAll(
         [FromQuery] bool activeOnly = true,
         CancellationToken ct = default)
@@ -40,6 +41,7 @@ public class BranchesController(HrDbContext db) : ControllerBase
     }
 
     [HttpGet("{id:int}")]
+    [RequireAnyPermission("hrm.members.settings.view", "hrm.employees.view:all", "hrm.employees.view:own")]
     public async Task<ActionResult<BranchDto>> GetById(int id, CancellationToken ct)
     {
         var branch = await db.Branches.FirstOrDefaultAsync(b => b.Id == id && b.DeletedAt == null, ct);
@@ -130,7 +132,7 @@ public class BranchesController(HrDbContext db) : ControllerBase
         return NoContent();
     }
 
-    private static BranchDto MapDto(Branch branch, IReadOnlyDictionary<string, int> employeeCounts)
+    private static BranchDto MapDto(Branch branch, Dictionary<string, int> employeeCounts)
     {
         employeeCounts.TryGetValue(branch.Name, out var count);
         return new BranchDto(branch.Id, branch.Code, branch.Name, branch.IsActive, count);

@@ -6,7 +6,7 @@ public class ProjectGanttSnapshot : BaseEntity
 {
     public Guid Id { get; set; } = Guid.NewGuid();
     public string ProjectCode { get; set; } = string.Empty;
-    public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
+    public new DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public double PlanPct { get; set; }
     public double ActualPct { get; set; }
     public int ItemCount { get; set; }

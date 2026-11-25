@@ -214,6 +214,7 @@ public class StockController(
     }
 
     [HttpPost("admin/opening-balance/preview")]
+    [Authorize(Roles = RolePermissionTemplates.AdminRole)]
     public async Task<ActionResult<OpeningStockPreviewResponseDto>> PreviewOpeningBalance(
         IFormFile file,
         [FromQuery] string? projectCode,
@@ -338,6 +339,7 @@ public class StockController(
     }
 
     [HttpPost("admin/opening-balance/import-excel")]
+    [Authorize(Roles = RolePermissionTemplates.AdminRole)]
     public async Task<ActionResult<OpeningStockImportResultDto>> ImportOpeningBalance(
         IFormFile file,
         [FromQuery] string? projectCode,
@@ -448,6 +450,8 @@ public class StockController(
         var ticketCode = await TicketCodeAllocator.NextAsync(db, TransactionType.Import, ct);
         var userName = !string.IsNullOrWhiteSpace(currentUser.Name) ? currentUser.Name : "Admin";
         var generalWarehouseId = await inventory.GetGeneralWarehouseIdAsync(ct);
+        if (project == null)
+            await inventory.EnsureGeneralWarehouseAsync(generalWarehouseId, ct);
 
         var transaction = new WarehouseTransaction
         {
@@ -824,11 +828,10 @@ public class StockController(
     #endregion
 
     private bool IsAdminUser() =>
-        currentUser.IsInRole("Admin")
-        || currentUser.Roles.Any(r => r.Equals("admin", StringComparison.OrdinalIgnoreCase))
-        || currentUser.HasPermission("admin.users.view:all")
-        || User.IsInRole("Admin")
-        || User.HasClaim("role", "Admin");
+        currentUser.IsInRole(RolePermissionTemplates.AdminRole)
+        || currentUser.Roles.Any(r => r.Equals(RolePermissionTemplates.AdminRole, StringComparison.OrdinalIgnoreCase))
+        || (User != null && (User.IsInRole(RolePermissionTemplates.AdminRole)
+            || User.HasClaim("role", RolePermissionTemplates.AdminRole)));
 
     private static (string Project, string Material) MatrixKey(string projectCode, string materialCode) =>
         (projectCode.ToUpperInvariant(), materialCode.ToUpperInvariant());

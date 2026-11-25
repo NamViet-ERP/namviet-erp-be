@@ -1,11 +1,11 @@
 using System.Collections.Generic;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.WebUtilities;
 using NamViet.ERP.Api.Application.Services.Cskh;
 using NamViet.ERP.Api.Infrastructure.Authorization;
-using NamViet.ERP.Modules.Warehouse.Application.DTOs;
 using NamViet.ERP.Api.Services.Storage;
-using Microsoft.AspNetCore.WebUtilities;
+using NamViet.ERP.Modules.Warehouse.Application.DTOs;
 
 namespace NamViet.ERP.Api.Controllers;
 
@@ -16,47 +16,49 @@ public class ProjectDocumentsController(ICskhCoordinationService cskhService) : 
 {
     [HttpGet]
     [RequirePermission("wms.projects.view:all")]
-    public ActionResult<List<ProjectDocumentDto>> List(string code)
+    public async Task<ActionResult<List<ProjectDocumentDto>>> List(string code, CancellationToken ct = default)
     {
-        var list = cskhService.GetDocuments(code);
+        var list = await cskhService.GetDocumentsAsync(code, ct);
         return Ok(list);
     }
 
     [HttpPost]
     [RequirePermission("wms.projects.update")]
-    public ActionResult<ProjectDocumentDto> Create(string code, [FromBody] CreateProjectDocumentRequest request)
+    public async Task<ActionResult<ProjectDocumentDto>> Create(
+        string code, [FromBody] CreateProjectDocumentRequest request, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(request.Name) || string.IsNullOrWhiteSpace(request.Code))
             return BadRequest(new { error = "Mã hồ sơ và tên hồ sơ không được để trống." });
 
-        var created = cskhService.CreateDocument(code, request);
+        var created = await cskhService.CreateDocumentAsync(code, request, ct);
         return Created($"/api/warehouse/projects/{code}/documents/{created.Id}", created);
     }
 
-
     [HttpPut("{id}")]
     [RequirePermission("wms.projects.update")]
-    public ActionResult<ProjectDocumentDto> Update(string code, string id, [FromBody] CreateProjectDocumentRequest request)
+    public async Task<ActionResult<ProjectDocumentDto>> Update(
+        string code, string id, [FromBody] CreateProjectDocumentRequest request, CancellationToken ct = default)
     {
-        var updated = cskhService.UpdateDocument(code, id, request);
+        var updated = await cskhService.UpdateDocumentAsync(code, id, request, ct);
         if (updated == null) return NotFound();
         return Ok(updated);
     }
 
     [HttpDelete("{id}")]
     [RequirePermission("wms.projects.update")] // Note: using update since delete might not exist
-    public ActionResult Delete(string code, string id)
+    public async Task<ActionResult> Delete(string code, string id, CancellationToken ct = default)
     {
-        var success = cskhService.DeleteDocument(code, id);
+        var success = await cskhService.DeleteDocumentAsync(code, id, ct);
         if (!success) return NotFound();
         return NoContent();
     }
 
     [HttpPut("{id}/status")]
     [RequirePermission("wms.projects.update")]
-    public ActionResult<ProjectDocumentDto> UpdateStatus(string code, string id, [FromBody] UpdateProjectDocumentStatusRequest request)
+    public async Task<ActionResult<ProjectDocumentDto>> UpdateStatus(
+        string code, string id, [FromBody] UpdateProjectDocumentStatusRequest request, CancellationToken ct = default)
     {
-        var updated = cskhService.UpdateDocumentStatus(code, id, request);
+        var updated = await cskhService.UpdateDocumentStatusAsync(code, id, request, ct);
         if (updated == null) return NotFound();
         return Ok(updated);
     }
@@ -65,31 +67,37 @@ public class ProjectDocumentsController(ICskhCoordinationService cskhService) : 
     [RequirePermission("wms.projects.update")]
     [RequestSizeLimit(20 * 1024 * 1024)]
     public async Task<ActionResult<ProjectDocumentDto>> UploadFile(
-        string code, 
-        string id, 
-        Microsoft.AspNetCore.Http.IFormFile file, 
-        [FromServices] NamViet.ERP.Api.Services.Storage.IFileStorage storage,
-        System.Threading.CancellationToken ct)
+        string code,
+        string id,
+        Microsoft.AspNetCore.Http.IFormFile file,
+        [FromServices] IFileStorage storage,
+        CancellationToken ct = default)
     {
         if (file == null || file.Length == 0) return BadRequest(new { error = "File rỗng." });
         if (!StorageKeyPolicy.IsSafeSegment(code) || !StorageKeyPolicy.IsSafeSegment(id))
             return BadRequest("Mã dự án hoặc hồ sơ không hợp lệ.");
-        if (!cskhService.GetDocuments(code).Any(d => d.Id == id)) return NotFound();
+
+        var docs = await cskhService.GetDocumentsAsync(code, ct);
+        if (!docs.Any(d => d.Id == id)) return NotFound();
 
         var contentType = file.ContentType ?? "application/octet-stream";
-        var ext = System.IO.Path.GetExtension(file.FileName);
-        var relativePath = $"cskh/projects/{code}/docs/{id}/{System.Guid.NewGuid()}{ext}";
+        await using var stream = file.OpenReadStream();
+        var (isValidFile, validationError) = await FileUploadValidator.ValidateProjectDocumentAsync(
+            file.FileName, contentType, stream, ct);
+        if (!isValidFile)
+            return BadRequest(new { error = validationError });
 
-        using var stream = file.OpenReadStream();
+        var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
+        var relativePath = $"cskh/projects/{code}/docs/{id}/{Guid.NewGuid()}{ext}";
+
         var stored = await storage.SaveAsync(stream, relativePath, contentType, ct);
 
-        // Convert length to MB
         var mb = file.Length / 1024.0 / 1024.0;
         var sizeStr = mb < 1 ? $"{file.Length / 1024.0:F1} KB" : $"{mb:F1} MB";
-        
+
         var downloadUrl = $"/api/warehouse/projects/{code}/documents/{id}/download?key={System.Net.WebUtility.UrlEncode(stored.StorageKey)}";
 
-        var updated = cskhService.UpdateDocumentFile(code, id, file.FileName, sizeStr, downloadUrl);
+        var updated = await cskhService.UpdateDocumentFileAsync(code, id, file.FileName, sizeStr, downloadUrl, ct);
         if (updated == null) return NotFound();
 
         return Ok(updated);
@@ -101,10 +109,11 @@ public class ProjectDocumentsController(ICskhCoordinationService cskhService) : 
         string code,
         string id,
         [FromQuery] string? key,
-        [FromServices] NamViet.ERP.Api.Services.Storage.IFileStorage storage,
-        System.Threading.CancellationToken ct)
+        [FromServices] IFileStorage storage,
+        CancellationToken ct = default)
     {
-        var doc = cskhService.GetDocuments(code).FirstOrDefault(d => d.Id == id);
+        var docs = await cskhService.GetDocumentsAsync(code, ct);
+        var doc = docs.FirstOrDefault(d => d.Id == id);
         if (doc is null || string.IsNullOrWhiteSpace(doc.DownloadUrl)
             || !StorageKeyPolicy.IsSafeSegment(code) || !StorageKeyPolicy.IsSafeSegment(id))
             return NotFound();

@@ -178,6 +178,7 @@ builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Purchasing.IPurc
 builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Purchasing.IPurchaseEstimateService, NamViet.ERP.Api.Application.Services.Purchasing.PurchaseEstimateService>();
 builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Purchasing.IPurchaseRfqService, NamViet.ERP.Api.Application.Services.Purchasing.PurchaseRfqService>();
 builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Purchasing.IPurchasePriceBookService, NamViet.ERP.Api.Application.Services.Purchasing.PurchasePriceBookService>();
+builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Purchasing.IPriceBookMarkupSettingsService, NamViet.ERP.Api.Application.Services.Purchasing.PriceBookMarkupSettingsService>();
 builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Purchasing.IPurchaseOrderReceiptService, NamViet.ERP.Api.Application.Services.Purchasing.PurchaseOrderReceiptService>();
 builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Purchasing.IPurchaseDefectApplicationService, NamViet.ERP.Api.Application.Services.Purchasing.PurchaseDefectApplicationService>();
 builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Purchasing.IPurchaseOrderService, NamViet.ERP.Api.Application.Services.Purchasing.PurchaseOrderService>();
@@ -192,6 +193,9 @@ builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Purchasing.ISupp
 builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Purchasing.ISupplierDeliveryEvaluationService, NamViet.ERP.Api.Application.Services.Purchasing.SupplierDeliveryEvaluationService>();
 builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Purchasing.ISuppliersDashboardService, NamViet.ERP.Api.Application.Services.Purchasing.SuppliersDashboardService>();
 builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Purchasing.ISupplierPayableService, NamViet.ERP.Api.Application.Services.Purchasing.SupplierPayableService>();
+builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Purchasing.ISupplierTierEvaluationService, NamViet.ERP.Api.Application.Services.Purchasing.SupplierTierEvaluationService>();
+builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Purchasing.ISupplierExcelService, NamViet.ERP.Api.Application.Services.Purchasing.SupplierExcelService>();
+builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Purchasing.ISupplierDirectoryService, NamViet.ERP.Api.Application.Services.Purchasing.SupplierDirectoryService>();
 builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Shared.IActivityEventWriter, NamViet.ERP.Api.Application.Services.Shared.ActivityEventWriter>();
 builder.Services.AddScoped<NamViet.ERP.Api.Application.Services.Hr.IEmployeeAccountLinkSynchronizer, NamViet.ERP.Api.Application.Services.Hr.EmployeeAccountLinkSynchronizer>();
 builder.Services.AddScoped<IAdminUserQueryService, AdminUserQueryService>();
@@ -326,21 +330,9 @@ app.Run();
 
 static void RegisterFileStorage(IServiceCollection services, IConfiguration configuration)
 {
-    var provider = configuration["FileStorage:Provider"]?.Trim();
+    var (useS3, s3Options) = NamViet.ERP.Api.Services.Storage.FileStorageProviderSelection.Resolve(configuration);
 
-    var s3Options = configuration.GetSection(NamViet.ERP.Api.Services.Storage.S3FileStorageOptions.SectionName)
-                        .Get<NamViet.ERP.Api.Services.Storage.S3FileStorageOptions>()
-                    ?? new NamViet.ERP.Api.Services.Storage.S3FileStorageOptions();
-
-    var hasS3Credentials = !string.IsNullOrWhiteSpace(s3Options.BucketName)
-                           && !string.IsNullOrWhiteSpace(s3Options.ServiceUrl)
-                           && !string.IsNullOrWhiteSpace(s3Options.AccessKey)
-                           && !string.IsNullOrWhiteSpace(s3Options.SecretKey);
-
-    var useS3 = string.Equals(provider, "S3", StringComparison.OrdinalIgnoreCase)
-                || (hasS3Credentials && !string.Equals(provider, "LocalForce", StringComparison.OrdinalIgnoreCase));
-
-    if (useS3 && !string.IsNullOrWhiteSpace(s3Options.BucketName))
+    if (useS3)
     {
         services.AddSingleton(s3Options);
         services.AddSingleton<Amazon.S3.IAmazonS3>(_ =>
