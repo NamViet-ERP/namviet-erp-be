@@ -27,8 +27,11 @@ public record ClearAllMaterialsResultDto(int TotalProcessed, int HardDeleted, in
 public class MaterialsController(
     WarehouseDbContext db,
     IMaterialImportExcelService materialExcel,
-    ICurrentUser? currentUser = null) : ControllerBase
+    ICurrentUser? currentUser = null,
+    IMaterialCodeRenameService? renameService = null) : ControllerBase
 {
+    private IMaterialCodeRenameService RenameService => renameService ?? new MaterialCodeRenameService(db);
+
     [HttpGet]
     [RequirePermission("wms.materials.view:all")]
     public async Task<ActionResult<PagedResult<MaterialDto>>> GetAll(
@@ -42,8 +45,13 @@ public class MaterialsController(
         [FromQuery] int? categoryId = null,
         [FromQuery] bool includeInactive = false,
         [FromQuery] bool all = false,
+        [FromQuery] string? status = null,
         CancellationToken ct = default)
     {
+        var normalizedStatus = string.IsNullOrWhiteSpace(status) ? null : status.Trim().ToLowerInvariant();
+        if (normalizedStatus is not (null or "active" or "inactive" or "all"))
+            return BadRequest("Trạng thái lọc không hợp lệ. Chỉ chấp nhận: active, inactive, all.");
+
         (page, pageSize) = Paging.Normalize(page, pageSize);
         var hasPathFilter = !string.IsNullOrWhiteSpace(danhMuc) || !string.IsNullOrWhiteSpace(nhomVatTu) ||
             !string.IsNullOrWhiteSpace(loaiVatTu) || !string.IsNullOrWhiteSpace(phanLoai) ||
@@ -54,8 +62,17 @@ public class MaterialsController(
             allCategories = await db.MaterialCategories.AsNoTracking().ToListAsync(ct);
 
         var query = db.Materials.AsNoTracking().Where(m => m.DeletedAt == null);
-        if (!includeInactive)
+        if (normalizedStatus is not null)
+        {
+            if (normalizedStatus == "active")
+                query = query.Where(m => m.IsActive);
+            else if (normalizedStatus == "inactive")
+                query = query.Where(m => !m.IsActive);
+        }
+        else if (!includeInactive)
+        {
             query = query.Where(m => m.IsActive);
+        }
 
         if (!string.IsNullOrWhiteSpace(search))
             query = query.Where(m => m.MaterialName.Contains(search) || m.MaterialCode.Contains(search));
@@ -329,6 +346,13 @@ public class MaterialsController(
         var m = await db.Materials.FirstOrDefaultAsync(
             x => (x.MaterialCode == c1 || (c2 != null && x.MaterialCode == c2)) && x.DeletedAt == null, ct);
         if (m is null) return NotFound();
+
+        var newCode = (request.MaterialCode ?? string.Empty).Trim();
+        if (string.IsNullOrEmpty(newCode))
+            return BadRequest("Mã vật tư không được để trống.");
+        if (newCode.Length > 100)
+            return BadRequest("Mã vật tư tối đa 100 ký tự.");
+
         if (!await db.MaterialCategories.AnyAsync(c => c.Id == request.CategoryId, ct))
             return BadRequest("Danh mục vật tư không tồn tại.");
 
@@ -343,18 +367,61 @@ public class MaterialsController(
             return BadRequest("Đơn vị tính không tồn tại hoặc đã ngừng dùng.");
 
         var origin = MaterialOriginHelper.NormalizeDisplayName(request.Origin);
-        m.MaterialName = request.MaterialName.Trim();
+        var normalizedName = request.MaterialName.Trim();
+        var normalizedOrigin = string.IsNullOrEmpty(origin) ? null : origin;
+        var normalizedImageUrl = string.IsNullOrWhiteSpace(request.ImageUrl) ? null : request.ImageUrl.Trim();
+        var normalizedCeilingPrice = request.CeilingPrice is > 0 ? request.CeilingPrice : null;
+        var normalizedAbc = NormalizeAbc(request.AbcClass);
+        var updatedAt = DateTime.UtcNow;
+
+        var isCodeChanged = !string.Equals(m.MaterialCode, newCode, StringComparison.Ordinal);
+        if (isCodeChanged)
+        {
+            var oldCode = m.MaterialCode;
+            var normalizedNew = newCode.ToLowerInvariant();
+            var duplicateExists = await db.Materials.IgnoreQueryFilters()
+                .AnyAsync(x => x.MaterialCode != oldCode && (x.MaterialCode == newCode || x.MaterialCode.ToLower() == normalizedNew), ct);
+            if (duplicateExists)
+                return Conflict($"Mã vật tư '{newCode}' đã tồn tại trong hệ thống.");
+
+            var fields = new MaterialUpdateFields(
+                normalizedName,
+                request.CategoryId,
+                unit,
+                normalizedOrigin,
+                normalizedImageUrl,
+                request.TechnicalSpec,
+                request.GeneralTechnicalSpec,
+                request.QualityStandard,
+                normalizedCeilingPrice,
+                normalizedAbc,
+                request.IsConsumable,
+                updatedAt);
+
+            try
+            {
+                await RenameService.RenameAndUpdateAsync(m, newCode, fields, ct);
+            }
+            catch (DomainRuleException ex)
+            {
+                return Conflict(ex.Message);
+            }
+
+            return NoContent();
+        }
+
+        m.MaterialName = normalizedName;
         m.CategoryId = request.CategoryId;
         m.Unit = unit;
-        m.Origin = string.IsNullOrEmpty(origin) ? null : origin;
-        m.ImageUrl = string.IsNullOrWhiteSpace(request.ImageUrl) ? null : request.ImageUrl.Trim();
+        m.Origin = normalizedOrigin;
+        m.ImageUrl = normalizedImageUrl;
         m.TechnicalSpec = request.TechnicalSpec;
         m.GeneralTechnicalSpec = request.GeneralTechnicalSpec;
         m.QualityStandard = request.QualityStandard;
-        m.CeilingPrice = request.CeilingPrice is > 0 ? request.CeilingPrice : null;
-        m.AbcClass = NormalizeAbc(request.AbcClass);
+        m.CeilingPrice = normalizedCeilingPrice;
+        m.AbcClass = normalizedAbc;
         m.IsConsumable = request.IsConsumable;
-        m.UpdatedAt = DateTime.UtcNow;
+        m.UpdatedAt = updatedAt;
         await db.SaveChangesAsync(ct);
         return NoContent();
     }
