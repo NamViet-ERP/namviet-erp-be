@@ -1,6 +1,13 @@
 namespace NamViet.ERP.Api.Application.Dtos.Purchasing;
 
-public record SupplierGroupDto(int Id, string Name, string? Description, int SupplierCount);
+public record SupplierGroupDto(
+    int Id,
+    string Name,
+    string? Description,
+    int SupplierCount,
+    int? ParentGroupId = null,
+    string? ParentGroupName = null,
+    int ChildCount = 0);
 
 public record SupplierGroupPagedResponse(
     IReadOnlyList<SupplierGroupDto> Items,
@@ -9,7 +16,13 @@ public record SupplierGroupPagedResponse(
     int PageSize,
     int TotalPages);
 
-public record UpsertSupplierGroupRequest(string Name, string? Description);
+public record UpsertSupplierSubGroupItem(int? Id, string Name, string? Description);
+
+public record UpsertSupplierGroupRequest(
+    string Name,
+    string? Description,
+    int? ParentGroupId = null,
+    IReadOnlyList<UpsertSupplierSubGroupItem>? SubGroups = null);
 
 /// <summary>Thành viên của một nhóm NCC.</summary>
 public record SupplierGroupMemberDto(int SupplierId, string SupplierCode, string SupplierName);
@@ -18,7 +31,11 @@ public record SupplierGroupMemberDto(int SupplierId, string SupplierCode, string
 public record SetSupplierGroupMembersRequest(IReadOnlyList<int> SupplierIds);
 
 /// <summary>Nhóm mà một NCC đang thuộc về.</summary>
-public record SupplierGroupRefDto(int Id, string Name);
+public record SupplierGroupRefDto(
+    int Id,
+    string Name,
+    int? ParentGroupId = null,
+    string? ParentGroupName = null);
 
 /// <summary>Thay toàn bộ danh sách nhóm của một NCC.</summary>
 public record SetSupplierGroupsRequest(IReadOnlyList<int> GroupIds);

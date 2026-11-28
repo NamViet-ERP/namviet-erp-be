@@ -184,10 +184,34 @@ public sealed class SupplierExcelService(WarehouseDbContext db) : ISupplierExcel
         var nextSeq = ComputeNextSequence(allCodesIncludingDeleted);
         var usedCodeSet = new HashSet<string>(allCodesIncludingDeleted, StringComparer.OrdinalIgnoreCase);
 
-        var allGroups = await db.SupplierGroups.AsNoTracking().ToListAsync(ct);
-        var groupMap = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        var allGroups = await db.SupplierGroups.AsNoTracking()
+            .Select(g => new { g.Id, g.Name, g.ParentGroupId })
+            .ToListAsync(ct);
+        var groupById = allGroups.ToDictionary(g => g.Id);
+
+        var pathMap = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         foreach (var group in allGroups)
-            groupMap.TryAdd(group.Name.Trim(), group.Id);
+        {
+            if (group.ParentGroupId is int pid && groupById.TryGetValue(pid, out var parent))
+            {
+                var pName = parent.Name.Trim();
+                var cName = group.Name.Trim();
+                pathMap.TryAdd($"{pName} > {cName}", group.Id);
+                pathMap.TryAdd($"{pName} › {cName}", group.Id);
+            }
+        }
+
+        // Plain-name fallback: ưu tiên Nhóm lớn nếu trùng tên giữa Nhóm lớn và Mục nhỏ;
+        // nếu nhiều Mục nhỏ khác cha trùng tên mà không có Nhóm lớn cùng tên thì bỏ qua để tránh gán nhầm (yêu cầu "Cha > Con").
+        var uniqueNameMap = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        foreach (var bucket in allGroups.GroupBy(g => g.Name.Trim(), StringComparer.OrdinalIgnoreCase))
+        {
+            var rootMatch = bucket.FirstOrDefault(g => g.ParentGroupId == null);
+            if (rootMatch is not null)
+                uniqueNameMap[bucket.Key] = rootMatch.Id;
+            else if (bucket.Count() == 1)
+                uniqueNameMap[bucket.Key] = bucket.First().Id;
+        }
 
         var failedCount = 0;
         var errors = new List<string>();
@@ -293,6 +317,7 @@ public sealed class SupplierExcelService(WarehouseDbContext db) : ISupplierExcel
             await db.SaveChangesAsync(ct);
 
             var groupMembers = new List<SupplierGroupMember>();
+            var addedPairs = new HashSet<(int SupplierId, int GroupId)>();
             foreach (var (entity, rawGroups) in stagedSuppliers)
             {
                 if (string.IsNullOrWhiteSpace(rawGroups))
@@ -304,7 +329,8 @@ public sealed class SupplierExcelService(WarehouseDbContext db) : ISupplierExcel
 
                 foreach (var gn in groupNames)
                 {
-                    if (groupMap.TryGetValue(gn, out var groupId))
+                    if (TryResolveGroupId(gn, pathMap, uniqueNameMap, out var groupId)
+                        && addedPairs.Add((entity.Id, groupId)))
                     {
                         groupMembers.Add(new SupplierGroupMember
                         {
@@ -358,6 +384,29 @@ public sealed class SupplierExcelService(WarehouseDbContext db) : ISupplierExcel
                 next = Math.Max(next, n + 1);
         }
         return next;
+    }
+
+    private static bool TryResolveGroupId(
+        string rawToken,
+        Dictionary<string, int> pathMap,
+        Dictionary<string, int> uniqueNameMap,
+        out int groupId)
+    {
+        var trimmed = rawToken.Trim();
+        var sepIdx = trimmed.IndexOfAny(['>', '›']);
+        if (sepIdx >= 0)
+        {
+            var sep = trimmed[sepIdx];
+            var left = trimmed[..sepIdx].Trim();
+            var right = trimmed[(sepIdx + 1)..].Trim();
+            if (left.Length > 0 && right.Length > 0
+                && pathMap.TryGetValue($"{left} {sep} {right}", out groupId))
+            {
+                return true;
+            }
+        }
+
+        return uniqueNameMap.TryGetValue(trimmed, out groupId);
     }
 
     private static bool HasExplicitCode(string? code) =>

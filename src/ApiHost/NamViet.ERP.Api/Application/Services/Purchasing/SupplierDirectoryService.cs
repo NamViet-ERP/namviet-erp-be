@@ -112,7 +112,14 @@ public sealed class SupplierDirectoryService(
         if (!string.IsNullOrWhiteSpace(approvalStatus))
             query = query.Where(s => s.ApprovalStatus == approvalStatus);
         if (groupId is int gid)
-            query = query.Where(s => s.GroupMemberships.Any(m => m.SupplierGroupId == gid));
+        {
+            var childIds = await db.SupplierGroups.AsNoTracking()
+                .Where(g => g.ParentGroupId == gid)
+                .Select(g => g.Id)
+                .ToListAsync(ct);
+            var targetIds = childIds.Append(gid).Distinct().ToList();
+            query = query.Where(s => s.GroupMemberships.Any(m => targetIds.Contains(m.SupplierGroupId)));
+        }
 
         var total = await query.CountAsync(ct);
         var suppliers = await query
@@ -144,15 +151,22 @@ public sealed class SupplierDirectoryService(
         var supplierIds = suppliers.Select(s => s.Id).ToArray();
         var industryGroups = await db.SupplierGroupMembers
             .AsNoTracking()
-            .Where(m => supplierIds.Contains(m.SupplierId))
-            .Select(m => new { m.SupplierId, GroupName = m.Group!.Name })
+            .Where(m => supplierIds.Contains(m.SupplierId) && m.Group != null)
+            .Select(m => new
+            {
+                m.SupplierId,
+                GroupName = m.Group!.Name,
+                ParentGroupName = m.Group.Parent != null ? m.Group.Parent.Name : null,
+            })
             .ToListAsync(ct);
         var industryGroupMap = industryGroups
             .GroupBy(x => x.SupplierId)
             .ToDictionary(
                 g => g.Key,
                 g => (IReadOnlyList<string>)g
-                    .Select(x => x.GroupName)
+                    .Select(x => string.IsNullOrEmpty(x.ParentGroupName)
+                        ? x.GroupName
+                        : $"{x.ParentGroupName} › {x.GroupName}")
                     .Distinct()
                     .OrderBy(n => n)
                     .ToList());
@@ -294,12 +308,21 @@ public sealed class SupplierDirectoryService(
         if (s is null)
             return null;
 
-        var groupsOfSupplier = await db.SupplierGroupMembers.AsNoTracking()
-            .Where(m => m.SupplierId == id)
-            .Select(m => m.Group!.Name)
+        var groupRowsOfSupplier = await db.SupplierGroupMembers.AsNoTracking()
+            .Where(m => m.SupplierId == id && m.Group != null)
+            .Select(m => new
+            {
+                GroupName = m.Group!.Name,
+                ParentGroupName = m.Group.Parent != null ? m.Group.Parent.Name : null,
+            })
+            .ToListAsync(ct);
+        var groupsOfSupplier = groupRowsOfSupplier
+            .Select(x => string.IsNullOrEmpty(x.ParentGroupName)
+                ? x.GroupName
+                : $"{x.ParentGroupName} › {x.GroupName}")
             .Distinct()
             .OrderBy(n => n)
-            .ToListAsync(ct);
+            .ToList();
 
         var purchasedRevenue = await db.PurchaseOrders.AsNoTracking()
             .Where(o => o.SupplierId == id && o.DeliveryStatus == PurchaseOrderDeliveryStatuses.Complete)

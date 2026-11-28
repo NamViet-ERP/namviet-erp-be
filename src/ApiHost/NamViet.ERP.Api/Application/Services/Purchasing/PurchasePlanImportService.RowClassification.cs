@@ -400,30 +400,6 @@ public sealed partial class PurchasePlanImportService
             }
         }
 
-        // Tự động tính đơn giá hoặc thành tiền nếu một bên bị thiếu và có SL
-        if (qty is decimal validQty && validQty > 0)
-        {
-            if (budgetUnitPrice is null && budgetAmount is not null)
-                budgetUnitPrice = Math.Round(budgetAmount.Value / validQty, 2);
-            else if (budgetUnitPrice is not null && budgetAmount is null)
-                budgetAmount = Math.Round(budgetUnitPrice.Value * validQty, 2);
-
-            if (proposalUnitPrice is null && proposalAmount is not null)
-                proposalUnitPrice = Math.Round(proposalAmount.Value / validQty, 2);
-            else if (proposalUnitPrice is not null && proposalAmount is null)
-                proposalAmount = Math.Round(proposalUnitPrice.Value * validQty, 2);
-
-            if (purchaseUnitPrice is null && purchaseAmount is not null)
-                purchaseUnitPrice = Math.Round(purchaseAmount.Value / validQty, 2);
-            else if (purchaseUnitPrice is not null && purchaseAmount is null)
-                purchaseAmount = Math.Round(purchaseUnitPrice.Value * validQty, 2);
-
-            if (selectedUnitPrice is null && selectedAmount is not null)
-                selectedUnitPrice = Math.Round(selectedAmount.Value / validQty, 2);
-            else if (selectedUnitPrice is not null && selectedAmount is null)
-                selectedAmount = Math.Round(selectedUnitPrice.Value * validQty, 2);
-        }
-
         return new PurchasePlanImportLinePreviewDto(
             row,
             lineNo,

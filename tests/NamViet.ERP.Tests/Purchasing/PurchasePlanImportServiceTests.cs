@@ -1,6 +1,12 @@
 using ClosedXML.Excel;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
+using NamViet.ERP.Api.Application.Dtos.Purchasing;
 using NamViet.ERP.Api.Application.Services.Purchasing;
+using NamViet.ERP.Api.Application.Validators;
 using NamViet.ERP.Modules.Warehouse.Domain.Entities;
+using NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence;
+using NamViet.ERP.Tests.Wms;
 
 namespace NamViet.ERP.Tests.Purchasing;
 
@@ -666,4 +672,360 @@ public class PurchasePlanImportServiceTests
         Assert.Equal("D49", line.Spec);
         Assert.Equal(expectedDescription, line.Description);
     }
+
+    [Fact]
+    public void Preview_PreservesExactExcelAmounts_WithoutAutoCalculatingOrMultiplyingKg()
+    {
+        using var wb = new XLWorkbook();
+        var ws = wb.AddWorksheet("KHMH");
+
+        // Row 1: Group headers matching business KHMH layout
+        ws.Cell(1, 7).Value = "DỰ TOÁN";
+        ws.Range(1, 7, 1, 8).Merge();
+        ws.Cell(1, 9).Value = "ĐỀ XUẤT";
+        ws.Range(1, 9, 1, 11).Merge();
+        ws.Cell(1, 12).Value = "MUA HÀNG";
+        ws.Range(1, 12, 1, 13).Merge();
+        ws.Cell(1, 14).Value = "NCC CHỌN";
+        ws.Range(1, 14, 1, 15).Merge();
+
+        // Row 2: Column headers
+        ws.Cell(2, 1).Value = "STT";
+        ws.Cell(2, 2).Value = "MÃ VẬT TƯ";
+        ws.Cell(2, 3).Value = "TÊN SẢN PHẨM";
+        ws.Cell(2, 4).Value = "ĐVT";
+        ws.Cell(2, 5).Value = "SỐ LƯỢNG";
+        ws.Cell(2, 6).Value = "KG/ĐVT";
+        ws.Cell(2, 7).Value = "ĐƠN GIÁ";
+        ws.Cell(2, 8).Value = "THÀNH TIỀN";
+        ws.Cell(2, 9).Value = "KG/ĐVT";
+        ws.Cell(2, 10).Value = "ĐƠN GIÁ";
+        ws.Cell(2, 11).Value = "THÀNH TIỀN";
+        ws.Cell(2, 12).Value = "ĐƠN GIÁ";
+        ws.Cell(2, 13).Value = "THÀNH TIỀN";
+        ws.Cell(2, 14).Value = "GIÁ CHỌN";
+        ws.Cell(2, 15).Value = "THÀNH TIỀN CHỌN";
+
+        // Row 3 (Row 1 data): Inox 304 pattern (KgPerUnit=194, Qty=16, explicit amounts)
+        ws.Cell(3, 1).Value = 1;
+        ws.Cell(3, 2).Value = "IN-INT-SU304-2B-1500x4x4070";
+        ws.Cell(3, 3).Value = "Tấm Inox 304";
+        ws.Cell(3, 4).Value = "Tấm";
+        ws.Cell(3, 5).Value = 16;
+        ws.Cell(3, 6).Value = 194;
+        ws.Cell(3, 7).Value = 58_000;
+        ws.Cell(3, 8).Value = 180_032_000;
+        // col 9 ProposalKgPerUnit intentionally blank
+        ws.Cell(3, 10).Value = 13_916_000;
+        ws.Cell(3, 11).Value = 222_656_000;
+        ws.Cell(3, 12).Value = 13_725_000;
+        ws.Cell(3, 13).Value = 219_600_000;
+        ws.Cell(3, 14).Value = 13_916_000;
+        ws.Cell(3, 15).Value = 222_656_000;
+
+        // Row 4 (Row 2 data): Lump-sum (Qty=60, UnitPrice == Amount)
+        ws.Cell(4, 1).Value = 2;
+        ws.Cell(4, 2).Value = "VT-LUMP-01";
+        ws.Cell(4, 3).Value = "Cụm van trọn gói";
+        ws.Cell(4, 4).Value = "Bộ";
+        ws.Cell(4, 5).Value = 60;
+        ws.Cell(4, 10).Value = 1_345_300;
+        ws.Cell(4, 11).Value = 1_345_300;
+
+        // Row 5 (Row 3 data): One-sided blank cell (BudgetAmount blank stays null)
+        ws.Cell(5, 1).Value = 3;
+        ws.Cell(5, 2).Value = "VT-BLANK-01";
+        ws.Cell(5, 3).Value = "Ống nối mềm";
+        ws.Cell(5, 4).Value = "Cái";
+        ws.Cell(5, 5).Value = 5;
+        ws.Cell(5, 7).Value = 100_000;
+        // col 8 BudgetAmount intentionally blank
+
+        // Row 6 (Row 4 data): Explicit zero (BudgetUnitPrice blank stays null, BudgetAmount == 0)
+        ws.Cell(6, 1).Value = 4;
+        ws.Cell(6, 2).Value = "VT-ZERO-01";
+        ws.Cell(6, 3).Value = "Phụ kiện kèm";
+        ws.Cell(6, 4).Value = "Cái";
+        ws.Cell(6, 5).Value = 2;
+        // col 7 BudgetUnitPrice intentionally blank
+        ws.Cell(6, 8).Value = 0;
+
+        using var ms = new MemoryStream();
+        wb.SaveAs(ms);
+        ms.Position = 0;
+
+        var service = new PurchasePlanImportService();
+        var preview = service.Preview(ms, "DA-EXACT-AMOUNTS");
+
+        Assert.Equal(4, preview.Lines.Count);
+
+        var row1 = preview.Lines[0];
+        Assert.Equal(16m, row1.Quantity);
+        Assert.Equal(194m, row1.KgPerUnit);
+        Assert.Equal(58_000m, row1.BudgetUnitPrice);
+        Assert.Equal(180_032_000m, row1.BudgetAmount);
+        Assert.Null(row1.ProposalKgPerUnit);
+        Assert.Equal(13_916_000m, row1.ProposalUnitPrice);
+        Assert.Equal(222_656_000m, row1.ProposalAmount);
+        Assert.Equal(13_725_000m, row1.PurchaseUnitPrice);
+        Assert.Equal(219_600_000m, row1.PurchaseAmount);
+        Assert.Equal(13_916_000m, row1.SelectedUnitPrice);
+        Assert.Equal(222_656_000m, row1.SelectedAmount);
+
+        var row2 = preview.Lines[1];
+        Assert.Equal(60m, row2.Quantity);
+        Assert.Equal(1_345_300m, row2.ProposalUnitPrice);
+        Assert.Equal(1_345_300m, row2.ProposalAmount);
+
+        var row3 = preview.Lines[2];
+        Assert.Equal(5m, row3.Quantity);
+        Assert.Equal(100_000m, row3.BudgetUnitPrice);
+        Assert.Null(row3.BudgetAmount);
+
+        var row4 = preview.Lines[3];
+        Assert.Equal(2m, row4.Quantity);
+        Assert.Null(row4.BudgetUnitPrice);
+        Assert.Equal(0m, row4.BudgetAmount);
+    }
+
+    [Fact]
+    public void Preview_ActualKhmhV7File_PreservesExactExcelTotals_Not100Billion()
+    {
+        var filePath = @"D:\WorkspaceRoot\NamViet\Test\Copy of SC-MZ-KHMH-MA VAT TU-UPDATE-V7.xlsx";
+        if (!File.Exists(filePath))
+            return;
+
+        using var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+        var service = new PurchasePlanImportService();
+        var preview = service.Preview(stream, "CHAIN-YARD");
+
+        var budgetSum = preview.Lines.Sum(l => l.BudgetAmount ?? 0m);
+        var proposalSum = preview.Lines.Sum(l => l.ProposalAmount ?? 0m);
+        var purchaseSum = preview.Lines.Sum(l => l.PurchaseAmount ?? 0m);
+        var selectedSum = preview.Lines.Sum(l => l.SelectedAmount ?? 0m);
+
+        Assert.True(
+            Math.Abs(budgetSum - 14_274_965_203.89m) <= 1m,
+            $"BudgetAmount sum expected ~14,274,965,203.89 but was {budgetSum:N2}");
+        Assert.True(
+            proposalSum < 15_000_000_000m && Math.Abs(proposalSum - 13_480_070_009.64m) <= 1m,
+            $"ProposalAmount sum expected ~13,480,070,009.64 (< 15B) but was {proposalSum:N2}");
+        Assert.True(
+            purchaseSum < 6_000_000_000m && Math.Abs(purchaseSum - 5_552_932_972.19m) <= 1m,
+            $"PurchaseAmount sum expected ~5,552,932,972.19 (< 6B) but was {purchaseSum:N2}");
+        Assert.True(
+            selectedSum < 15_000_000_000m && Math.Abs(selectedSum - 13_406_990_009.64m) <= 1m,
+            $"SelectedAmount sum expected ~13,406,990,009.64 (< 15B) but was {selectedSum:N2}");
+
+        var inoxLine = Assert.Single(preview.Lines, l => l.MaterialCode == "IN-INT-SU304-2B-1500x4x4070");
+        Assert.Equal(222_656_000m, inoxLine.ProposalAmount);
+        Assert.Equal(219_600_000m, inoxLine.PurchaseAmount);
+        Assert.Equal(222_656_000m, inoxLine.SelectedAmount);
+    }
+
+    [Fact]
+    public async Task CreateAsync_PreservesVerbatimAmountsAndNulls()
+    {
+        await using var db = CreateInMemoryDb();
+        db.Projects.Add(new Project { ProjectCode = "DA-TEST", ProjectName = "Dự án Test" });
+        db.Materials.Add(new Material
+        {
+            MaterialCode = "VT-STEEL-01",
+            MaterialName = "Thép tấm 16mm",
+            CategoryId = 1,
+            Unit = "Tấm",
+            IsActive = true,
+        });
+        await db.SaveChangesAsync();
+
+        var planService = CreatePlanService(db);
+        var req = new CreatePurchasePlanRequest(
+            ProjectCode: "DA-TEST",
+            Note: "Verbatim amounts",
+            Lines:
+            [
+                new CreatePurchasePlanLineRequest(
+                    MaterialCode: "VT-STEEL-01",
+                    ProductName: "Thép tấm 16mm",
+                    Unit: "Tấm",
+                    Quantity: 16m,
+                    KgPerUnit: 2434m,
+                    BudgetUnitPrice: 26_000m,
+                    BudgetAmount: null,
+                    ProposalUnitPrice: 13_916_000m,
+                    ProposalAmount: 222_656_000m,
+                    PurchaseUnitPrice: 64_046_455m,
+                    PurchaseAmount: 64_046_455m)
+            ]);
+
+        var created = await planService.CreateAsync(req, CancellationToken.None);
+
+        Assert.Equal(0m, created.BudgetTotal);
+        Assert.Equal(222_656_000m, created.ProposalTotal);
+        Assert.Equal(64_046_455m, created.PurchaseTotal);
+
+        var line = Assert.Single(created.Lines);
+        Assert.Equal(2434m, line.KgPerUnit);
+        Assert.Equal(26_000m, line.BudgetUnitPrice);
+        Assert.Null(line.BudgetAmount);
+        Assert.Equal(13_916_000m, line.ProposalUnitPrice);
+        Assert.Equal(222_656_000m, line.ProposalAmount);
+        Assert.Equal(64_046_455m, line.PurchaseUnitPrice);
+        Assert.Equal(64_046_455m, line.PurchaseAmount);
+
+        var persisted = await db.PurchasePlanLines.AsNoTracking().SingleAsync(l => l.PlanCode == created.Code);
+        Assert.Null(persisted.BudgetAmount);
+        Assert.Equal(222_656_000m, persisted.ProposalAmount);
+        Assert.Equal(64_046_455m, persisted.PurchaseAmount);
+    }
+
+    [Fact]
+    public async Task ConfirmImportAsync_HandlesMaterialAndServiceWithoutNre_AndPreservesExactAmounts()
+    {
+        await using var db = CreateInMemoryDb();
+        db.Projects.Add(new Project { ProjectCode = "DA-TEST", ProjectName = "Dự án Test" });
+        db.Materials.Add(new Material
+        {
+            MaterialCode = "VT-01",
+            MaterialName = "Tấm Inox 304",
+            CategoryId = 1,
+            Unit = "Cái",
+            IsActive = true,
+        });
+        await db.SaveChangesAsync();
+
+        var planService = CreatePlanService(db);
+        var request = new ConfirmPurchasePlanImportRequest(
+            ProjectCode: "DA-TEST",
+            Note: "Import verbatim",
+            Lines:
+            [
+                new PurchasePlanImportLinePreviewDto(
+                    RowNumber: 3,
+                    LineNo: 1,
+                    SystemName: "Cơ khí",
+                    Category: "Inox",
+                    MaterialCode: "VT-01",
+                    ProductName: "Tấm Inox 304",
+                    Spec: "1500x4x4070",
+                    Unit: "Tấm",
+                    Quantity: 16m,
+                    KgPerUnit: 194m,
+                    LineNote: null,
+                    PurchaseStatus: null,
+                    StatusNote: null,
+                    BudgetUnitPrice: 58_000m,
+                    BudgetAmount: 180_032_000m,
+                    ProposalKgPerUnit: null,
+                    ProposalUnitPrice: 13_916_000m,
+                    ProposalAmount: 222_656_000m,
+                    ProposalSupplierName: "NCC A",
+                    ProposalNote: null,
+                    ProposalStatus: null,
+                    RequiredDate: null,
+                    OrderedDate: null,
+                    ExpectedDeliveryDate: null,
+                    ActualReceiptDate: null,
+                    DeliveryNote: null,
+                    PurchaseKgPerUnit: null,
+                    PurchaseUnitPrice: 13_725_000m,
+                    PurchaseAmount: 219_600_000m,
+                    PurchaseSupplierName: "NCC A",
+                    PurchaseNote: null,
+                    SelectedUnitPrice: 13_916_000m,
+                    SelectedAmount: 222_656_000m,
+                    SelectedSupplierName: "NCC A",
+                    SelectionReason: null,
+                    Quotes:
+                    [
+                        new PurchasePlanImportQuotePreviewDto(1, null, 13_916_000m, 222_656_000m, "NCC A", null, null)
+                    ],
+                    IsValid: true,
+                    LineType: PurchasePlanLineTypes.Material),
+                new PurchasePlanImportLinePreviewDto(
+                    RowNumber: 4,
+                    LineNo: 2,
+                    SystemName: "Thi công",
+                    Category: "Dịch vụ",
+                    MaterialCode: null,
+                    ProductName: "Lắp đặt hệ thống",
+                    Spec: null,
+                    Unit: "Hệ",
+                    Quantity: 60m,
+                    KgPerUnit: null,
+                    LineNote: null,
+                    PurchaseStatus: null,
+                    StatusNote: null,
+                    BudgetUnitPrice: 100_000m,
+                    BudgetAmount: null,
+                    ProposalKgPerUnit: null,
+                    ProposalUnitPrice: 1_345_300m,
+                    ProposalAmount: 1_345_300m,
+                    ProposalSupplierName: "NCC DV",
+                    ProposalNote: null,
+                    ProposalStatus: null,
+                    RequiredDate: null,
+                    OrderedDate: null,
+                    ExpectedDeliveryDate: null,
+                    ActualReceiptDate: null,
+                    DeliveryNote: null,
+                    PurchaseKgPerUnit: null,
+                    PurchaseUnitPrice: null,
+                    PurchaseAmount: null,
+                    PurchaseSupplierName: null,
+                    PurchaseNote: null,
+                    SelectedUnitPrice: 1_345_300m,
+                    SelectedAmount: 1_345_300m,
+                    SelectedSupplierName: "NCC DV",
+                    SelectionReason: null,
+                    Quotes: [],
+                    IsValid: true,
+                    LineType: PurchasePlanLineTypes.Service),
+            ]);
+
+        var created = await planService.ConfirmImportAsync(request, CancellationToken.None);
+
+        Assert.Equal(2, created.Lines.Count);
+
+        var matLine = created.Lines[0];
+        Assert.Equal("VT-01", matLine.MaterialCode);
+        Assert.Equal("Tấm", matLine.Unit);
+        Assert.Equal(180_032_000m, matLine.BudgetAmount);
+        Assert.Equal(222_656_000m, matLine.ProposalAmount);
+        Assert.Equal(219_600_000m, matLine.PurchaseAmount);
+        Assert.Equal(222_656_000m, matLine.SelectedAmount);
+        Assert.Single(matLine.Quotes);
+        Assert.Equal(222_656_000m, matLine.Quotes[0].Amount);
+
+        var svcLine = created.Lines[1];
+        Assert.Null(svcLine.MaterialCode);
+        Assert.Equal(PurchasePlanLineTypes.Service, svcLine.LineType);
+        Assert.Equal("Hệ", svcLine.Unit);
+        Assert.Equal(100_000m, svcLine.BudgetUnitPrice);
+        Assert.Null(svcLine.BudgetAmount);
+        Assert.Equal(1_345_300m, svcLine.ProposalAmount);
+        Assert.Equal(1_345_300m, svcLine.SelectedAmount);
+
+        Assert.Equal(180_032_000m, created.BudgetTotal);
+        Assert.Equal(224_001_300m, created.ProposalTotal);
+        Assert.Equal(224_001_300m, created.PurchaseTotal);
+    }
+
+    private static WarehouseDbContext CreateInMemoryDb()
+    {
+        var options = new DbContextOptionsBuilder<WarehouseDbContext>()
+            .UseInMemoryDatabase($"plan-import-persist-{Guid.NewGuid():N}")
+            .ConfigureWarnings(w => w.Ignore(InMemoryEventId.TransactionIgnoredWarning))
+            .Options;
+        return new WarehouseDbContext(options);
+    }
+
+    private static PurchasePlanService CreatePlanService(WarehouseDbContext db) =>
+        new(
+            db,
+            new PurchasePlanCodeGenerator(db),
+            new FakeCurrentUser(),
+            new FakeActivityEventWriter(),
+            new CreatePurchasePlanRequestValidator(),
+            new UpdatePurchasePlanRequestValidator());
 }

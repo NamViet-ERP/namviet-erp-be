@@ -8,7 +8,10 @@ public class SupplierGroup : BaseEntity
     public int Id { get; set; }
     public string Name { get; set; } = string.Empty;
     public string? Description { get; set; }
+    public int? ParentGroupId { get; set; }
 
+    public SupplierGroup? Parent { get; set; }
+    public ICollection<SupplierGroup> Children { get; set; } = [];
     public ICollection<SupplierGroupMember> Members { get; set; } = [];
 }
 

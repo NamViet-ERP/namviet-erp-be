@@ -248,8 +248,18 @@ public class WarehouseDbContext(DbContextOptions<WarehouseDbContext> options) : 
             e.HasKey(g => g.Id);
             e.Property(g => g.Name).HasMaxLength(255).IsRequired();
             e.Property(g => g.Description).HasMaxLength(1000);
-            // Soft delete: chỉ ràng buộc trùng tên trên bản ghi còn hiệu lực.
-            e.HasIndex(g => g.Name).IsUnique().HasFilter("\"DeletedAt\" IS NULL");
+            e.HasOne(g => g.Parent).WithMany(g => g.Children)
+             .HasForeignKey(g => g.ParentGroupId).OnDelete(DeleteBehavior.Restrict);
+            e.HasIndex(g => g.ParentGroupId);
+            // Soft delete: tách unique index theo cấp để Nhóm lớn không trùng nhau và Mục nhỏ không trùng trong cùng Nhóm lớn.
+            e.HasIndex(g => g.Name)
+             .HasDatabaseName("IX_supplier_groups_Root_Name")
+             .IsUnique()
+             .HasFilter("\"ParentGroupId\" IS NULL AND \"DeletedAt\" IS NULL");
+            e.HasIndex(g => new { g.ParentGroupId, g.Name })
+             .HasDatabaseName("IX_supplier_groups_ParentGroupId_Name")
+             .IsUnique()
+             .HasFilter("\"ParentGroupId\" IS NOT NULL AND \"DeletedAt\" IS NULL");
             e.HasQueryFilter(g => g.DeletedAt == null);
         });
 

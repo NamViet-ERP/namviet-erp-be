@@ -3544,6 +3544,9 @@ namespace NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence.Migrations
                         .HasMaxLength(255)
                         .HasColumnType("character varying(255)");
 
+                    b.Property<int?>("ParentGroupId")
+                        .HasColumnType("integer");
+
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -3551,7 +3554,15 @@ namespace NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("Name")
                         .IsUnique()
-                        .HasFilter("\"DeletedAt\" IS NULL");
+                        .HasDatabaseName("IX_supplier_groups_Root_Name")
+                        .HasFilter("\"ParentGroupId\" IS NULL AND \"DeletedAt\" IS NULL");
+
+                    b.HasIndex("ParentGroupId");
+
+                    b.HasIndex("ParentGroupId", "Name")
+                        .IsUnique()
+                        .HasDatabaseName("IX_supplier_groups_ParentGroupId_Name")
+                        .HasFilter("\"ParentGroupId\" IS NOT NULL AND \"DeletedAt\" IS NULL");
 
                     b.ToTable("supplier_groups", "warehouse");
                 });
@@ -4572,6 +4583,16 @@ namespace NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence.Migrations
                     b.Navigation("Supplier");
                 });
 
+            modelBuilder.Entity("NamViet.ERP.Modules.Warehouse.Domain.Entities.SupplierGroup", b =>
+                {
+                    b.HasOne("NamViet.ERP.Modules.Warehouse.Domain.Entities.SupplierGroup", "Parent")
+                        .WithMany("Children")
+                        .HasForeignKey("ParentGroupId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Parent");
+                });
+
             modelBuilder.Entity("NamViet.ERP.Modules.Warehouse.Domain.Entities.SupplierGroupMember", b =>
                 {
                     b.HasOne("NamViet.ERP.Modules.Warehouse.Domain.Entities.SupplierGroup", "Group")
@@ -4785,6 +4806,8 @@ namespace NamViet.ERP.Modules.Warehouse.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("NamViet.ERP.Modules.Warehouse.Domain.Entities.SupplierGroup", b =>
                 {
+                    b.Navigation("Children");
+
                     b.Navigation("Members");
                 });
 

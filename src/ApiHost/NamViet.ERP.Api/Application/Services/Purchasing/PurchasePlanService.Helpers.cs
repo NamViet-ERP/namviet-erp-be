@@ -338,12 +338,10 @@ public sealed partial class PurchasePlanService
                 : src.PurchaseStatus.Trim(),
             StatusNote = string.IsNullOrWhiteSpace(src.StatusNote) ? null : src.StatusNote.Trim(),
             BudgetUnitPrice = src.BudgetUnitPrice,
-            BudgetAmount = src.BudgetAmount ?? (src.BudgetUnitPrice is decimal bup
-                ? Math.Round(bup * qty, 2) : null),
+            BudgetAmount = src.BudgetAmount,
             ProposalKgPerUnit = src.ProposalKgPerUnit,
             ProposalUnitPrice = src.ProposalUnitPrice,
-            ProposalAmount = src.ProposalAmount ?? (src.ProposalUnitPrice is decimal pup
-                ? Math.Round(pup * qty, 2) : null),
+            ProposalAmount = src.ProposalAmount,
             ProposalSupplierName = string.IsNullOrWhiteSpace(src.ProposalSupplierName)
                 ? null : src.ProposalSupplierName.Trim(),
             ProposalNote = string.IsNullOrWhiteSpace(src.ProposalNote) ? null : src.ProposalNote.Trim(),
@@ -355,14 +353,12 @@ public sealed partial class PurchasePlanService
             DeliveryNote = string.IsNullOrWhiteSpace(src.DeliveryNote) ? null : src.DeliveryNote.Trim(),
             PurchaseKgPerUnit = src.PurchaseKgPerUnit,
             PurchaseUnitPrice = src.PurchaseUnitPrice,
-            PurchaseAmount = src.PurchaseAmount ?? (src.PurchaseUnitPrice is decimal prup
-                ? Math.Round(prup * qty, 2) : null),
+            PurchaseAmount = src.PurchaseAmount,
             PurchaseSupplierName = string.IsNullOrWhiteSpace(src.PurchaseSupplierName)
                 ? null : src.PurchaseSupplierName.Trim(),
             PurchaseNote = string.IsNullOrWhiteSpace(src.PurchaseNote) ? null : src.PurchaseNote.Trim(),
             SelectedUnitPrice = src.SelectedUnitPrice,
-            SelectedAmount = src.SelectedAmount ?? (src.SelectedUnitPrice is decimal sup
-                ? Math.Round(sup * qty, 2) : null),
+            SelectedAmount = src.SelectedAmount,
             SelectedSupplierName = string.IsNullOrWhiteSpace(src.SelectedSupplierName)
                 ? null : src.SelectedSupplierName.Trim(),
             SelectionReason = string.IsNullOrWhiteSpace(src.SelectionReason)
@@ -384,8 +380,7 @@ public sealed partial class PurchasePlanService
                 SortOrder = sort,
                 KgPerUnit = q.KgPerUnit,
                 UnitPrice = q.UnitPrice,
-                Amount = q.Amount ?? (q.UnitPrice is decimal up
-                    ? Math.Round(up * qty, 2) : null),
+                Amount = q.Amount,
                 SupplierName = string.IsNullOrWhiteSpace(q.SupplierName) ? null : q.SupplierName.Trim(),
                 Note = string.IsNullOrWhiteSpace(q.Note) ? null : q.Note.Trim(),
                 Status = string.IsNullOrWhiteSpace(q.Status) ? null : q.Status.Trim(),
@@ -418,7 +413,6 @@ public sealed partial class PurchasePlanService
             if (material != null) unit = material.Unit;
             else if (serviceItem != null) unit = serviceItem.Unit;
         }
-            unit = material.Unit;
 
         if (string.IsNullOrWhiteSpace(unit))
             unit = lineType == PurchasePlanLineTypes.Expense ? "Gói" : "Hệ";
@@ -447,12 +441,10 @@ public sealed partial class PurchasePlanService
                 : src.PurchaseStatus,
             StatusNote = src.StatusNote,
             BudgetUnitPrice = src.BudgetUnitPrice,
-            BudgetAmount = src.BudgetAmount ?? (src.BudgetUnitPrice is decimal bup
-                ? Math.Round(bup * qty, 2) : null),
+            BudgetAmount = src.BudgetAmount,
             ProposalKgPerUnit = src.ProposalKgPerUnit,
             ProposalUnitPrice = src.ProposalUnitPrice,
-            ProposalAmount = src.ProposalAmount ?? (src.ProposalUnitPrice is decimal pup
-                ? Math.Round(pup * qty, 2) : null),
+            ProposalAmount = src.ProposalAmount,
             ProposalSupplierName = src.ProposalSupplierName,
             ProposalNote = src.ProposalNote,
             ProposalStatus = src.ProposalStatus,
@@ -463,13 +455,11 @@ public sealed partial class PurchasePlanService
             DeliveryNote = src.DeliveryNote,
             PurchaseKgPerUnit = src.PurchaseKgPerUnit,
             PurchaseUnitPrice = src.PurchaseUnitPrice,
-            PurchaseAmount = src.PurchaseAmount ?? (src.PurchaseUnitPrice is decimal prup
-                ? Math.Round(prup * qty, 2) : null),
+            PurchaseAmount = src.PurchaseAmount,
             PurchaseSupplierName = src.PurchaseSupplierName,
             PurchaseNote = src.PurchaseNote,
             SelectedUnitPrice = src.SelectedUnitPrice,
-            SelectedAmount = src.SelectedAmount ?? (src.SelectedUnitPrice is decimal sup
-                ? Math.Round(sup * qty, 2) : null),
+            SelectedAmount = src.SelectedAmount,
             SelectedSupplierName = src.SelectedSupplierName,
             SelectionReason = src.SelectionReason,
         };
@@ -483,7 +473,7 @@ public sealed partial class PurchasePlanService
                 SortOrder = sort,
                 KgPerUnit = q.KgPerUnit,
                 UnitPrice = q.UnitPrice,
-                Amount = q.Amount ?? (q.UnitPrice is decimal up ? Math.Round(up * qty, 2) : null),
+                Amount = q.Amount,
                 SupplierName = q.SupplierName,
                 Note = q.Note,
                 Status = q.Status,
